@@ -1,0 +1,202 @@
+---
+description: Guided end-to-end release: bump version, changelog, test, commit, zip, host release.
+---
+
+# Release <area-domain>-context
+
+You are shepherding a maintainer through the full release ritual for the `<area-domain>-context` contextualizer. This is the canonical guided path; `RELEASING.md` (or your equivalent manual checklist) is the human-readable fallback. Follow the phases below in order. Halt on any error.
+
+> **Note to Adopters:** This template is domain-agnostic. Replace placeholders before committing the rendered command to your repo's `.claude/commands/release.md`:
+> * `<area-domain>` - your domain stem (e.g. 'identity', 'inventory')
+> * `<area-domain>-context` - your skill/CLI/plugin name
+> * `<your-git-host>` - your git host (e.g., "github.com", "ghe.your-org.com")
+> * `<host-cli>` - your host CLI (`gh` for GitHub/GHE, `glab` for GitLab)
+> * `<HOST_ENV>` - the env var your host CLI uses to target a specific instance (e.g., `GH_HOST` for GHE; remove if you only target one host)
+
+## For new maintainers (read this first)
+
+* **Who this is for:** anyone maintaining this repo. The release slash command exists so you don't need tribal knowledge from prior maintainers to ship a release.
+* **Prereqs:**
+  * `<host-cli>` authed to your git host with repo scope - verify with `<host-cli> auth status`. If not authed: `<host-cli> auth login --hostname <your-git-host>`.
+  * `jq` and `zip` installed (standard on macOS; `apt install jq zip` or equivalent on Linux).
+  * Clean working tree on the branch you want to release from (usually `main`).
+* **Time budget:** 10 min for a patch (content refresh), 20 min for a minor (new features), longer for a major (breaking changes - double-check the upgrade story in README).
+* **Escape hatch:** if anything fails partway through, fall back to your manual `RELEASING.md` checklist. Nothing this command does is irreversible before the host-release step (Phase 9).
+
+## Argument parsing
+
+The user invoked with `$ARGUMENTS`. Parse as follows:
+
+* **Empty** -> ask interactively: "Which bump? major, minor, patch, or an explicit X.Y.Z version?"
+* **major, minor, patch** -> read current version from `bin/<area-domain>-context` and compute the next. Show the diff (e.g., 1.0.0 -> 1.1.0), pause for confirmation.
+* **X.Y.Z** matching `^[0-9]+\.[0-9]+\.[0-9]+$` -> use literal. Still show current -> new and confirm.
+* **X.Y.Z "release notes text"** -> literal version; use the second arg as the starting draft for release notes.
+* **Anything else** -> reject, fall back to interactive.
+
+Store the resolved version as `NEW_VERSION` for use in all subsequent phases.
+
+## Phase 1 - Preflight
+
+Run these checks in order. Halt with remediation guidance on any failure.
+
+1. **Tools present:**
+   ```bash
+   command -v <host-cli> && command -v jq && command -v zip
+   ```
+   If any missing: stop and tell the maintainer which to install.
+
+2. **Host CLI authed:**
+   ```bash
+   <HOST_ENV>=<your-git-host> <host-cli> auth status
+   ```
+   Must show "Logged in to <your-git-host>". If not: `<host-cli> auth login --hostname <your-git-host>`.
+
+3. **Working tree clean:**
+   ```bash
+   git status --porcelain
+   ```
+   Must return empty. If dirty, itemize the changes and ask the maintainer to commit or stash first.
+
+4. **Branch check:**
+   ```bash
+   git rev-parse --abbrev-ref HEAD
+   ```
+   Report the current branch. If it is not `main`, require explicit confirmation: "You're on branch <branch>, not main. Continue anyway?"
+
+5. **Tests pass:**
+   ```bash
+   ./test/test-cli.sh
+   ```
+   Must finish with 'Failed: 0'. If any test fails, halt and show the failing test name(s).
+
+## Phase 2 - Version resolution
+
+Read the current version:
+```bash
+CURRENT=$(grep -m1 '^VERSION=' bin/<area-domain>-context | sed 's/VERSION="//' | sed 's/"//')
+```
+
+Compute `NEW_VERSION` per the arg parsing above. Display:
+* **Current:** `X.Y.Z` -> **New:** `A.B.C`
+
+Pause for confirmation. On no/abort, stop cleanly.
+
+## Phase 3 - Bump the four version surfaces
+
+Edit each file; show a diff summary after each edit. The four surfaces are documented in `skill-engine/docs/04-delivery.md` (4-place version sync) - `test_version_consistency` will fail Phase 5 if any drift.
+
+1. **`bin/<area-domain>-context`** (two places):
+   * Header comment: `# Version: X.Y.Z` -> `# Version: <NEW_VERSION>`
+   * `VERSION="X.Y.Z"` -> `VERSION="<NEW_VERSION>"`
+2. **`.claude-plugin/plugin.json`** version field:
+   ```bash
+   jq --arg v "$NEW_VERSION" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json.tmp
+   mv /tmp/plugin.json.tmp .claude-plugin/plugin.json
+   ```
+3. **`test/test-cli.sh`** (two places):
+   * Header comment (`Test suite for <area-domain>-context CLI tool (vX.Y.Z...)`)
+   * Inside the `test_version_consistency` command test, the literal version string asserted via `assert_contains`.
+
+## Phase 4 - Draft the CHANGELOG entry
+
+1. **Collect changes since the last tag:**
+   ```bash
+   LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+   if [ -n "$LAST_TAG" ]; then
+     git log "$LAST_TAG"..HEAD --oneline
+   else
+     git log HEAD --oneline | head -30
+   fi
+   ```
+2. **Draft an entry in your `CHANGELOG.md` format.** Move any `[Unreleased]` bullets under the new `[<NEW_VERSION>] - YYYY-MM-DD` header; add new bullets for release-only changes. Use the fixed type set:
+   * `<type>: <concise description> (<affected files/area>)`
+   Types: `add`, `fix`, `change`, `remove`, `deprecate`.
+3. **Pause.** Show the draft and invite the maintainer to edit inline before Phase 5. Especially for minor/major releases, a human pass on the CHANGELOG is worth it.
+
+## Phase 5 - Re-run tests
+
+```bash
+./test/test-cli.sh
+```
+Must pass with `Failed: 0`. The `test_version_consistency` gate catches any version-surface drift from Phase 3. Halt on any failure.
+
+## Phase 6 - Commit (destructive gate #1)
+
+```bash
+git add bin/<area-domain>-context .claude-plugin/plugin.json test/test-cli.sh CHANGELOG.md
+git commit -m "chore(release): v<NEW_VERSION>"
+```
+Show the commit with `git show --stat HEAD`. Pause before pushing - last chance to amend.
+
+## Phase 7 - Push
+
+```bash
+git push origin <current-branch>
+```
+Capture the branch name from Phase 1.4 above.
+
+## Phase 8 - Build the Desktop zip (two names)
+
+```bash
+bin/<area-domain>-context package
+# produces <area-domain>-context-v<NEW_VERSION>.zip
+
+cp "<area-domain>-context-v<NEW_VERSION>.zip" "<area-domain>-context.zip"
+# stable-named copy for /releases/latest/download/ URL
+```
+Verify both files exist and their sizes match. The versioned zip is the canonical release artifact; the stable-named copy exists so `https://<your-git-host>/<your-org>/<repo>/releases/latest/download/<area-domain>-context.zip` always resolves to the current release without per-release URL churn.
+
+## Phase 9 - Create the host release (destructive gate #2)
+
+1. **Draft release notes** from the CHANGELOG entry added in Phase 4. Write to a temp file:
+   ```bash
+   cat > /tmp/release-notes-$NEW_VERSION.md <<'EOF'
+   <paste the CHANGELOG entry body here - everything under the version heading, up to the next entry or the EOF>
+   EOF
+   ```
+   **Pause:** let the maintainer edit this draft. They may want to add upgrade notes, known issues, or acknowledgments.
+
+2. **Create the release:** creates the tag, pushes it, creates the release page, and uploads both zip assets in one call:
+   ```bash
+   <HOST_ENV>=<your-git-host> <host-cli> release create "v$NEW_VERSION" \
+     "./<area-domain>-context-v$NEW_VERSION.zip" \
+     "./<area-domain>-context.zip" \
+     --title "v$NEW_VERSION" \
+     --notes-file "/tmp/release-notes-$NEW_VERSION.md"
+   ```
+
+3. **Clean up** the temp file and the stable named local copy: `rm /tmp/release-notes-$NEW_VERSION.md <area-domain>-context.zip`
+
+## Phase 10 - Verify and report
+
+1. **Confirm the release:**
+   ```bash
+   <HOST_ENV>=<your-git-host> <host-cli> release view "v$NEW_VERSION"
+   ```
+   Show the output. Confirm both zip assets are listed.
+
+2. **Print the release URL:** `https://<your-git-host>/<your-org>/<repo>/releases/tag/v$NEW_VERSION`
+
+3. **Next steps for the maintainer:**
+   * **Plugin marketplace sync:** If your plugin-marketplace lives in a separate repo (the common case at most orgs), the new `plugin.json` version does NOT auto-propagate. You must copy the updated artifacts into the marketplace repo and bump its `plugin.json`. See `skill-engine/docs/04-delivery.md`.
+   * **Org-wide skill provisioning:** (optional) If your org provisions skills centrally (e.g., via Anthropic's Organization settings > Skills), notify the admin with the new zip so they can re-upload for all users. Skip if not applicable.
+   * **Paranoid final check:** `./test/test-cli.sh` one more time on a fresh clone to catch anything local-env specific.
+
+## Failure modes and recovery
+
+* **Phase 1 preflight fails:** fix the underlying issue (install tool, authenticate, clean working tree) and re-run.
+* **Phase 5 tests fail after version bump:** most likely `test_version_consistency` caught a missed edit in Phase 3. Fix the file, re-run tests; once green, continue with Phase 6.
+* **Phase 9 release create fails:** common causes are (a) tag already exists (someone else created vX.Y.Z already - delete with `<host-cli> release delete` or pick a new version), or (b) auth scope too narrow (re-run `<host-cli> auth refresh -h <your-git-host> -s repo`).
+* **Bad release shipped:** see your `RELEASING.md` > "Rollback" - delete the release (or mark as pre-release), upload the previous good zip, cut a patch release with the fix.
+
+## Guardrails
+
+* **Never skip Phase 5** (post-bump tests). `test_version_consistency` is the only line of defense against shipping a mismatched `plugin.json`.
+* **Never commit `--no-verify`** in this flow. If a hook fails, investigate.
+* **Never force-push** the release branch.
+* **Pause before pushing** (Phase 6-7) and before creating the host release (Phase 9). Those are the two points of no return for this session.
+
+## Notes for adopters
+
+* The two destructive gate pauses (commit/push, then host release) are deliberate. Do not collapse them into a single "ship it" button - the source pattern's value is the human review that happens at each gate.
+* Tag the source-of-truth docs from this command (CHANGELOG conventions, version-sync, marketplace sync) rather than restating them. The release flow is the runner; the docs are the *spec*. Drift between the two is the most common failure mode for a guided ritual; minimize it.

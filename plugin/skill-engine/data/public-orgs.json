@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "last_updated": "2026-05-11",
+  "description": "Known-public scope allowlist per ecosystem. Bundled as a reasoning aid for DISCOVER — a scoped dependency whose scope appears here (e.g. npm `@aws-sdk/*`, `@types/*`, `@anthropic-ai/*`) is widely public, LM-familiar, and unlikely to be worth a separate reference file. The model may consult or ignore this list per its judgment under the goal-given DISCOVER posture. Bundled at plugin release time; updated manually as new authoritative public scopes surface. Updates ship in plugin MINOR releases per the version-evolution doctrine (docs/10-version-evolution.md). The `last_updated` field is the staleness signal — when more than ~6 months old, the list may not reflect newer authoritative scopes; bump the plugin to refresh.",
+  "ecosystems": {
+    "npm": {
+      "description": "npm scoped packages (@scope/pkg). Scopes here are well-known public publishers; their packages are LM-familiar and not worth proposing as companion sources.",
+      "scopes": [
+        "@anthropic-ai",
+        "@aws-amplify",
+        "@aws-sdk",
+        "@babel",
+        "@emotion",
+        "@hapi",
+        "@jest",
+        "@material-ui",
+        "@mui",
+        "@nestjs",
+        "@next",
+        "@nrwl",
+        "@nx",
+        "@nuxt",
+        "@octokit",
+        "@openai",
+        "@openzeppelin",
+        "@playwright",
+        "@radix-ui",
+        "@reach",
+        "@remix-run",
+        "@rollup",
+        "@sentry",
+        "@shopify",
+        "@sinonjs",
+        "@solana",
+        "@storybook",
+        "@stripe",
+        "@svgr",
+        "@tailwindcss",
+        "@tanstack",
+        "@testing-library",
+        "@trpc",
+        "@types",
+        "@vercel",
+        "@vitejs",
+        "@vitest",
+        "@vue",
+        "@webcomponents",
+        "@wordpress"
+      ]
+    },
+    "python": {
+      "description": "Python doesn't have lexical scopes the way npm does, but PyPI publishers often share a recognizable prefix. Treat package-name prefixes here as scope-like; a bare name starting with one of these prefixes is COMMODITY.",
+      "prefixes": [
+        "aiohttp-",
+        "aws-",
+        "azure-",
+        "django-",
+        "flask-",
+        "google-",
+        "openai-",
+        "pytest-",
+        "tensorflow-",
+        "torch-"
+      ]
+    },
+    "rust": {
+      "description": "Cargo doesn't use scopes; this list is reserved for future use if community scope conventions emerge.",
+      "scopes": []
+    },
+    "go": {
+      "description": "Go modules use full import paths; treat path-prefix matches as scope-like. A bare-name dep whose module path starts with one of these prefixes is COMMODITY.",
+      "prefixes": [
+        "github.com/aws/",
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/google/",
+        "github.com/hashicorp/",
+        "github.com/spf13/",
+        "github.com/stretchr/",
+        "go.opentelemetry.io/",
+        "golang.org/x/",
+        "google.golang.org/",
+        "gopkg.in/"
+      ]
+    },
+    "jvm": {
+      "description": "Maven groupIds. A dependency whose groupId matches one of these is COMMODITY.",
+      "groups": [
+        "ch.qos.logback",
+        "com.amazonaws",
+        "com.fasterxml.jackson",
+        "com.google.guava",
+        "com.google.inject",
+        "com.google.protobuf",
+        "io.netty",
+        "io.opentelemetry",
+        "io.spring",
+        "junit",
+        "org.apache.commons",
+        "org.apache.kafka",
+        "org.apache.logging.log4j",
+        "org.eclipse",
+        "org.jetbrains.kotlin",
+        "org.junit",
+        "org.mockito",
+        "org.slf4j",
+        "org.springframework"
+      ]
+    },
+    "php": {
+      "description": "Composer vendor names. A package matching `<vendor>/<name>` where vendor appears here is COMMODITY.",
+      "vendors": [
+        "doctrine",
+        "guzzlehttp",
+        "laravel",
+        "monolog",
+        "phpunit",
+        "psr",
+        "symfony",
+        "twig"
+      ]
+    },
+    "ruby": {
+      "description": "RubyGems doesn't have scopes; this list is reserved for future use if community prefix conventions emerge.",
+      "prefixes": []
+    },
+    "github-actions": {
+      "description": "GitHub Actions `uses:` lines reference org/repo paths. Workflows that `uses: actions/checkout@v4` reference the well-known public `actions/` org — COMMODITY. Workflows that reference a private internal org are INTEGRAL.",
+      "orgs": [
+        "actions",
+        "aws-actions",
+        "azure",
+        "docker",
+        "github",
+        "golangci",
+        "google-github-actions",
+        "hashicorp",
+        "ruby",
+        "softprops"
+      ]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "skill-engine",
+  "version": "0.1.0",
+  "description": "Teach Claude your codebase. Keep it taught.",
+  "homepage": "https://github.com/nick-railsback/skill-engine",
+  "repository": "https://github.com/nick-railsback/skill-engine",
+  "license": "MIT",
+  "author": {
+    "name": "Nick Railsback",
+    "url": "https://github.com/nick-railsback"
+  },
+  "keywords": ["claude-code", "claude-code-plugin", "skills", "documentation", "developer-tools", "ai-engineering"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -z \"${CLAUDE_PLUGIN_DATA:-}\" ]; then\n  printf '%s\\n' 'skill-engine: CLAUDE_PLUGIN_DATA not set; skipping engine state hydration' >&2\n  exit 0\nfi\nif ! command -v jq >/dev/null 2>&1; then\n  printf '%s\\n' 'skill-engine: jq not on PATH; install jq via your package manager to enable engine state hydration' >&2\n  exit 0\nfi\nstate_file=\"${CLAUDE_PLUGIN_DATA}/state/current.json\"\nif [ ! -f \"$state_file\" ]; then\n  state_dir=$(dirname \"$state_file\")\n  if ! mkdir -p \"$state_dir\" 2>/dev/null; then\n    printf '%s\\n' \"skill-engine: cannot create state dir $state_dir; check permissions\" >&2\n    exit 0\n  fi\n  tmp_file=\"${state_file}.tmp.$$\"\n  if printf '%s\\n' '{\"schema_version\": 1, \"workflow_set\": []}' > \"$tmp_file\" 2>/dev/null && mv -f \"$tmp_file\" \"$state_file\" 2>/dev/null; then\n    printf '%s\\n' 'skill-engine: plugin bootstrapping — first interaction will route to /skill-engine:engine-bootstrap' >&2\n  else\n    rm -f \"$tmp_file\" 2>/dev/null\n    printf '%s\\n' \"skill-engine: cannot write state file $state_file; check permissions\" >&2\n  fi\n  exit 0\nfi\nif ! jq empty \"$state_file\" 2>/dev/null; then\n  printf '%s\\n' \"skill-engine: state file at $state_file is unparseable JSON; run /skill-engine:engine-bootstrap to re-initialize\" >&2\n  exit 0\nfi\nschema_version=$(jq -r '.schema_version // empty' \"$state_file\")\ncase \"$schema_version\" in\n  ''|*[!0-9]*) printf '%s\\n' \"skill-engine: state file missing required field 'schema_version'; run /skill-engine:engine-bootstrap\" >&2; exit 0 ;;\nesac\nexit 0\n"
+          }
+        ]
+      }
+    ]
+  }
+}

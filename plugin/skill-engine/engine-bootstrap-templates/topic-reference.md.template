@@ -1,0 +1,103 @@
+# <Area Domain> <Topic Name>
+
+<One paragraph: what this reference covers and the architectural shape of the subsystem. This paragraph is what the AI re-reads on every invocation, so make it scannable. Mention the major components, the high-level data or request flow, and the boundaries with other parts of <area-domain>.>
+
+## When to Use This Reference
+
+Use this reference when working with:
+* <Specific question type 1: e.g., "configuring SAML SSO for a new identity provider">
+* <Specific question type 2: e.g., "debugging session expiration issues">
+* <Specific question type 3: e.g., "implementing OIDC client integration">
+* <Specific question type 4>
+
+If the question is about <related-but-different topic>, prefer [<area-domain>-<other-topic>](<area-domain>-<other-topic>.md) instead.
+
+## Architecture Overview
+
+<Describe the components and how they fit together. Include an ASCII diagram or mermaid block if it helps. Aim for 30-60 lines. Cover:
+* The major components and their responsibilities
+* How requests/data flow between them
+* The boundaries (what's in this subsystem vs. what's adjacent)
+* Key contracts or protocols>
+
+<ASCII diagram showing the high-level architecture>
+```text
+Component A ----> Component B
+    |                 |
+    |                 v
+    +-----------> Component C
+```
+
+For full details on the data model and APIs, see the source code at a SHA-pinned line range:
+[<owner>/<repo>:<path>#L<start>-L<end>](https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>).
+
+## Critical Patterns
+
+<This is usually the longest section. Cover the "how to do common things correctly" recipes. Each pattern should be:>
+* <One-line statement of the pattern>
+* <Code snippet showing the right way>
+* <Short note on why this is the right way>
+
+### Pattern 1: <Name of the pattern>
+<Brief explanation of when this pattern applies.>
+
+```<Language>
+// Code example showing the right way
+<code>
+```
+<Note on why this is the right way; gotchas to watch for.>
+
+### Pattern 2: <Name of the pattern>
+<Brief explanation.>
+
+```<Language>
+<code>
+```
+<Notes.>
+
+## Common Gotchas
+
+<This section is where curation pays off. Each gotcha is something a maintainer learned the hard way that isn't documented in the upstream source>
+
+* **<Gotcha 1 title>**: <Description: what the gotcha is, what makes it surprising, how to avoid it. Include a code example if it helps.>
+* **<Gotcha 2 title>**: <Description.>
+* **<Gotcha 3 title>**: <Description.>
+
+## Key Components
+
+<A short reference of named pieces—files, classes, services—with one-line descriptions. The AI uses this to know what to grep for.>
+
+* **`<ComponentName>`**: <one-line description; file path or repo URL>
+* **`<ServiceName>`**: <one-line description>
+* **`<config-key>`**: <one-line description; default value>
+
+## Edge cases and deeper investigation
+
+<This is the only sub-section where empowerment prose belongs. Use imperative-but-permissive voice for cases that go beyond the curated patterns above.>
+
+* If the question lands on an unusual configuration not covered above, you may `Read` or `Grep` into `<repo>` directly to drill into the source — start at `<entrypoint-file>` and follow the call graph.
+* If <named-edge-case-1> applies, <pointer to specific exploration path>.
+* If <named-edge-case-2> applies, <pointer>.
+
+Empowerment prose ("you may go look") is welcome in this sub-section and **only** here. Elsewhere in the reference, prose stays direct and imperative.
+
+## Related References
+
+* [<area-domain>-<related-topic-1>](<area-domain>-<related-topic-1>.md) - <how this reference relates to that one>
+* [<area-domain>-<related-topic-2>](<area-domain>-<related-topic-2>.md) - <relation>
+* [<deep-dive-companion>.md](<deep-dive-companion>.md) - <when to follow this companion file (if any)>
+
+<!--
+  `## Related References` is the legacy section name retained from the
+  six-section reference contract. `## See also` below is the newer
+  cross-cutting convention; it points at sibling references in the same
+  `references/` directory that share themes across primaries (e.g., a
+  reference tagged `cross-cutting` that several other primaries link
+  back to). The two sections currently coexist; a future revision may
+  reconcile them.
+-->
+
+## See also
+
+* [<area-domain>-<sibling-1>](<area-domain>-<sibling-1>.md) - <one-line theme this sibling shares>
+* [<area-domain>-<sibling-2>](<area-domain>-<sibling-2>.md) - <theme>

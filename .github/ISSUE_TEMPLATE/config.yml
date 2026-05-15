@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/nick-railsback/skill-engine/discussions
+    about: For doctrine questions, ideas, and show-and-tell, please use Discussions instead of opening an issue.

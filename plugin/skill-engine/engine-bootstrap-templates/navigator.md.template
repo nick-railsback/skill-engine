@@ -1,0 +1,68 @@
+---
+name: <contextualizer-slug>-context
+description: "Answers questions about the configured source(s). References load on demand from references/. Use when working in this contextualizer's domain."
+---
+
+# Context navigator
+
+## Overview
+
+This navigator catalogs references for the source(s) registered with the engine. The navigator itself stays small; references load only when relevant to the current question.
+
+When asked a question this navigator's domain covers:
+
+1. Scan the **Catalog** below for the matching topic.
+2. Follow the link to read the reference file.
+3. If the question spans multiple references, consult the **Cross-reference map**.
+4. If a reference points at a source URL for deeper detail, follow it only if the reference itself didn't answer the question.
+
+## Catalog
+
+*No references yet.* Run `/skill-engine:discover` to populate this catalog. DISCOVER reads the registered sources, discovers the essence of the content, and writes reference files that satisfy the four reference invariants. Each catalog row below points at one of those references.
+
+| Reference | Description |
+|---|---|
+
+<!-- Catalog rows populate as references accumulate. Each row points at one primary in two possible shapes: file form references/<source-slug>-<topic>.md (default for text-only references) OR directory form references/<source-slug>-<topic>/ with the canonical primary <source-slug>-<topic>.md inside (opt-in for multimodal references that ship alongside non-.md assets like architecture diagrams, JSON schemas, or screenshots). Both forms are first-class; the bijection set-equality is computed over canonical reference IDs. See https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md "### Reference depth (one level)" for the directory-form contract. The DISCOVER pipeline (chapter https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md) adds rows on its emit pass; the navigator's /self-audit workflow keeps them in 1:1 correspondence with the references/ directory. -->
+
+## Cross-reference map
+
+*(populated as references accumulate)*
+
+<!-- Cross-reference entries describe which reference to start at when a question spans multiple subsystems. Add entries as patterns emerge from real usage; the DISCOVER pipeline does not auto-generate these. -->
+
+## Markdown style for generated references
+
+Reference files use **soft wrapping**: one paragraph per line, no hard line breaks at fixed column widths. Editors and rendered Markdown reflow at viewport width. Do not insert manual line breaks within a paragraph to keep lines under ~80 columns — that produces mid-sentence breaks in rendered output and makes diffs noisier. Code blocks, tables, bullet lists, and headings follow their own rules; this directive applies to prose paragraphs only.
+
+## Instructions to Claude
+
+When loading a reference file, the path syntax depends on the platform:
+
+* **Claude Code**: Read the reference using the platform-provided skill-directory variable: `Read $CLAUDE_SKILL_DIR/references/<source-slug>-<topic>.md`
+
+* **Claude Desktop**: Read the reference using a relative path; the platform resolves it from the skill's installed location: `Read references/<source-slug>-<topic>.md`
+
+Loading rules:
+
+* Load one reference at a time unless the Cross-reference map says to load both.
+* If the primary reference doesn't fully answer the question, follow any source URL pointers it provides for deeper detail.
+* Do not eagerly load companion files; only follow companion links when the primary reference says to.
+* If the user's question is clearly out of scope for this contextualizer, don't invoke this skill at all.
+
+## Progressive disclosure
+
+References prioritize curated insight over re-specifying upstream sources:
+
+* **Gotchas, cross-system patterns, and "why" context** are kept in the reference (curation value).
+* **Exact schemas, API signatures, and parameter lists** are summarized in the reference and linked to their authoritative source via source URLs.
+
+When a reference includes a source URL pointer, follow it only when the reference's own summary didn't cover the question. The contextualizer is optimized for the common case; the upstream source is the long tail.
+
+## Optional SKILL.json sibling
+
+This navigator MAY ship a `SKILL.json` sibling alongside this `SKILL.md` for machine-readable consumers (downstream tools and non-Claude agents that prefer structured metadata to markdown parsing). The sibling is purely opt-in additive — contextualizers without it pass verification unchanged.
+
+When `SKILL.json` is present, the `## Catalog` table above, the SKILL.json `catalog[]` entries, and the `references/<source-slug>-*.md` files on disk must be in three-way correspondence. Entries carrying `"draft": true` in SKILL.json are excluded from this trijection and surface as a one-line summary at verify time. The `skill-json-trijection` named check fires only when SKILL.json is present; absence is a silent-skip pass.
+
+Full schema: see [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §"SKILL.json".

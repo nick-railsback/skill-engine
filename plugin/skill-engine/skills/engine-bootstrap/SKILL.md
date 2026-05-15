@@ -1,0 +1,511 @@
+---
+name: engine-bootstrap
+description: When the user is in an empty directory and wants to scaffold a new contextualizer from the bundled templates. Accepts one or more URLs or local paths to source roots; the engine auto-detects identity, kind, and topology — the user never types engine taxonomy.
+---
+
+# Engine bootstrap
+
+Scaffold a new contextualizer in the current directory. Take a list of source
+URLs or local paths from the user, auto-detect the metadata the engine needs,
+stamp the matching template set into place, and exit with a 3-line message
+naming the next workflow to run.
+
+The user supplies sources. The engine fills in everything else.
+
+## Installation layout
+
+A contextualizer is stamped as a self-contained Claude Code project skill at:
+
+```
+.claude/skills/<slug>-context/
+├── SKILL.md
+├── verify.sh
+├── research/
+│   ├── source-paths.json
+│   └── .research-state.json
+└── references/   (created by /skill-engine:discover later)
+```
+
+`.claude/skills/<slug>-context/` is the **contextualizer root**. Every
+engine workflow (`discover`, `refresh`, `status`, `self-audit`,
+`new-reference`, `using-skill-engine`) resolves `research/...`,
+`references/...`, and `verify.sh` relative to this root. The user invokes
+slash commands from the project working directory (the parent of
+`.claude/`); the workflows locate the root themselves.
+
+## Activation guard
+
+This skill assumes no contextualizer is installed under
+`.claude/skills/*-context/` yet.
+
+1. From the project working directory, look for an existing contextualizer:
+
+   ```bash
+   find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+   ```
+
+   If any match has a parseable `research/.research-state.json`, surface a
+   one-line warning naming the path, list the files that would be
+   overwritten, and pause for explicit confirmation before continuing. The
+   `using-skill-engine` router only sends new and corrupt directories here;
+   an existing setup reaching this skill means the maintainer overrode the
+   router on purpose.
+
+2. Otherwise, proceed.
+
+## Step 1 — Intake
+
+Accept one or more sources from the user. Two intake modes:
+
+- **Positional arguments.** Any non-flag arguments passed to the skill
+  invocation are sources, one per argument. `/skill-engine:engine-bootstrap
+  https://github.com/vitejs/vite ~/work/myrepo` registers two sources without
+  prompting. **When one or more positional arguments are supplied, do not
+  enter the interactive loop** — accept all positional inputs and proceed
+  directly to Step 2. The bootstrap MUST NOT issue a "paste another URL"
+  follow-up after a positional invocation; the user is invoking the
+  bootstrap because they already know the sources they want.
+- **Interactive loop.** Fires **only** when zero positional arguments were
+  supplied. Prompt the user with `Paste a URL or local path; type
+  finish when done:` and read until the user types the literal word
+  `finish`. The user may type `finish` before supplying any entries
+  (which aborts the skill with a one-line "no sources supplied; nothing
+  to scaffold" message).
+
+The interactive loop has exactly one documented exit gesture: typing the
+literal word `finish`. Earlier revisions of this spec also listed
+blank-line submission and Ctrl+D (EOF) as equivalent gestures, but those
+don't translate reliably to a chat-driven prompting loop — a blank chat
+message ends a turn rather than ending input, and Ctrl+D has no analog
+in chat. `finish` is the only reliable signal across Claude Code, Claude
+Desktop, and other harnesses.
+
+Accept all of these source-input shapes:
+
+| Input | Recognized as |
+|---|---|
+| `https://github.com/<org>/<repo>` (with or without trailing `.git`) | git-managed source on GitHub |
+| `git@github.com:<org>/<repo>.git` | git-managed source on GitHub (SSH form) |
+| `git+ssh://...` | git-managed source (generic SSH) |
+| `https://gitlab.com/<group>/<repo>`, `https://bitbucket.org/<user>/<repo>` | git-managed source (other hosts) |
+| `https://<host>/<path>/<page>.html` | external-doc source (single doc) |
+| `https://<host>/<path>/docs/...` (no git-host signal) | external-doc source (doc site) |
+| Absolute local path (`/Users/...`, `~/...`, `/home/...`) | local-path source |
+| Relative local path (`./foo`, `../bar`, bare `foo` referencing an existing dir) | local-path source (resolved to absolute at intake) |
+
+**The intake step asks exactly one content question** (the URL/path input)
+and **zero engine-taxonomy questions.** Do NOT ask for `kind`, `source_id`,
+`id`, scope (single- vs multi-domain), or topology (single- vs multi-repo).
+Those values are inferred, not solicited.
+
+If a supplied input is ambiguous (e.g., the path looks like a URL but the
+scheme is unrecognized, or a URL without a recognizable git host could be
+either a git source or a doc site), ask one targeted question in
+user-language — never the engine's `kind` value directly. The canonical
+disambiguator:
+
+> Is `<input>` a source-code repo or a standalone document?
+
+Accept `repo` / `doc` (or full words) and map internally: `repo` → `kind:
+git-managed`, `doc` → `kind: external-doc`. **On any other response**
+(blank `<Enter>`, `local`, `quit`, typo) re-prompt with:
+
+> Please answer `repo` or `doc` — or enter `q` to skip just this entry and
+> continue with the rest of the intake.
+
+The `q`-to-skip-just-this-entry escape hatch is intentional: a user
+pasting a batch of 10 URLs in the interactive loop should be able to drop
+one ambiguous entry without aborting the whole intake. The other 9 still
+land in `source-paths.json`.
+
+### Bare GitHub org URL (special edge case)
+
+A URL of the form `https://github.com/<org>` (no `<repo>` segment) is
+neither a recognizable git source nor a docs page — it points at an org
+landing page. **Don't fall through to the external-doc catch-all**; that
+would silently stamp `kind: external-doc` against a URL the engine
+cannot meaningfully crawl. Instead, re-prompt:
+
+> `<url>` looks like a GitHub org landing page, not a specific repo or
+> doc. Paste the URL of a specific repo (e.g., `https://github.com/<org>/<repo>`)
+> — or `q` to skip this entry.
+
+Detection rule: any `https://github.com/…` URL whose path component has
+fewer than 2 non-empty segments (i.e., `/<org>` or `/<org>/`) triggers
+the re-prompt. URLs with 2+ path segments fall through to the normal
+`kind: git-managed` shape.
+
+## Step 2 — Auto-detection
+
+For each accepted source, compute the following without prompting the user:
+
+**`id`** — a deterministic kebab-case slug derived from the input:
+
+| Input shape | Slug rule |
+|---|---|
+| `https://github.com/<org>/<repo>` | `<org>-<repo>` (lowercase; non-alphanumerics → hyphen; collapse runs) |
+| `git@github.com:<org>/<repo>.git` | `<org>-<repo>` (same rule, drop `.git`) |
+| `https://<host>/<path...>` (external-doc) | last meaningful path segment, lowercased; if it's a file, drop the extension |
+| Local absolute or relative path | basename of the resolved absolute path, lowercased |
+
+On collision (two sources slug to the same id), append `-2`, `-3`, ... to the
+later ones. The user does not see the slug in the prompt copy; the slug is
+recorded in `research/source-paths.json` and surfaces in the exit message.
+
+**`kind`** — inferred from input shape per the intake table above. Never
+asked directly.
+
+**Topology** — inferred from `len(sources[])` after intake completes. If the
+user supplied exactly one source, the contextualizer is single-source; more
+than one, multi-source. Monorepo detection (whether a single source is itself
+a monorepo with multiple workspace members) is deferred to DISCOVER — not
+asked here.
+
+## Step 2.4 — Confirm branch (git-managed sources only)
+
+For each source whose Step-2-inferred `kind` is `git-managed`, ask once
+which branch to monitor. The prompt is per-source; non-git sources
+(`kind: external-doc`, `kind: local-path`) skip this step entirely.
+
+**Prompt copy** (per git-managed source):
+
+> For `<url>`:
+> Monitor the repo's default branch? Press Enter or `y` to track HEAD
+> (main/master/whatever the repo points at). Or type a branch name
+> (e.g. `dev`, `nonprod`, `release/v2`) to monitor that branch instead. [Enter/y = default]
+
+**Response handling:**
+
+| Input | Result |
+|---|---|
+| Empty, `y`, `Y`, `yes` | Omit `branch` from this source's entry. Downstream REFRESH and DISCOVER fall back to HEAD. |
+| Any string matching `^[A-Za-z0-9._/-]+$` | Record `"branch": "<name>"` on this source's entry. |
+| Anything else | Re-prompt once with: ``Branch names use letters, digits, dots, underscores, slashes, hyphens. Try again, or press Enter for the default branch. (You can edit `source-paths.json` later to set a specific branch.)`` |
+
+**Why omit-on-default rather than record an explicit default.** Existing
+`source-paths.json` files without a `branch` field stay valid (the schema
+is additive). If the upstream repo's default branch is later renamed,
+the absent-field record stays correct — an explicit `"branch": "main"`
+would silently rot. Step 2.4 makes no network call: default-branch
+resolution happens lazily at REFRESH / DISCOVER time via the standard
+git-CLI `HEAD` lookup, not at bootstrap. A typed non-default branch
+name is recorded as-given; its existence on the upstream is validated
+when REFRESH / DISCOVER first runs against the source.
+
+**No re-confirmation later.** The branch can always be edited manually
+in `source-paths.json` after bootstrap (the engine re-reads the file on
+every invocation). A future revision may add a `/skill-engine:set-branch`
+helper; for now manual edit is the documented path.
+
+## Step 2.5 — Confirm the contextualizer name (always prompted)
+
+After Step 2 derives a slug, ask the user once for the contextualizer
+name. The user types only the short kebab-case name; the engine appends
+`-context` for the directory name and the navigator skill name.
+
+**Default derivation** (offered as the bracketed default in the prompt):
+
+- 1 source → the source's `id` (e.g., `vitejs-vite`).
+- 2+ sources with a common kebab-case prefix ≥ 3 chars → that prefix
+  (e.g., `langchain-ai`).
+- 2+ sources with no useful common prefix → no default; prompt without
+  one.
+
+**Prompt copy**:
+
+> Name your contextualizer (kebab-case; the engine appends `-context`)
+> [default: `<auto-slug>`]:
+
+When no default is available, drop the bracketed clause:
+
+> Name your contextualizer (kebab-case; the engine appends `-context`):
+
+**Validation**: the response must match `^[a-z][a-z0-9-]*$`. On invalid
+input (or empty input with no default), re-prompt with the same hint and
+the same default. Empty input with a default present accepts the default.
+
+The user is asked to **name their own thing**, not to type an engine
+taxonomy value, so this single prompt does not violate the
+no-engine-taxonomy rule. The auto-derived default is usually correct; the
+prompt exists so the user can override before the directory is stamped
+(renaming after the fact has to update both the directory name AND the
+navigator's `name:` frontmatter, and Claude Code skill-name resolution is
+name-keyed — duplicate `<name>-context` navigators across sibling
+directories resolve non-deterministically).
+
+The accepted name becomes the **`<contextualizer-slug>`** used in Step 3.
+
+## Step 3 — Stamping
+
+Copy the following files from the plugin's `engine-bootstrap-templates/`
+directory into `.claude/skills/<contextualizer-slug>-context/` under the
+project working directory, preserving line endings as-is (LF-only in the
+bundle).
+
+- `verify.sh` → `.claude/skills/<contextualizer-slug>-context/verify.sh`
+  (mark executable: `chmod +x .claude/skills/<contextualizer-slug>-context/verify.sh`)
+- Choose the navigator template based on the inferred topology:
+  - 1 source → `navigator.md.template` → `.claude/skills/<contextualizer-slug>-context/SKILL.md`
+  - 2+ sources → `navigator-multi-domain.md.template` → `.claude/skills/<contextualizer-slug>-context/SKILL.md`
+- `source-paths.json.template` → `.claude/skills/<contextualizer-slug>-context/research/source-paths.json`
+- `research-state.json.template` → `.claude/skills/<contextualizer-slug>-context/research/.research-state.json`
+
+Create the parent directories (`.claude/skills/<contextualizer-slug>-context/`,
+`.claude/skills/<contextualizer-slug>-context/research/`) as part of the
+stamp.
+
+All `research/...` references below resolve under the contextualizer
+root (`.claude/skills/<contextualizer-slug>-context/`). The user does not
+need to `cd` into that directory to use the engine — every workflow
+locates the root itself from the project working directory.
+
+### Stamping `research/source-paths.json`
+
+Replace the empty `"sources": []` from the template with one entry per
+intaken source, in the order supplied. Each entry:
+
+```json
+{
+  "id": "<computed-slug>",
+  "kind": "<git-managed | external-doc | local-path>",
+  "url": "<original-url-if-url>",
+  "path": "<resolved-absolute-path-if-local>",
+  "status": "intake",
+  "archived": false,
+  "lifecycle": { "state": "unknown", "last_checked": null, "last_checked_sha": null, "proposed_url": null },
+  "discovered_via": null
+}
+```
+
+Set `url` only on URL-shaped sources; set `path` only on local-path sources.
+The fields are not exclusive at the schema level (a git-managed source the
+user has cloned locally could carry both), but at intake only one is set.
+
+If the user supplied a non-default branch in Step 2.4 for this source,
+add a `"branch": "<name>"` key alongside `url`. Omit the key entirely
+when the user accepted the default — downstream code defaults to HEAD
+when the field is absent. Never record an explicit `"branch": "main"`
+or `"branch": "master"` from Step 2.4; the absent-field convention is
+load-bearing for the future-proofing reason documented in Step 2.4.
+
+`schema_version: 1` from the template stays as-is. The schema is additive;
+existing v1 files continue to parse cleanly.
+
+### Stamping the navigator template
+
+The navigator templates ship with **derived placeholders, not user-typed
+ones.** Replace each `<contextualizer-slug>` token with the inferred slug
+(see *Slug derivation* below). The `<area-domain>` / `<Area Domain>` /
+`<topic-N>` tokens from the pre-8.1 templates are **eliminated** — see
+"Placeholder elimination" below.
+
+#### Slug derivation
+
+The contextualizer slug is derived in Step 2 (as a default) and confirmed
+or overridden by the user in Step 2.5. By the time stamping runs, the
+slug is the user-confirmed name from Step 2.5; the navigator skill name
+is `<slug>-context`.
+
+#### Placeholder elimination
+
+Earlier-generation navigator templates contained four placeholder tokens
+that demanded manual fill-in: `<area-domain>`, `<Area Domain>`,
+`<topic-N>`, `<domain-N>`. These are **eliminated**. Concretely:
+
+- The `description:` frontmatter field is stamped with a generic line
+  ("Answers questions about the `<sources-summary>` ecosystem. References
+  load on demand from `references/`.") where `<sources-summary>` is the
+  source-id list (1 source) or "the configured sources" (2+). The user is
+  encouraged in the exit message to tighten the description after the first
+  DISCOVER run produces a catalog.
+- The Catalog table starts **empty** with a one-line note: "No references
+  yet. Run `/skill-engine:discover` to populate this catalog."
+- Catalog rows that referenced `<area-domain>-<topic-N>` are simply not
+  stamped; they appear after DISCOVER's first run emits reference files.
+- The Cross-reference map and Cross-domain map sections start with a single
+  italicized "(populated as references accumulate)" placeholder line — not
+  a templated row.
+
+The principle: **a fresh-stamped contextualizer is a valid skill** (loads,
+parses, lints clean) — it just has no catalog yet because DISCOVER hasn't
+run. The user fills the catalog by running DISCOVER, not by hand-editing
+placeholder rows.
+
+### Stamping `verify.sh`
+
+The `verify.sh` shipped in `engine-bootstrap-templates/verify.sh` is the
+**contextualizer-flavored variant** — it audits the stamped contextualizer's
+own artifacts (navigator file shape, source-paths.json schema, catalog
+bijection, etc.), not the engine-authoring repo it came from. This resolves
+an earlier friction in which an engine-authoring check suite was stamped raw
+into fresh contextualizers and then failed for missing sibling `.template`
+files.
+
+**Expected first-run output** on a fresh-stamped contextualizer with no
+DISCOVER run: `Passed: N, Failed: 0`, where catalog-bijection and reference-
+shape checks are skipped with `[N/A]` (not `[FAIL]`) because no references
+exist yet. After the first DISCOVER run populates references and the
+catalog, those checks become live.
+
+## Step 3.5 — Offer to seed local cache
+
+After stamping completes, iterate over the intaken sources filtered to
+`kind: git-managed`. For each such source, prompt the user **once**:
+
+```
+Pre-clone <source_id> from <url> into ~/.cache/skill-engine/?
+This speeds up later DISCOVER runs. Skip if unsure. [y/N]
+```
+
+Accept `y` or `yes` (case-insensitive, leading/trailing whitespace
+trimmed) as consent. Treat `N`, blank input, or anything else as
+decline; do not re-prompt.
+
+On consent, clone via an atomic-rename idiom so a failed or interrupted
+clone does not leave a half-written cache directory at the canonical
+path:
+
+```bash
+sha=$(git ls-remote "<url>" HEAD | cut -f1)
+mkdir -p ~/.cache/skill-engine/
+dest="$HOME/.cache/skill-engine/<source_id>-$sha"
+tmpdir="${dest}.tmp.$$"
+if git clone --depth=1 --filter=blob:none "<url>" "$tmpdir"; then
+  mv "$tmpdir" "$dest"
+else
+  rm -rf "$tmpdir"
+fi
+```
+
+The `$$` PID tag scopes `tmpdir` per-process; two concurrent bootstraps
+against the same source land in distinct tmpdirs and neither corrupts
+the other. The final `mv` is atomic on a single filesystem, so the
+canonical `<source_id>-<sha>/` directory either exists complete or does
+not exist at all — DISCOVER's pre-flight checks for `.git/` inside the
+directory before treating it as a warm cache (see
+[`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md)).
+
+Substitute `<url>` and `<source_id>` from the source entry. On success,
+emit one line naming the resulting path:
+
+```
+Cloned <source_id> → ~/.cache/skill-engine/<source_id>-<sha>/
+```
+
+On clone failure (network error, auth failure, missing repo, `git
+ls-remote` returning empty), the `rm -rf "$tmpdir"` branch above removes
+any partial state, then emit one line and **continue to the next
+source**:
+
+```
+Couldn't clone <source_id>; you can retry manually — see "Source materialization" below.
+```
+
+Do not abort bootstrap on a cache failure: the contextualizer is fully
+usable without a cache, and a multi-source intake should not lose later
+sources because of one bad clone.
+
+For sources whose `kind` is `external-doc` or `local-path`, do not
+prompt at all — the cache facilitation is git-managed only.
+
+This is the **only** network operation `engine-bootstrap` performs, and
+it runs only with explicit per-source consent. The "engine does not
+crawl, fetch, or probe upstream" stance is preserved for *content*:
+bootstrap reads no source content here, validates no source's
+reachability, and probes no lifecycle state. It writes only to
+`~/.cache/skill-engine/<source_id>-<sha>/`, the user-consented path.
+
+## Step 4 — Exit
+
+After stamping completes, render exactly four lines to the user (substitute
+the actual source count, the first id, and the user-confirmed slug; for
+2+ sources, use a phrasing that summarizes the set):
+
+```
+Bootstrap complete. <N> source<s?> registered: <id-1[, id-2[, ...]]>.
+Contextualizer stamped at .claude/skills/<slug>-context/.
+Run /skill-engine:discover next — it'll scan each source and propose how to slice it.
+Run /skill-engine:status anytime to see what's registered.
+```
+
+For 4+ sources, render `<id-1>, <id-2>, ... (N total)` rather than the full
+list.
+
+**State-aware next-step recommendation.** The bootstrap exit message
+recommends `discover` because bootstrap's exit state (sources registered,
+no references yet) is exactly the precondition DISCOVER needs. DISCOVER
+is goal-given: it accepts a fresh contextualizer as its first task and
+returns reference files that satisfy the four reference invariants — no
+separate "warm-up" step required.
+
+**Do NOT** in the exit message:
+
+- Recommend a workflow whose precondition wasn't produced by bootstrap.
+- Tell the user to edit `.claude/skills/<slug>-context/research/source-paths.json`
+  by hand — auto-detection already populated it; manual edits are a
+  fallback, not a default.
+- Surface engine taxonomy (kind, topology, scope) the user wasn't asked
+  about.
+
+## Doctrine surface
+
+The full scaffolder contract — what each stamped file means, how it evolves,
+how a contextualizer transitions across major plugin revisions — is
+documented in [`10-version-evolution.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/10-version-evolution.md). The artifact contract every
+stamped file must satisfy is in [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md). The DISCOVER
+posture (goal-given delegation) is documented in
+[`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md).
+
+## Source materialization (optional local cache)
+
+For large `kind: git-managed` sources, DISCOVER reads more efficiently
+from a local clone than from remote `gh`/`git` calls. The recommended
+cache location is:
+
+```
+~/.cache/skill-engine/<source_id>-<sha>/
+```
+
+This follows the XDG cache-directory convention (`~/.cache/<tool>/`)
+used by `gh`, `cargo`, and most modern CLI tooling on macOS and Linux.
+`source_id` is the entry's id from `research/source-paths.json` and
+`<sha>` is the upstream HEAD SHA at the time of clone.
+
+The engine does not clone without consent. Two consent points exist:
+
+- **Step 3.5 above** prompts once per git-managed source at bootstrap
+  time and clones on `y`.
+- **DISCOVER's pre-flight** re-prompts when it detects a cache miss for
+  a registered git-managed source (declined at bootstrap, deleted via
+  `/skill-engine:clean-cache`, or added post-bootstrap).
+
+If the cache directory exists when DISCOVER starts, it reads locally;
+if absent and the user declines the re-prompt, DISCOVER falls back to
+`gh`/`git`/WebFetch per its tool-preference rule. The user retains the
+option to clone manually at any time (or to chose a different
+location) — the engine's clone is a convenience, not a requirement.
+
+The cache amortizes across REFRESH runs and survives sessions. REFRESH
+garbage-collects older `<source_id>-<old-sha>/` directories when it
+fetches a newer SHA for the same `source_id`; the user can also delete
+the cache explicitly via `/skill-engine:clean-cache`.
+
+## What this skill does NOT do
+
+- It does not crawl, fetch, or probe upstream for content. The only
+  network operation bootstrap performs is the explicit user-consented
+  `git clone` in Step 3.5, and it writes solely to
+  `~/.cache/skill-engine/<source_id>-<sha>/`. Lifecycle probes and
+  content crawls belong to DISCOVER and REFRESH (see
+  [`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md)).
+- It does not propose additional sources or expand source coverage —
+  those belong to DISCOVER.
+- It does not validate the existence or reachability of supplied sources at
+  intake. If the user pastes a broken URL or a path that doesn't exist,
+  bootstrap stamps the entry anyway and the lifecycle probe on the first
+  DISCOVER run surfaces the issue. (The Step 3.5 clone offer may also
+  reveal the URL is broken — but its failure mode is a one-line
+  "couldn't clone" notice; it does not gate intake.) Failing fast at
+  intake would force a multi-source intake to abort halfway; failing on
+  DISCOVER lets the user paste the whole list and address broken entries
+  in batch.

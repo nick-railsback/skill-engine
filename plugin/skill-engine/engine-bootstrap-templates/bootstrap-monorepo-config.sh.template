@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# bootstrap-monorepo-config.sh.template — seed monorepo-config.json from a
+# checked-out monorepo's CODEOWNERS file. Drop-in template for the
+# <area-domain>-context contextualizer (and any other contextualizer that
+# tracks one or more monorepos). Replace placeholders before use:
+#
+#   <area-domain>           - your domain stem (used in error/diagnostic prose)
+#
+# Usage:
+#   bash bootstrap-monorepo-config.sh.template <repo-path>
+#
+# Where <repo-path> is a local path to a checked-out monorepo working tree.
+# The script reads <repo-path>/.github/CODEOWNERS (or CODEOWNERS at the repo
+# root) and emits a starter monorepo-config.json document to STDOUT. The
+# maintainer redirects deliberately and reviews before committing:
+#
+#   bash bootstrap-monorepo-config.sh.template /path/to/monorepo \
+#     > research/monorepo-config.json
+#
+# Behavior contract (three CODEOWNERS shapes):
+#
+#   (i)   No CODEOWNERS at standard locations -> emit a stub document with one
+#         example slice entry and an _comment explaining the maintainer must
+#         edit before use. Exit 0.
+#   (ii)  CODEOWNERS present but empty (or only comments / blank lines) ->
+#         same stub as (i). Exit 0.
+#   (iii) CODEOWNERS present and populated:
+#         - If the file uses sections ([section-name] syntax), emit one slice
+#           per section; the slice's id is the section name kebab-cased and
+#           lowercased; paths are the section's path patterns.
+#         - Otherwise, emit one slice with id="default" containing all the
+#           patterns the file declares. The maintainer is expected to edit
+#           the seed into useful slice boundaries before committing.
+#         Exit 0.
+#
+# Exit codes:
+#   0  - success (one of the three shapes above)
+#   1  - <repo-path> missing or unreadable; usage error; bad arguments
+#
+# POSIX portability: the script uses single-bracket test, no bash-only
+# extended-test syntax, no GNU-only grep -P, no mapfile, and no gawk-isms
+# (asorti, gensub, FS regex extensions). It uses POSIX sed (no -E/-r).
+# Tier-1 macOS bash 3.2; Tier-1 Linux bash 4.x+; Tier-2 Git Bash on Windows.
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: bootstrap-monorepo-config.sh <repo-path>" >&2
+  echo "  <repo-path> is a local path to a checked-out monorepo working tree" >&2
+  exit 1
+fi
+
+repo_path="$1"
+
+if [ ! -d "$repo_path" ]; then
+  echo "error: <repo-path> is not a directory: $repo_path" >&2
+  exit 1
+fi
+if [ ! -r "$repo_path" ]; then
+  echo "error: <repo-path> is not readable: $repo_path" >&2
+  exit 1
+fi
+
+# Find CODEOWNERS at conventional locations.
+codeowners=""
+for candidate in ".github/CODEOWNERS" "CODEOWNERS" "docs/CODEOWNERS"; do
+  if [ -f "$repo_path/$candidate" ] && [ -r "$repo_path/$candidate" ]; then
+    codeowners="$repo_path/$candidate"
+    break
+  fi
+done
+
+emit_stub() {
+  local reason="$1"
+  cat <<'EOF'
+{
+  "_comment": "Stub monorepo-config.json emitted by bootstrap-monorepo-config.sh.template. The bootstrap could not seed real slice boundaries from CODEOWNERS — see _seeded_from below for the reason. Edit this file before committing: replace the example slice with real slice declarations for your monorepo. Schema reference: skill-engine/templates/monorepo-config.json.template.",
+  "version": "1.0",
+  "monorepos": [
+    {
+      "url": "https://<your-git-host>/<your-org>/<your-monorepo>",
+      "type": "internal-repo",
+      "slices": [
+        {
+          "_comment": "EXAMPLE — replace with a real slice declaration. id must match ^[a-z][a-z0-9_-]{0,30}$. paths are git glob patterns (sparse-checkout --no-cone syntax).",
+          "id": "example-slice",
+          "paths": [
+            "packages/example/**"
+          ]
+        }
+      ]
+EOF
+  printf '    }\n  ],\n  "_seeded_from": %s\n}\n' "$(json_string "$reason")"
+}
+
+# Emit a JSON-quoted string from a plain string (handles backslash and
+# double-quote; CODEOWNERS path patterns and section names are otherwise
+# printable ASCII in practice). POSIX sed.
+json_string() {
+  printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+}
+
+# Kebab-case + lowercase a string. Keep [a-z0-9-_]; collapse runs of other
+# chars to a single dash; trim leading/trailing dashes; truncate to 30 chars.
+# Ensure the result starts with [a-z] per the documented id regex
+# `^[a-z][a-z0-9_-]{0,30}$` — if the post-trim leading char is a digit, dash,
+# or underscore, prepend `s-` and re-truncate.
+kebab_lower() {
+  local result
+  result=$(printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -e 's/[^a-z0-9_-]\{1,\}/-/g' -e 's/^-\{1,\}//' -e 's/-\{1,\}$//' \
+    | cut -c 1-30)
+  case "$result" in
+    [a-z]*) printf '%s' "$result" ;;
+    "")     printf '' ;;
+    *)      printf 's-%s' "$result" | cut -c 1-30 ;;
+  esac
+}
+
+# BRE-escape a string for safe interpolation into a sed regex address.
+# Escapes the BRE metacharacters and the address delimiter `/`.
+sed_escape() {
+  printf '%s' "$1" | sed -e 's/[][\\.*^$/]/\\&/g'
+}
+
+# Return 0 (true) if the pipe-delimited list `$2` contains the value `$1`,
+# else return 1. The list shape is `|val1|val2|val3|`.
+contains_id() {
+  case "$2" in
+    *"|$1|"*) return 0 ;;
+    *)        return 1 ;;
+  esac
+}
+
+# Emit a JSON slice object given an id and a newline-separated list of paths.
+# Reads paths from stdin; expects each path to be one trimmed pattern on its
+# own line. Empty stdin -> caller should not invoke this function.
+emit_slice() {
+  local slice_id="$1"
+  printf '        {\n'
+  printf '          "id": %s,\n' "$(json_string "$slice_id")"
+  printf '          "paths": [\n'
+  local first=1
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    if [ "$first" -eq 1 ]; then
+      first=0
+    else
+      printf ',\n'
+    fi
+    printf '            %s' "$(json_string "$line")"
+  done
+  printf '\n          ]\n'
+  printf '        }'
+}
+
+# (i) and (ii): no CODEOWNERS, or empty/comment-only CODEOWNERS -> stub.
+if [ -z "$codeowners" ]; then
+  emit_stub "no CODEOWNERS file at .github/CODEOWNERS, CODEOWNERS, or docs/CODEOWNERS"
+  exit 0
+fi
+
+# Strip comments and blank lines into a working buffer; if the result is empty,
+# treat as case (ii) — present-but-empty.
+work_buf="$(
+  sed -e 's/#.*$//' "$codeowners" \
+    | sed -e 's/[[:space:]]\{1,\}$//' \
+    | sed -e '/^[[:space:]]*$/d'
+)"
+
+if [ -z "$work_buf" ]; then
+  emit_stub "CODEOWNERS file present but empty (only comments or blank lines): $codeowners"
+  exit 0
+fi
+
+# (iii): present-and-populated. Detect sections.
+# A section header is a line whose first non-whitespace token is [name] —
+# matched with POSIX sed (no -E/-r). We extract section names by looking for
+# lines starting with '[' and ending with ']'.
+
+# Sections list (newline-separated). Empty if file has no [section] headers.
+sections="$(
+  printf '%s\n' "$work_buf" \
+    | sed -n 's/^[[:space:]]*\[\([^]]*\)\][[:space:]]*$/\1/p'
+)"
+
+# Build the slices buffer first; only emit the JSON envelope once we know we
+# have at least one slice to write. If every parsing path returns empty, fall
+# through to emit_stub with a "no parseable lines" reason — this keeps
+# bootstrapped output truthful (a populated `slices` array) and lets the
+# verifier reject `slices: []` configs as malformed.
+
+if [ -z "$sections" ]; then
+  # No sections -> one default slice with every <pattern> <owner...> line.
+  # Tolerate leading whitespace before the path token (some teams indent
+  # path entries under a header for readability).
+  paths_buf="$(
+    printf '%s\n' "$work_buf" \
+      | sed -n 's/^[[:space:]]*\([^[:space:]]\{1,\}\)[[:space:]]\{1,\}.*/\1/p'
+  )"
+  if [ -z "$paths_buf" ]; then
+    emit_stub "CODEOWNERS present but no parseable <pattern> <owner> lines: $codeowners"
+    exit 0
+  fi
+  slices_buf="$(printf '%s\n' "$paths_buf" | emit_slice "default")"
+else
+  # One slice per section. Walk sections, build the slices buffer, dedup any
+  # collisions in kebab-cased ids by appending `-2`, `-3`, etc. The section
+  # name is BRE-escaped before interpolation into the sed range so names
+  # containing `.`, `*`, `[`, `\`, `$`, or `/` cannot break the match.
+  # The section-end address requires a well-formed `[name]` whole-line header
+  # so that glob char-class path patterns like `[Cc]onfig.yml @owner` are
+  # not mistaken for section boundaries.
+  slices_buf="$(
+    seen_ids=""
+    first_slice=1
+    printf '%s\n' "$sections" | while IFS= read -r section_name; do
+      [ -z "$section_name" ] && continue
+      section_re="$(sed_escape "$section_name")"
+      section_buf="$(
+        printf '%s\n' "$work_buf" \
+          | sed -n "/^[[:space:]]*\\[$section_re\\][[:space:]]*\$/,/^[[:space:]]*\\[[^]]*\\][[:space:]]*\$/{
+              /^[[:space:]]*\\[[^]]*\\][[:space:]]*\$/d
+              p
+            }"
+      )"
+      paths_buf="$(
+        printf '%s\n' "$section_buf" \
+          | sed -n 's/^[[:space:]]*\([^[:space:]]\{1,\}\)[[:space:]]\{1,\}.*/\1/p'
+      )"
+      [ -z "$paths_buf" ] && continue
+      base_id="$(kebab_lower "$section_name")"
+      [ -z "$base_id" ] && base_id="section"
+      slice_id="$base_id"
+      i=1
+      while contains_id "$slice_id" "$seen_ids"; do
+        i=$((i + 1))
+        slice_id="${base_id}-${i}"
+      done
+      seen_ids="${seen_ids}|${slice_id}|"
+      if [ "$first_slice" -eq 1 ]; then
+        first_slice=0
+      else
+        printf ',\n'
+      fi
+      printf '%s\n' "$paths_buf" | emit_slice "$slice_id"
+    done
+  )"
+  if [ -z "$slices_buf" ]; then
+    emit_stub "CODEOWNERS sections present but no parseable <pattern> <owner> lines under any: $codeowners"
+    exit 0
+  fi
+fi
+
+# Emit the JSON envelope around the slices buffer.
+printf '{\n'
+printf '  "_comment": "Seeded by bootstrap-monorepo-config.sh.template from CODEOWNERS. Review and edit before committing: merge slices that belong together; drop slices that are not worth tracking; add owner_team / notes / weight where useful. Schema reference: skill-engine/templates/monorepo-config.json.template.",\n'
+printf '  "version": "1.0",\n'
+printf '  "monorepos": [\n'
+printf '    {\n'
+printf '      "url": "https://<your-git-host>/<your-org>/<your-monorepo>",\n'
+printf '      "type": "internal-repo",\n'
+printf '      "slices": [\n'
+printf '%s' "$slices_buf"
+printf '\n      ]\n'
+printf '    }\n'
+printf '  ]\n'
+printf '}\n'

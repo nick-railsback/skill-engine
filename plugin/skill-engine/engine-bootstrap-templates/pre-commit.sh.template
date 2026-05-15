@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# pre-commit.sh.template - opt-in git pre-commit hook for the skill-engine
+#
+# What this hook does:
+#   Runs `bash templates/verify.sh` before every commit. If any verify check
+#   fails, the commit is aborted (non-zero exit). This gives the same green-bar
+#   discipline the release ritual asks for, just earlier in the loop.
+#
+# What this hook is NOT:
+#   It is not CI. The skill-engine deliberately does not ship CI (the release
+#   ritual is reviewer-driven; see 06-release-doctrine.md). This hook is a
+#   reviewer convenience, not a release gate.
+#
+# How to install (opt-in; the project does not auto-install):
+#   cp templates/pre-commit.sh.template .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# How to uninstall:
+#   rm .git/hooks/pre-commit
+#
+# Usage:
+#   Once installed, the hook runs automatically on `git commit`. To bypass for
+#   a single commit (rare, deliberate), pass `--no-verify` to git. Routine
+#   bypassing defeats the purpose; if you find yourself bypassing often, the
+#   verify checks are probably catching something real.
+#
+# Exit codes:
+#   0 - verify passed; commit proceeds
+#   1 - verify failed; commit aborted (verify output printed to terminal)
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$REPO_ROOT" ]; then
+  echo "pre-commit: not inside a git repository" >&2
+  exit 1
+fi
+
+VERIFY_SCRIPT="$REPO_ROOT/templates/verify.sh"
+if [ ! -f "$VERIFY_SCRIPT" ]; then
+  echo "pre-commit: $VERIFY_SCRIPT not found; skipping" >&2
+  exit 0
+fi
+
+if ! bash "$VERIFY_SCRIPT"; then
+  echo "" >&2
+  echo "pre-commit: verify.sh failed; commit aborted" >&2
+  echo "  Re-run \`bash templates/verify.sh\` for full output." >&2
+  echo "  To bypass once (rare, deliberate): \`git commit --no-verify\`" >&2
+  exit 1
+fi
+
+exit 0

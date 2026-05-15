@@ -1,0 +1,41 @@
+{
+  "_comment": "Monorepo adapter configuration for the <area-domain>-context contextualizer. Lives at <area-domain>-context/research/monorepo-config.json (the canonical contextualizer location) or, for an engine-self-contextualizer, at the project root. The engine reads this file to decide which slices of a monorepo to track as independent freshness units. Replace placeholders (<your-git-host>, <your-org>, <area-domain>, etc.) with values for your domain. If your contextualizer tracks no monorepos, omit this file entirely — the engine treats absent as 'not a monorepo contextualizer' and skips silently.",
+  "version": "1.0",
+  "monorepos": [
+    {
+      "_comment": "EXAMPLE — replace with a real monorepo URL. Each monorepos[] entry declares one parent monorepo and the slices the engine will track inside it.",
+      "url": "https://<your-git-host>/<your-org>/<your-monorepo>",
+      "type": "internal-repo",
+      "slices": [
+        {
+          "_comment": "EXAMPLE — replace with a real slice. id is the stable identifier the engine uses in STATUS rendering and worker-dispatch logs; it must match ^[a-z][a-z0-9_-]{0,30}$ (same constraint as reference filenames). paths is an array of git glob patterns following sparse-checkout --no-cone syntax.",
+          "id": "billing",
+          "paths": [
+            "packages/billing/**",
+            "shared/billing-types/**"
+          ],
+          "owner_team": "billing-platform",
+          "notes": "Billing pipeline + shared types it exports. Tracks as one slice because the pipeline and the types ship in lockstep."
+        },
+        {
+          "_comment": "EXAMPLE — a second slice. owner_team and notes are optional documentation fields; weight (default 1.0) is recognized but ignored by the engine in v1 — it exists for future importance-scoring work and for the maintainer's audit trail.",
+          "id": "auth",
+          "paths": [
+            "packages/auth/**",
+            "services/auth-api/**"
+          ],
+          "owner_team": "identity-platform"
+        },
+        {
+          "_comment": "EXAMPLE — a third slice with weight < 1.0. The weight field is opt-in; absent means default 1.0.",
+          "id": "reports",
+          "paths": [
+            "apps/reports-dashboard/**"
+          ],
+          "owner_team": "data-experience",
+          "weight": 0.5
+        }
+      ]
+    }
+  ]
+}
