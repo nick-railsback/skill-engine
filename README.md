@@ -53,7 +53,7 @@ day. Maintaining one skill folder by hand against a moving target wasn't
 sustainable. The spec described a destination. It did not describe how to
 build the road.
 
-So I built the engine. First for daily feature development. Then to identify
+So I built a prototype of this engine. First for daily feature development. Then to identify
 efficiency opportunities across the ecosystem. Then — once — to rescue a
 20-year-old legacy application on a one-month deadline, when the original
 builders were gone and the documentation didn't exist. Each use surfaced the
