@@ -2,162 +2,155 @@
 
 **Teach Claude your codebase. Keep it taught.**
 
-You maintain something with a lot of canon — a monorepo, a framework, a docs
-site. There's a CLAUDE.md, a best-practices doc, conventions everyone on the
-team knows. When you ask Claude for help, you re-explain that canon every
-time. Claude still drifts: wrong file paths, outdated patterns, suggestions
-that violate rules you wrote down two years ago.
+You get dropped into a codebase. No docs. No original builders. You ask Claude a
+question and it gives you a textbook answer — correct for some repo, not for yours.
 
-skill-engine builds Claude a curated index of your project — the files that
-matter, organized so Claude reads only what's relevant to the question. You
-point it at your repo once. It produces a Claude skill that knows your
-canon. When the repo changes, you re-run it; the index stays accurate.
+Skill-engine fixes that. It reads your repository, writes down what it finds, and
+hands that context to Claude on every question. Your codebase, not the internet's
+best guess.
 
-## A real example
+**Same question. Two different realities.**
 
-> A 90-second receipt — what one Claude Desktop session looked like with
-> `astro-context` and `langchain-context` both loaded.
+```
+You: What's the convention for adding a new API endpoint here?
 
-Asked Claude — with `astro-context` and `langchain-context` loaded — to
-brainstorm how a langchain agent layer could help the team that maintains
-Astro, scored on weighted-shortest-job-first. The reply substituted two of
-the four candidates I'd seeded ("onboarding nudges" folded into a broader
-pre-flight agent; an issue-triage assistant beat the breaking-change pipeline
-on size). The top-scored idea — a pre-flight PR agent that checks changeset
-bump levels, explains CI failures, and welcomes first-timers — won on
-frequency: every PR, every day, three days to build.
+Claude: In most frameworks you'd register a route on the app object —
+        Flask uses @app.route, FastAPI uses @router.get, Express uses
+        app.get(). Check your framework's docs for middleware patterns.
+```
 
-| # | Job | UBV | TC | RR/OE | CoD | Size | **WSJF** |
-|---|---|---|---|---|---|---|---|
-| 1 | Pre-flight PR agent (changeset bump-level check + CI-failure explainer + first-timer welcome) | 8 | 5 | 5 | 18 | 3 | **6.0** |
-| 2 | Issue triage assistant (duplicate detection, p1–p5 suggestion, needs-repro lifecycle) | 5 | 5 | 5 | 15 | 3 | **5.0** |
-| 3 | Migration-guide first-draft from changesets at major-bump time | 13 | 2 | 5 | 20 | 5 | **4.0** |
-| 4 | Breaking-change advisory pipeline (core PR → integration-author notice) | 13 | 8 | 8 | 29 | 8 | **3.6** |
-| 5 | Integration-PR contract triage against the 11 lifecycle hooks | 8 | 3 | 5 | 16 | 5 | **3.2** |
+```
+You: What's the convention for adding a new API endpoint here?
 
-Inside the pre-flight recommendation, the reply flags
-`.github/workflows/congrats.yml` as a workflow the agent must NOT duplicate;
-notes that `dorny/paths-filter` is already used in `ci.yml` and the agent
-should compose with it rather than invent its own routing; and proposes a
-`create_agent` with `before_model` middleware as the architectural shape —
-one model call, narrow tool surface, scoped per PR.
+Claude: Use register_route() in src/api/routing.py — that's the single
+        entrypoint. The gateway middleware at src/api/gateway.py:42
+        injects correlation IDs for every request, so bare @app.route
+        decorators will silently skip tracing.
+```
 
-> The reply cites the fixture-`outDir` trap — tribal knowledge that lives
-> nowhere in `CONTRIBUTING.md`, captured only by the contextualizer. Without
-> it, the answer would have been a generic "check your test fixtures" nudge.
-> The contextualizer is the difference.
+**→ [Get started in 2 minutes](#quickstart)**
 
-*From the reply, on the migration-guide draft idea (#3 above):*
+## What this is
 
-> *This is the natural fit for `create_deep_agent`: it needs planning (outline
-> the doc structure), filesystem (write the MDX file in the docs repo's
-> expected location), and sub-agents (one per major surface — content layer,
-> transitions, server islands — each writing its own section in parallel).*
+Anthropic publishes [a spec](https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf) for giving Claude reusable
+skills — directories of markdown files Claude reads on demand. Skill-engine is the
+operational infrastructure that makes that spec production-grade for real codebases:
+multi-source synthesis, drift detection, reviewer gates, and a self-auditing eval
+layer the spec never had to provide.
 
-[Full conversation with both contextualizers loaded →](./plugin/skill-engine/docs/examples/astro-langchain-conversation.md)
+If pip is to PEPs what Kubernetes is to container primitives — skill-engine is that
+layer for Anthropic's skill-directory pattern.
 
-## What just happened
+## Why I built this
 
-What you just saw is a **contextualizer** — a curated index of your codebase
-that Claude reads before it answers. skill-engine helps you build one; you
-and your team maintain it.
+The spec existed. Anthropic had published it: a skill maps to a directory of
+reference markdown files Claude reads on demand. The pattern was sound. For
+simple cases, it was enough.
 
-## Who this is for
+But my actual work wasn't simple. A vast ecosystem — many repos, conflicting
+conventions across teams, internal modules I needed Claude to know about every
+day. Maintaining one skill folder by hand against a moving target wasn't
+sustainable. The spec described a destination. It did not describe how to
+build the road.
 
-skill-engine builds the context; you and your team own and maintain it, the
-same way you own your CONTRIBUTING.md. It's for engineers maintaining a body
-of knowledge — code, docs, framework, ecosystem — who want Claude to be
-opinionated about it. Platform and DX engineers standardizing internal AI
-workflows. Solo builders with a serious-enough corpus that manual
-`grep`-and-pray has stopped scaling. OSS maintainers wanting to ship
-contributors a "here's what Claude needs to know about our project" artifact.
+So I built the engine. First for daily feature development. Then to identify
+efficiency opportunities across the ecosystem. Then — once — to rescue a
+20-year-old legacy application on a one-month deadline, when the original
+builders were gone and the documentation didn't exist. Each use surfaced the
+next gap the spec hadn't addressed: drift detection, multi-source synthesis,
+reviewer gates, evaluation. Each gap is now closed.
 
-## What you're actually adopting
+## The load-bearing capability
 
-This is your team's living context. You own it, you shape it, it grows with
-your codebase. skill-engine ships the tooling; you ship the freshness.
+Multi-source synthesis. Register N sources — git repositories, external docs,
+local paths, a giant monorepo — and skill-engine emits a single navigator skill
+that reasons across all of them. When Claude answers a question that touches
+four sources at once, it holds the tensions between them: the older intent,
+the newer correction, the constraint that overrides both.
 
-Maintenance is concrete work: keep the engine plugin updated; run `refresh`
-when the codebase shifts so the index catches up; review the proposed diffs
-before they land; decide when to override the engine's defaults. It isn't a
-heavy lift, but it isn't zero.
+Not because it works on any single source. Because it holds across all of them.
 
-This is intentional: a context maintained by strangers is a context you can't
-trust.
+## What else is in the box
 
-## Not for you if
+Multi-source synthesis was one of several gaps the spec left for an operator to
+close. Each feature below is something Anthropic's published Agent Skills spec
+does not ship.
 
-- You want automated re-indexing, vector search, or a hosted service.
-- You want the tool to write docs *for* you (it maintains, doesn't author).
-- You won't read the proposed diffs. The reviewer is load-bearing; if nobody
-  reviews, the index drifts and the trust collapses.
+**[Drift detection + REFRESH](./CAPABILITIES.md#how-it-stays-accurate).** Every source is pinned to its content hash at
+ingest time. When upstream shifts, skill-engine notices and proposes updated
+references for review. Your contextualizer never silently goes stale.
 
-## Why these constraints (engineering taste, not apology)
+**[Goal-given DISCOVER](./CAPABILITIES.md#how-it-gets-built).** State what you're trying to do; the engine reads your
+sources, decides what matters, and emits the references — validating its own
+output against four invariants before surfacing it. Autonomous skill construction
+with guardrails.
 
-The constraints below are the contract. Each is a stance, not a limitation
-flagged for a future lift. Together they keep the tool boring in the places
-where boring is the win.
+**[SELF-AUDIT](./CAPABILITIES.md#how-it-knows-its-still-right).** Five drift checks the skill runs against itself: stale dates,
+broken URLs, long-untouched references, catalog-vs-content divergence,
+cross-reference accuracy. The skill audits itself; you review the findings.
 
-- bash + markdown + JSON, no third-party deps
-- No cron, no daemon, no auto-merge
-- Reviewer-in-the-loop on every change
-- Manual cadence is load-bearing
+**[Reviewer-in-the-loop (by default)](./CAPABILITIES.md#how-human-review-fits).** The engine surfaces every proposed
+change for review before applying it. The contents of a contextualizer become
+Claude's source of truth for an entire domain — silent propagation of wrong
+content is a worse failure than five minutes of review. Review-first is the
+default; future versions may add opt-in autonomy flags for low-risk operations.
 
-## Start here
+**[source-paths.json — a schema, not a config file](./CAPABILITIES.md#how-it-gets-built).** Three first-class source
+kinds (`git-managed`, `external-doc`, `local-path`) with a machine-readable
+schema other tools can conform to. The schema is the contract.
 
-- **Quickstart** — install the plugin, build your first contextualizer, run
-  a refresh: [docs/quickstart.md](./plugin/skill-engine/docs/quickstart.md).
+[**→ Full capabilities reference**](./CAPABILITIES.md)
 
-## How it works
+## See it in practice
 
-Two pieces. The **engine** is this plugin: a small set of slash-command
-workflows that build a contextualizer, keep it current, and surface what's
-on disk. The **contextualizer** is the artifact those workflows produce — a
-curated index of one codebase, owned by the team that ships that codebase.
+The legacy-rescue story is one shape skill-engine takes. Here are others.
 
-Eight workflows ship with the plugin, in roughly the order you'll meet them:
-`engine-bootstrap`, `discover`, `refresh`, `new-reference`, `status`,
-`self-audit`, `clean-cache`, and the `using-skill-engine` router that
-dispatches any "do something with the engine here" intent to the right
-workflow. A local-clone cache backs discovery and moves through four named
-stages: seed (opt-in) → REFRESH GC → STATUS → `clean-cache`.
+- **[The Senior Engineer Rescuing a Legacy Application](./docs/personas/legacy-rescue.md)** —
+  A 20-year-old codebase, a one-month deadline, no original builders. The
+  founding-myth case.
+- **[The Forward-Deployed Engineer](./docs/personas/forward-deployed-engineer.md)** —
+  Answers wrong in a customer call. Reclaims credibility and never gets
+  blindsided again.
+- **[The Newly-Hired Engineer](./docs/personas/new-hire-engineer.md)** —
+  Drops into an enterprise SaaS codebase with a 6-12 month onboarding tradition.
+  Becomes a leading contributor in his first sprints.
+- **[The Solutions Engineer](./docs/personas/solutions-engineer.md)** — Evaluates
+  five competing agentic-payments protocols by spinning up one contextualizer
+  per protocol and composing them against his business context.
+- **[The Senior Product Manager](./docs/personas/senior-product-manager.md)** —
+  Technical-adjacent but not a coder. Pressure-tests roadmap features against
+  the platform's actual constraints before championing them upward.
 
-See [`examples/library-context/`](./examples/library-context/) for a worked
-example of the contextualizer artifact's shape — built around Flask, renamed
-to the generic `library-context` to highlight the engine's shape rather than
-Flask itself; see [11-walkthrough.md](./plugin/skill-engine/docs/11-walkthrough.md) for the narrative
-behind it.
+Not your situation? [Open an issue](https://github.com/nick-railsback/skill-engine/issues)
+describing how you'd want to use it.
 
-## Doctrine
+## Where this is in its life
 
-A short log of the load-bearing decisions behind skill-engine — the calls
-made when the path forked, why the project landed where it did, and what was
-deliberately chosen not to build. [Read the doctrine →](./plugin/skill-engine/docs/doctrine.md).
+This is v0.1.0. There is one worked example, one maintainer who built it because
+he needed it did not yet exist.
 
-## Install
+If you've ever stood in front of a codebase that outlived its authors, or
+handed a junior engineer documentation you couldn't vouch for, you already
+understand what this is for. The rest is just building.
 
-skill-engine ships as a Claude Code plugin. From any Claude Code session,
-register the repository as a marketplace and install:
+## Quickstart
 
 ```
 /plugin marketplace add nick-railsback/skill-engine
 /plugin install skill-engine@skill-engine-marketplace
+/skill-engine:engine-bootstrap https://github.com/<your-org>/<your-repo>
+/skill-engine:discover
 ```
 
-After install, the plugin's slash commands
-(`/skill-engine:engine-bootstrap`, `/skill-engine:discover`, and the others)
-are available in any Claude Code session.
+Twenty minutes from a fresh Claude Code session to a working contextualizer.
+[Full quickstart →](./plugin/skill-engine/docs/quickstart.md)
 
-Dependencies: bash, git, `jq`. No Node, no npm, no scheduler.
+## Doctrine and dependencies
 
-**Working on the plugin source?** Clone the repo and register the local
-directory as a marketplace instead:
+Skill-engine sits in the category I'd call **Skill Infrastructure** — operational
+tooling on top of Anthropic's published Agent Skills spec. The full doctrine
+lives in [docs/doctrine.md](./plugin/skill-engine/docs/doctrine.md).
 
-```
-git clone https://github.com/nick-railsback/skill-engine.git
-cd skill-engine
-/plugin marketplace add .
-```
-
-The plugin name and marketplace name don't change — the same
-`/plugin install skill-engine@skill-engine-marketplace` works.
+Dependencies: bash, git, `jq`. No Node, no npm, no scheduler. The default
+cadence is manual; reviewer-in-the-loop is the default operating mode. Both
+defaults are deliberate — and revisable as the project matures.

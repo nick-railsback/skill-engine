@@ -182,7 +182,7 @@ description: Answers questions about the <area-domain> ecosystem. Use when worki
 
 That's it. No `version`, no `tags`, no `tools`, no `disable-model-invocation`, no custom fields.
 
-**Strict adherence to this is critical.** `name` and `description` are the open standard's two required fields, per the [Agent Skills open standard (agentskills.io)](https://agentskills.io/spec). Custom fields are silently dropped by some consuming platforms and respected by others, producing platform-divergent behavior that you'll spend hours debugging. `disable-model-invocation` is a trap (see Issue #22345 above).
+**Strict adherence to this is critical.** `name` and `description` are the two required frontmatter fields, per [Anthropic's *Complete Guide to Building Skills for Claude* (PDF)](https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf). Custom fields are silently dropped by some consuming platforms and respected by others, producing platform-divergent behavior that you'll spend hours debugging. `disable-model-invocation` is a trap (see Issue #22345 above).
 
 The `description` is load-bearing for skill discovery. A vague description means the agent never fires the skill. A too-broad description means the agent fires it on irrelevant queries. Description quality is product-quality.
 

@@ -1,25 +1,15 @@
-# skill-engine
+# skill-engine (plugin)
 
 **Teach Claude your codebase. Keep it taught.**
 
-skill-engine is a Claude Code plugin that builds and maintains a
-contextualizer — a curated index of one codebase that Claude reads before
-it answers. The plugin bundles the maintenance, scaffolder, and
-cache-hygiene workflows you'll use across a contextualizer's lifecycle.
+You're reading this because you installed the plugin. Here's what just happened:
 
-## First run
+- Eight commands are now available under `/skill-engine:` — bootstrap, discover, refresh, self-audit, new-reference, status, clean-cache, using-skill-engine.
+- On first bootstrap, the engine may ask whether to pre-clone referenced repos into `~/.cache/skill-engine/`. It defaults to **No**. The engine works without the cache; pre-cloning is purely an optimization, though highly recommended.
+- The engine never auto-applies a change by default. Every proposed edit surfaces for review.
 
-After bootstrap, the engine inspects the new `source-paths.json` and may
-ask whether to pre-clone referenced repos into the cache at
-`~/.cache/skill-engine/`. The prompt defaults to **No** — the engine works
-fine without the cache; pre-cloning is purely an optimization for `discover`
-runs and amortizes across subsequent `refresh` cycles. You can say yes later
-(you'll be re-offered when `discover` detects a cache miss for an in-scope
-git-managed source), or never. The engine does not clone without your
-explicit consent.
+**Next step:** `/skill-engine:engine-bootstrap https://github.com/<your-org>/<your-repo>`
 
-See the repo
-[`README.md`](https://github.com/nick-railsback/skill-engine/blob/main/README.md)
-for the audience map and a worked example, and
-[`docs/doctrine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/doctrine.md)
-for the load-bearing decisions behind the engine's shape.
+**For the why behind the engine** — see the [project README](https://github.com/nick-railsback/skill-engine/blob/main/README.md).
+**For the full path** — see the [quickstart](https://github.com/nick-railsback/skill-engine/blob/main/docs/quickstart.md).
+**For the load-bearing decisions** — see the [doctrine](https://github.com/nick-railsback/skill-engine/blob/main/docs/doctrine.md).
