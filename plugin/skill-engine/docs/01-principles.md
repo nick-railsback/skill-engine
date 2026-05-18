@@ -82,15 +82,15 @@ Why this shape and not, say, twenty per-topic skills, or a single mega-skill, or
 **Anthropic sources:**
 - [Equipping agents for the real world with Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills) - output validation patterns
 
-**How this pattern uses it.** Before surfacing changes, the engine runs four automated checks:
+**How this pattern uses it.** Before surfacing changes, the engine runs automated checks:
 1. **Frontmatter check:** every modified reference still starts with content, not `---`
 2. **Catalog bijection check:** navigator catalog rows still correspond 1:1 with primary reference files
-3. **Checksum fixture refresh:** `test/fixtures/source-body-checksums.txt` is regenerated for every modified reference
-4. **Test suite execution:** `test/test-cli.sh` (the source project's full test suite) passes end-to-end
+3. **Validator execution:** `./verify.sh` passes end-to-end
+4. **Checksum fixture refresh (v0.2 aspirational):** `test/fixtures/source-body-checksums.txt` regeneration is part of the v0.2 byte-equality contract; v0.1.x relies on `verify.sh` for content shape.
 
 If any check fails, the diff isn't surfaced; the engine fixes the issue first. This makes "engine proposed bad output" a fail-closed condition rather than a fail-to-the-human.
 
-**In your engine.** Set up these four invariants from day one. They're cheap to assert and they protect you from an entire class of subtle agent regressions (a renamed reference that lost its catalog row, a stray frontmatter that broke loading, etc.). See [05-invariants.md](05-invariants.md) for the test implementations.
+**In your engine.** Set up these invariants from day one. They're cheap to assert and they protect you from an entire class of subtle agent regressions (a renamed reference that lost its catalog row, a stray frontmatter that broke loading, etc.). See [05-invariants.md](05-invariants.md) for the test implementations.
 
 ## Architecture and operational model
 

@@ -9,14 +9,12 @@ On activation, run engine doctor:
 
 1. `gh auth status`
 2. `[ -f research/.research-state.json ]`
-3. `bash test/test-cli.sh --help`
+3. `[ -x verify.sh ]`
 4. `find /tmp -maxdepth 1 -name '<area-domain>-research-*' -type d` (flag survivors with session-id)
-5. `jq -e '.version == "1.0"' research/.research-state.json` (confirm schema-version match)
-6. `find research/sessions -type f -newer research/.research-state.json` (flag orphan session logs newer than state file)
-7. `jq -e '[.skills | to_entries[] | .value.resources[]? | select(has("importance") and (.importance == null or (.importance | type) != "number" or (.importance | floor) != .importance or .importance < 1 or .importance > 5)) | "INVALID importance at \(.url): \(.importance | @json)"] as $bad | if ($bad | length) == 0 then true else ($bad | join("; ") | error) end' research/.research-state.json` (validates `importance` per `03-engine.md` §State schema; offenders surface as `INVALID importance at <url>: <value>` via the "If 4-7 fire" gate)
-8. `find /tmp/ -maxdepth 1 -type d -name 'skill-engine-validate-*' ! -newermt '-24 hours' -exec sh -c 'echo "[orphan-sweep] removed $1 (>24h orphan from non-graceful exit)"; rm -rf "$1"' _ {} \;` (auto-cleans orphans left by SIGKILL/OOM/reboot; emits one audit line per removed orphan so the cleanup is auditable rather than silent; trailing slash on `/tmp/` ensures BSD `find` descends into the directory on macOS where `/tmp` is a symlink to `/private/tmp`; distinct target from check (4)'s `<area-domain>-research-*` which is surface-and-pause)
+5. `jq -e '.schema_version == 1' research/.research-state.json` (confirm schema-version match)
+6. `find /tmp/ -maxdepth 1 -type d -name 'skill-engine-validate-*' ! -newermt '-24 hours' -exec sh -c 'echo "[orphan-sweep] removed $1 (>24h orphan from non-graceful exit)"; rm -rf "$1"' _ {} \;` (auto-cleans orphans left by SIGKILL/OOM/reboot; emits one audit line per removed orphan so the cleanup is auditable rather than silent; trailing slash on `/tmp/` ensures BSD `find` descends into the directory on macOS where `/tmp` is a symlink to `/private/tmp`; distinct target from check (4)'s `<area-domain>-research-*` which is surface-and-pause)
 
-If 4-7 fire, surface findings and ask before proceeding (none auto-clean). Check 8 auto-cleans by design and self-announces per orphan removed.
+If 4-5 fire, surface findings and ask before proceeding (none auto-clean). Check 6 auto-cleans by design and self-announces per orphan removed.
 
 Then read last 3 reflections from `research/.session-reflections/` (sort by filename desc; ISO-8601 prefix sorts chronologically); cluster by referenced area-domain; seed the rationalization table from observed patterns.
 
@@ -26,7 +24,7 @@ Then show menu; wait.
 
 <HARD-GATE>No write without explicit human approval; surface diff + catalog delta; wait for APPROVE/DEFER.</HARD-GATE>
 
-<HARD-GATE>Pre-approval validation: bijection, frontmatter, byte-equality fixture, link integrity all green.</HARD-GATE>
+<HARD-GATE>Pre-approval validation: no-frontmatter, catalog bijection, verify.sh all green.</HARD-GATE>
 
 ## Menu
 
@@ -47,9 +45,9 @@ Pick a workflow:
 
 **Ph 3 — Propose.** Keep gotchas, "why", cross-system patterns; replace schemas with summary + URL. Draft; update catalog if needed; don't write.
 
-**Ph 4 — Validation.** `worker-verify` (modified refs, checksum fixture). Halt on failure.
+**Ph 4 — Validation.** `worker-verify` (modified refs). Halt on failure.
 
-**Ph 5 — Human review.** Surface diff, rationale, catalog delta, checksum, test result. Wait for explicit approval.
+**Ph 5 — Human review.** Surface diff, rationale, catalog delta, verify.sh result. Wait for explicit approval.
 
 **Ph 6 — Apply.** Write approved; commit state; update README markers; log `research/sessions/<session-id>.json`.
 
@@ -100,7 +98,7 @@ Read-only by default. Opt-in propose → validate → approve gate for the deter
 4. **Catalog row description vs reference content** — for each catalog row, diff its one-line description against the reference's frontmatter `description:` field (the canonical purpose statement). If the reference also carries a body `## When to Use This Reference` section, include it in the diff. References emitted by goal-given DISCOVER may omit that section; the frontmatter description is the contract. *Auto-fixable.*
 5. **Cross-reference map accuracy** — for each cross-reference rule in the navigator, verify the routing matches what the referenced files actually cover. *Judgment-required.*
 
-After the findings table, when any finding exists, classify each as auto-fixable (Checks 1 & 4) or judgment-required (Checks 2, 3, 5). If at least one auto-fixable finding is present, prompt: `Apply auto-fixable findings now? (y / n / select)`. Empty input ⇒ `n`. On `y` or `select`, follow the standard Ph 3 → Ph 4 (`worker-verify`) → Ph 5 → Ph 6 gate from REFRESH above — sandbox at `/tmp/skill-engine-validate-<session-id>/`, all four pre-approval checks must pass, surface diff for explicit `APPROVE`, log session on apply. On `n`, default, or any non-fixable finding, print one-line recommendations per judgment-required finding and exit. See `03-engine.md` §"Optional fix flow" for the doctrine; both HARD-GATEs remain in force.
+After the findings table, when any finding exists, classify each as auto-fixable (Checks 1 & 4) or judgment-required (Checks 2, 3, 5). If at least one auto-fixable finding is present, prompt: `Apply auto-fixable findings now? (y / n / select)`. Empty input ⇒ `n`. On `y` or `select`, follow the standard Ph 3 → Ph 4 (`worker-verify`) → Ph 5 → Ph 6 gate from REFRESH above — sandbox at `/tmp/skill-engine-validate-<session-id>/`, all three v0.1.x checks must pass, surface diff for explicit `APPROVE`, log session on apply. On `n`, default, or any non-fixable finding, print one-line recommendations per judgment-required finding and exit. See `03-engine.md` §"Optional fix flow" for the doctrine; both HARD-GATEs remain in force.
 
 Cadence: every 2-4 weeks. Pair with DISCOVER for a "quarterly maintenance touch" rhythm. Surface findings as per-finding action proposals; human approval gate as REFRESH.
 
@@ -111,7 +109,7 @@ Cadence: every 2-4 weeks. Pair with DISCOVER for a "quarterly maintenance touch"
 **Circuit breaker:** 3 same-phase failures → write state, surface diagnostics, stop.
 **Crawl errors:** Transient (429/timeout/auth) → retry 3×. Permanent (archive/404/rename/schema) → skip, report, continue.
 
-**Pre-approval validation sandbox:** Validation runs against `/tmp/skill-engine-validate-<session-id>/`, never the working tree. Before the four checks (bijection, frontmatter, byte-equality fixture, link integrity), `cp -R` the modified surface (the full `references/` directory so bijection sees the complete file set, navigator catalog, `test/fixtures/source-body-checksums.txt`, `./test/test-cli.sh`) into the sandbox. Iterate fixes against the sandbox copy only. Permitted mid-iteration fixes: add missing content, regenerate fixtures, repair frontmatter. Forbidden mid-iteration fixes: delete a file, delete a catalog row, delete a test, `git restore` the change being validated, in-place edits to working-tree paths. On normal exit (success or failure), `rm -rf` the sandbox. Orphans left by non-graceful exits are swept at next activation per engine-doctor check (8). `<session-id>` reuses the format defined in the REFRESH workflow above.
+**Pre-approval validation sandbox:** Validation runs against `/tmp/skill-engine-validate-<session-id>/`, never the working tree. Before the checks (bijection, frontmatter, link integrity), `cp -R` the modified surface (the full `references/` directory so bijection sees the complete file set, navigator catalog, `verify.sh`) into the sandbox. Iterate fixes against the sandbox copy only. Permitted mid-iteration fixes: add missing content, regenerate fixtures, repair frontmatter. Forbidden mid-iteration fixes: delete a file, delete a catalog row, delete a test, `git restore` the change being validated, in-place edits to working-tree paths. On normal exit (success or failure), `rm -rf` the sandbox. Orphans left by non-graceful exits are swept at next activation per engine-doctor check (6). `<session-id>` reuses the format defined in the REFRESH workflow above.
 
 **Pre-approval validation fix cap:** Each proposal carries an `attempt_id` (UUID-v4 minted via `uuidgen` at first validation surfacing in the session) keying a session-bound fix-retry counter. Within a session, the counter is keyed on the live `attempt_id` and does NOT reset when the maintainer edits the proposal between fix attempts. Across sessions, a fresh `attempt_id` is minted, so the counter is naturally zero on resume. On the third failed fix for a given `attempt_id`, halt the loop for THAT proposal and emit a structured finding `{attempt_id, proposal_id, attempts: [{diff, validator_reason} × 3]}` to the queue; other queued proposals continue independently. `proposal_id` is the SHA-256 hex digest of `title + '\0' + body + '\0' + LC_ALL=C-sorted-paths-joined-by-LF`, computed via an in-process `jq -j ... | shasum -a 256` pipe — NEVER via bash command substitution `$(jq -r ...)` (which strips trailing newlines and silently collapses distinct inputs).
 
@@ -119,12 +117,12 @@ Cadence: every 2-4 weeks. Pair with DISCOVER for a "quarterly maintenance touch"
 
 1. No writes without explicit human approval — even after Ph 4 passes.
 2. Update state file after each resource; not session-end.
-3. Modify only `skills/<area-domain>-context/`, navigator, state file, checksum fixture.
+3. Modify only `skills/<area-domain>-context/`, navigator, state file.
 4. No auto-resume after circuit-breaker halt.
 5. Reference files: pure Markdown, no YAML frontmatter. Tested invariant.
 6. Catalog ↔ `references/<area-domain>-*.md` are bijective (row = file; file = row).
 7. On every human rejection (REFRESH/SKILL/NEW/SELF-AUDIT proposals), append a record to `research/.rejection-log.json` (`{schema_version: 1, entries: [..., {ts, session_id, category, reference, rationale}]}`). The `category` field is the closed enum from `03-engine.md` rejection memory; `rationale` is the human's stated reason (free-form). File creation: if absent, the agent writes `{"schema_version": 1, "entries": []}` first, then appends.
-8. Pre-approval validation runs in `/tmp/skill-engine-validate-<session-id>/`; the working tree is never mutated during validation iteration. Forbidden mid-iteration fixes: file deletion, catalog-row deletion, test deletion, `git restore` of the change being validated, in-place edits to working-tree paths. Session-level rollback after a documented validation halt remains permitted because it is a terminal path, not a mid-iteration bypass. Sandbox cleanup: `rm -rf` on normal exit; engine-doctor check (8) auto-cleans orphans older than 24h at next activation.
+8. Pre-approval validation runs in `/tmp/skill-engine-validate-<session-id>/`; the working tree is never mutated during validation iteration. Forbidden mid-iteration fixes: file deletion, catalog-row deletion, test deletion, `git restore` of the change being validated, in-place edits to working-tree paths. Session-level rollback after a documented validation halt remains permitted because it is a terminal path, not a mid-iteration bypass. Sandbox cleanup: `rm -rf` on normal exit; engine-doctor check (6) auto-cleans orphans older than 24h at next activation.
 9. Pre-approval validation fix-retry is capped at three attempts per `attempt_id` per session. On the third failed fix, halt the loop for THAT proposal and emit the structured "validation halted" finding; do NOT iterate further on the same `attempt_id`. The counter is keyed on `attempt_id` (UUID-v4, content-independent) and does NOT reset when the proposal title/body/paths change between attempts. Other queued proposals in the same session continue to validate; the halt is per-proposal, not per-session.
 
 ## Rationalizations to refuse

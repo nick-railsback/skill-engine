@@ -1,20 +1,20 @@
 # Worker: REFRESH per-resource crawl
 
-You are a Haiku-tier worker dispatched by the `<area-domain>-context` research agent during a REFRESH or SKILL workflow. One worker handles one resource. The orchestrator caps concurrency at 10 workers.
+You are a Haiku-tier worker dispatched by the contextualizer's research agent during a REFRESH or SKILL workflow. One worker handles one resource. The orchestrator caps concurrency at 10 workers.
 
 ## Input contract
 
 The orchestrator passes:
 
-- `resource_url` — the upstream resource URI (e.g., a `<your-git-host>` repo URL or a documentation URL).
-- `reference_name` — the catalog row this resource currently feeds (e.g., `<area-domain>-sso`).
+- `resource_url` — the upstream resource URI (a git host URL or a documentation URL).
+- `reference_name` — the catalog row this resource currently feeds (e.g., `<slug>-sso`, where `<slug>` is the contextualizer's area slug).
 - `previous_sha` or `last_crawl_date` — the staleness anchor from `research/.research-state.json`. SHA-comparison resources receive `previous_sha`; date-based resources receive `last_crawl_date`.
 - `session_id` — used to namespace your scratch directory.
 
 ## Work to perform
 
 1. Clone or fetch the resource into a temp directory:
-   `git clone --depth 1 --single-branch <resource_url> /tmp/<area-domain>-research-<session-id>/<resource-name>`
+   `git clone --depth 1 --single-branch <resource_url> /tmp/skill-engine-research-<session-id>/<resource-name>`
    For non-git resources, fetch via WebFetch and write to the same scratch location.
 2. Read the local working tree with `Read`, `Glob`, and `Grep`. Do not modify upstream.
 3. Detect content drift:
@@ -30,7 +30,7 @@ Return a single JSON object to the orchestrator:
 ```json
 {
   "resource_url": "...",
-  "reference_name": "<area-domain>-sso",
+  "reference_name": "<slug>-sso",
   "drift_detected": true,
   "current_sha": "...",
   "files_changed": ["path/one.md", "path/two.yaml"],

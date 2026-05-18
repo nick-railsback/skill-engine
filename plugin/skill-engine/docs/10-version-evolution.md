@@ -348,8 +348,7 @@ identity-context/
 │   ├── .research-state.json (v0.1 schema)
 │   └── sessions/
 ├── discover-config.json (v0.1 shape)
-└── test/fixtures/
-    └── source-body-checksums.txt
+└── verify.sh
 ```
 
 When engine v1.0 ships, this contextualizer:

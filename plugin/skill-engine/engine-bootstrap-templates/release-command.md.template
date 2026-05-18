@@ -63,11 +63,11 @@ Run these checks in order. Halt with remediation guidance on any failure.
    ```
    Report the current branch. If it is not `main`, require explicit confirmation: "You're on branch <branch>, not main. Continue anyway?"
 
-5. **Tests pass:**
+5. **Validator passes:**
    ```bash
-   ./test/test-cli.sh
+   ./verify.sh
    ```
-   Must finish with 'Failed: 0'. If any test fails, halt and show the failing test name(s).
+   Must finish with 'Failed: 0'. If any check fails, halt and show the failing check name(s).
 
 ## Phase 2 - Version resolution
 
@@ -81,9 +81,9 @@ Compute `NEW_VERSION` per the arg parsing above. Display:
 
 Pause for confirmation. On no/abort, stop cleanly.
 
-## Phase 3 - Bump the four version surfaces
+## Phase 3 - Bump the three version surfaces
 
-Edit each file; show a diff summary after each edit. The four surfaces are documented in `skill-engine/docs/04-delivery.md` (4-place version sync) - `test_version_consistency` will fail Phase 5 if any drift.
+Edit each file; show a diff summary after each edit. The three surfaces are documented in `skill-engine/docs/04-delivery.md` (3-place version sync). A v0.2 enhancement will add a `verify.sh` version-consistency check; until then, run Phase 5 to catch drift.
 
 1. **`bin/<area-domain>-context`** (two places):
    * Header comment: `# Version: X.Y.Z` -> `# Version: <NEW_VERSION>`
@@ -93,9 +93,6 @@ Edit each file; show a diff summary after each edit. The four surfaces are docum
    jq --arg v "$NEW_VERSION" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json.tmp
    mv /tmp/plugin.json.tmp .claude-plugin/plugin.json
    ```
-3. **`test/test-cli.sh`** (two places):
-   * Header comment (`Test suite for <area-domain>-context CLI tool (vX.Y.Z...)`)
-   * Inside the `test_version_consistency` command test, the literal version string asserted via `assert_contains`.
 
 ## Phase 4 - Draft the CHANGELOG entry
 
@@ -113,17 +110,17 @@ Edit each file; show a diff summary after each edit. The four surfaces are docum
    Types: `add`, `fix`, `change`, `remove`, `deprecate`.
 3. **Pause.** Show the draft and invite the maintainer to edit inline before Phase 5. Especially for minor/major releases, a human pass on the CHANGELOG is worth it.
 
-## Phase 5 - Re-run tests
+## Phase 5 - Re-run the validator
 
 ```bash
-./test/test-cli.sh
+./verify.sh
 ```
-Must pass with `Failed: 0`. The `test_version_consistency` gate catches any version-surface drift from Phase 3. Halt on any failure.
+Must pass with `Failed: 0`. Halt on any failure; show the failing check name(s) for triage. (Version-surface consistency is a planned v0.2 check; for now, eyeball-review the diff in Phase 6 to catch missed bumps.)
 
 ## Phase 6 - Commit (destructive gate #1)
 
 ```bash
-git add bin/<area-domain>-context .claude-plugin/plugin.json test/test-cli.sh CHANGELOG.md
+git add bin/<area-domain>-context .claude-plugin/plugin.json CHANGELOG.md
 git commit -m "chore(release): v<NEW_VERSION>"
 ```
 Show the commit with `git show --stat HEAD`. Pause before pushing - last chance to amend.
@@ -180,18 +177,18 @@ Verify both files exist and their sizes match. The versioned zip is the canonica
 3. **Next steps for the maintainer:**
    * **Plugin marketplace sync:** If your plugin-marketplace lives in a separate repo (the common case at most orgs), the new `plugin.json` version does NOT auto-propagate. You must copy the updated artifacts into the marketplace repo and bump its `plugin.json`. See `skill-engine/docs/04-delivery.md`.
    * **Org-wide skill provisioning:** (optional) If your org provisions skills centrally (e.g., via Anthropic's Organization settings > Skills), notify the admin with the new zip so they can re-upload for all users. Skip if not applicable.
-   * **Paranoid final check:** `./test/test-cli.sh` one more time on a fresh clone to catch anything local-env specific.
+   * **Paranoid final check:** `./verify.sh` one more time on a fresh clone to catch anything local-env specific.
 
 ## Failure modes and recovery
 
 * **Phase 1 preflight fails:** fix the underlying issue (install tool, authenticate, clean working tree) and re-run.
-* **Phase 5 tests fail after version bump:** most likely `test_version_consistency` caught a missed edit in Phase 3. Fix the file, re-run tests; once green, continue with Phase 6.
+* **Phase 5 validator fails after version bump:** if a check fails, halt and show the failing check name(s). Fix the file, re-run `./verify.sh`; once green, continue with Phase 6. (A v0.2 enhancement will add a version-consistency check; until then, eyeball-review the diff in Phase 6.)
 * **Phase 9 release create fails:** common causes are (a) tag already exists (someone else created vX.Y.Z already - delete with `<host-cli> release delete` or pick a new version), or (b) auth scope too narrow (re-run `<host-cli> auth refresh -h <your-git-host> -s repo`).
 * **Bad release shipped:** see your `RELEASING.md` > "Rollback" - delete the release (or mark as pre-release), upload the previous good zip, cut a patch release with the fix.
 
 ## Guardrails
 
-* **Never skip Phase 5** (post-bump tests). `test_version_consistency` is the only line of defense against shipping a mismatched `plugin.json`.
+* **Never skip Phase 5** (post-bump validator). Until v0.2 adds a version-consistency check to `verify.sh`, the Phase 6 diff review is the only line of defense against shipping a mismatched `plugin.json`.
 * **Never commit `--no-verify`** in this flow. If a hook fails, investigate.
 * **Never force-push** the release branch.
 * **Pause before pushing** (Phase 6-7) and before creating the host release (Phase 9). Those are the two points of no return for this session.

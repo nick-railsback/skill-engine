@@ -211,14 +211,18 @@ provably complete, or it doesn't ship.
 
 ### Pre-approval validation
 
-Before any proposed diff reaches a human, the engine runs four automated
-checks in an isolated sandbox at `/tmp/skill-engine-validate-<session-id>/`:
-no stray frontmatter on references, catalog bijection holds, per-reference
-SHA-256 fixtures are regenerated, and the full test suite passes. If any
-fails, the engine fixes the issue and re-runs — never surfaces broken work
-to the reviewer. The fix-retry loop is capped at three attempts per proposal;
-a fourth failure halts and emits a structured `attempts[]` finding for human
-triage rather than masking the failure by deletion or revert.
+Before any proposed diff reaches a human, the engine runs automated checks
+in an isolated sandbox at `/tmp/skill-engine-validate-<session-id>/`: no
+stray frontmatter on references, catalog bijection holds, and the
+contextualizer's own `./verify.sh` passes. If any fails, the engine fixes
+the issue and re-runs — never surfaces broken work to the reviewer. The
+fix-retry loop is capped at three attempts per proposal; a fourth failure
+halts and emits a structured `attempts[]` finding for human triage rather
+than masking the failure by deletion or revert. (Per-reference SHA-256
+byte-equality fixtures and a full test-suite harness are v0.2 aspirational
+— see [05-invariants.md](plugin/skill-engine/docs/05-invariants.md) for the
+v0.2 contract; v0.1.x ships with `verify.sh` as the single validation
+anchor.)
 
 ### What's deliberately not built
 
@@ -536,13 +540,17 @@ version-stamped one and a stable-named `<area-domain>-context.zip` for
 
 ### Version sync across surfaces
 
-The version string lives in four places per contextualizer — the CLI
-script's header comment, the CLI's `VERSION` variable,
-`.claude-plugin/plugin.json`, and the test suite's version assertion — and
-the test suite enforces they all match before a release ships. When a
-contextualizer depends on a specific skill-engine engine version, the
-artifact contract surfaces the mismatch rather than letting a maintainer
-see one version in the CLI and a different one in the navigator.
+The version string lives in three places per contextualizer — the CLI
+script's header comment, the CLI's `VERSION` variable, and
+`.claude-plugin/plugin.json` — and the release checklist in
+[06-release-doctrine.md](plugin/skill-engine/docs/06-release-doctrine.md)
+bumps all three together. v0.1.x relies on eyeball-review of the bump diff
+to catch a missed surface; a fourth surface — a `verify.sh`
+version-consistency check that would enforce match automatically — is
+v0.2 planned. When a contextualizer depends on a specific skill-engine
+engine version, the artifact contract surfaces the mismatch rather than
+letting a maintainer see one version in the CLI and a different one in the
+navigator.
 
 ### What's deliberately not built
 
@@ -570,14 +578,15 @@ wrong content is a worse failure than five minutes of review.
 ### The proposal-validate-approve loop
 
 Three workflows share this loop: DISCOVER, REFRESH, and SELF-AUDIT's
-optional fix flow. The engine proposes a change, runs four automated
+optional fix flow. The engine proposes a change, runs the pre-approval
 validations against an isolated sandbox copy (no stray frontmatter, catalog
-bijection holds, per-reference SHA-256 fixtures refreshed, full test suite
-passes), and only then surfaces a unified diff plus a one-line rationale
-per file for human review. The reviewer responds with `APPROVE`, `DEFER`,
-or `REJECT`. On approve, the engine writes the working tree, refreshes the
-checksum fixture, and records the session in `research/.engine-stats.json`.
-On reject, the proposal is logged to `research/.rejection-log.json` with a
+bijection holds, `./verify.sh` passes), and only then surfaces a unified
+diff plus a one-line rationale per file for human review. The reviewer
+responds with `APPROVE`, `DEFER`, or `REJECT`. On approve, the engine
+writes the working tree and records the session in
+`research/.engine-stats.json`. (Per-reference SHA-256 fixture refresh is
+v0.2 aspirational; v0.1.x has no fixture-refresh step.) On reject, the
+proposal is logged to `research/.rejection-log.json` with a
 maintainer-provided rationale; at the next session activation, the engine
 clusters rejections by `category × reference` and surfaces a warning when
 the same pattern crosses three rejections — so the agent sees its own

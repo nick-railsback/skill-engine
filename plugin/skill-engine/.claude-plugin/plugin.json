@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "skill-engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Teach Claude your codebase. Keep it taught.",
   "homepage": "https://github.com/nick-railsback/skill-engine",
   "repository": "https://github.com/nick-railsback/skill-engine",

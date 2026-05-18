@@ -1,0 +1,49 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint shell scripts
+        run: |
+          set -e
+          shopt -s globstar nullglob
+          files=( **/*.sh )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No .sh files found."
+            exit 0
+          fi
+          shellcheck --severity=warning "${files[@]}"
+
+  json-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Validate production JSON files
+        run: |
+          set -e
+          paths=(
+            ".claude-plugin/marketplace.json"
+            "plugin/skill-engine/.claude-plugin/plugin.json"
+            "plugin/skill-engine/engine-bootstrap-templates/research-state.json.template"
+            "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template"
+            "plugin/skill-engine/engine-bootstrap-templates/monorepo-config.json.template"
+          )
+          for f in "${paths[@]}"; do
+            if [ -f "$f" ]; then
+              echo "Validating $f"
+              jq empty "$f"
+            else
+              echo "Skipping $f (not present)"
+            fi
+          done

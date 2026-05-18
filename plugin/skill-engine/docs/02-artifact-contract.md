@@ -1,6 +1,6 @@
 # 02-Artifact contract
 
-This chapter is the **artifact contract**: the file structure the engine produces and the invariants every reference and navigator must satisfy. The engine in [03-engine.md](03-engine.md) and the test suite in [05-invariants.md](05-invariants.md) both treat this contract as the spec they validate against. If a deliverable from the engine doesn't match this shape, the pre-approval validation rejects it.
+This chapter is the **artifact contract**: the file structure the engine produces and the invariants every reference and navigator must satisfy. The engine in [03-engine.md](03-engine.md) (via the contextualizer-side `verify.sh`) and the v0.2 test-suite design in [05-invariants.md](05-invariants.md) both treat this contract as the spec they validate against. If a deliverable from the engine doesn't match this shape, the pre-approval validation rejects it.
 
 The conventions are not stylistic. The navigator's loading model and the engine's pre-approval validation both depend on predictable structure - skipping one surfaces as a test failure or a runtime read failure later. The rationale traces back to [01-principles.md](01-principles.md), particularly the frontmatter discipline and the `disable-model-invocation` workaround.
 
@@ -13,6 +13,8 @@ The conventions are not stylistic. The navigator's loading model and the engine'
 * [When to split a reference](#when-to-split-a-reference)
 * [The bijection invariant (the load-bearing one)](#the-bijection-invariant-the-load-bearing-one)
 * [Why these conventions exist](#why-these-conventions-exist)
+
+> **v0.1.x scope note.** This chapter describes the artifact-contract surface as a whole. Mentions of the byte-equality fixture and the full test-suite harness below belong to the v0.2 design (canonical in [05-invariants.md](05-invariants.md)); v0.1.x ships with the stamped `verify.sh` as the single validator — covering no-frontmatter, catalog bijection, navigator/reference frontmatter, source-paths schema, and the optional SKILL.json trijection. Inline "(v0.2)" tags flag the boundary where it matters; treat the rest as the current v0.1.x contract.
 
 ## The three artifacts
 
@@ -191,7 +193,7 @@ the Cross-reference map if the question spans multiple subsystems.
 | [<area-domain>-provisioning](references/<area-domain>-provisioning.md) | User lifecycle: SCIM, just-in-time provisioning, deprovisioning workflows |
 ```
 
-The first column is a markdown link to the reference file. The second is a one-line factual summary that helps the AI route correctly. The catalog is bijective with `references/<area-domain>-*.md` - the test suite enforces this; see "The bijection invariant" below.
+The first column is a markdown link to the reference file. The second is a one-line factual summary that helps the AI route correctly. The catalog is bijective with `references/<area-domain>-*.md` - `verify.sh` enforces this (catalog-bijection check); see "The bijection invariant" below.
 
 **3. Cross-reference map** - a bullet list of multi-domain query patterns: when does a question naturally span two or more references?
 
@@ -390,7 +392,7 @@ References are direct, imperative, code-forward, and concrete. Show the code, th
 ### Reference size budget
 **< 500 lines, < 18KB** per file. If you're at the limit, split the reference - don't compress the prose. Splitting also forces a useful question: are you covering one topic or two?
 
-The test suite enforces a max-line-count and max-byte-count constraint. See [05-invariants.md](05-invariants.md).
+The max-line-count and max-byte-count constraint is part of the v0.2 invariants design — see [05-invariants.md](05-invariants.md). v0.1.x relies on reviewer eyeball-judgment against this budget until the v0.2 harness lands; `verify.sh` does not currently enforce it.
 
 ### Reference depth (one level)
 
@@ -520,7 +522,7 @@ source_id = sha256(path-relative-to-contextualizer-root)[:8]
 Five properties this form pins:
 
 * **The input is the source path relative to the contextualizer root, not the absolute path.** Absolute paths are local to one maintainer's filesystem; hashing them would give a different `source_id` to a colleague who clones the contextualizer to a different directory, breaking the per-source cache the moment the work crossed machines.
-* **The hash function is SHA-256**, matching the project's existing choice for byte-equality fixtures.
+* **The hash function is SHA-256**, matching the project's choice for the v0.2 byte-equality-fixture design (and the same family the engine already uses for SHA-pinned permalinks).
 * **The output is the first 8 hex characters** of the digest — 32 bits, roughly 4.3 billion values.
 * **The relative path is normalized to POSIX-canonical form before hashing.** Trailing slashes, leading `./`, and repeated separators are stripped; `./foo/`, `foo`, and `foo/` all produce the same `source_id`. Symlinks are not expanded — the path is treated as a logical name. The chapter prescribes the normalization semantically; the specific shell, scripting-language, or library invocation is an implementation concern, not contract surface.
 * **The normalized path is rendered as UTF-8 bytes in NFC Unicode normalization, with forward-slash separators, case-preserving, before SHA-256 is applied.** Filesystems disagree on these defaults — some return NFD-decomposed filenames where others return NFC; some accept backslashes where others reject them — so without an explicit normalization the same logical path would hash differently across operating systems and the cross-machine stability promised at the top of this section would not hold. Case is preserved as-typed: `Foo` and `foo` produce different `source_id`s; on case-insensitive filesystems the maintainer's responsibility is to use consistent casing in the source-paths configuration across machines.
@@ -588,9 +590,9 @@ Use this when the sections are truly independent - they don't share gotchas, aud
 2.  Draft new reference files following the six prescribed sections; each is *complete*, not a fragment.
 3.  Update the navigator catalog (add rows; update the source reference's description to reflect what remains).
 4.  Add cross-reference map entries that route old query patterns to the new destinations.
-5.  Add byte-equality fixture entries for each new reference (see [05-invariants.md](05-invariants.md)).
+5.  *(v0.2 aspirational, once the byte-equality fixture harness ships.)* Add byte-equality fixture entries for each new reference — see [05-invariants.md](05-invariants.md). v0.1.x skips this step.
 6.  Re-point existing references' "Related References" sections.
-7.  Run pre-approval validation: catalog bijection, no-frontmatter, fixture refresh, full test suite.
+7.  Run pre-approval validation: catalog bijection, no-frontmatter, `./verify.sh`.
 
 If the source reference loses everything to the split, delete it - don't leave an empty husk. Splits are reversible; merge back if the new references feel artificial.
 
