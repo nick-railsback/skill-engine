@@ -180,7 +180,7 @@ decide() {
 # sorts them deterministically.
 aggregate() {
   local records="$1"
-  local total_overall=0 pass_overall=0 persona_lines
+  local total_overall=0 pass_overall=0
   total_overall=$(awk -v US="$US" 'BEGIN{FS=US} { c++ } END{print c+0}' "$records")
   pass_overall=$(awk -v US="$US" '
     BEGIN{FS=US}
@@ -230,7 +230,7 @@ echo "Pass rates (majority vote of three runs):"
 aggregate "$TMP_RECORDS"
 echo
 echo "Per-entry detail:"
-while IFS="$US" read -r query expected persona r1 r2 r3; do
+while IFS="$US" read -r query expected _persona r1 r2 r3; do
   [ -z "$query" ] && continue
   decision=$(decide "$r1,$r2,$r3")
   vote="${decision%%:*}"

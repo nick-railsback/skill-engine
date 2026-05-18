@@ -21,13 +21,13 @@ Standard MAJOR.MINOR.PATCH, but adapted to what changes in a contextualizer mean
 Eight steps, in order. Most are scriptable; treat the whole thing as a manual checklist for the first dozen releases until the muscle memory is reliable, then automate selectively.
 
 1. **Decide the version.** Pick MAJOR/MINOR/PATCH from the table above. If unclear, ask: "what would surprise a user about this update?" Surprise = bigger bump.
-2. **Bump version in all 4 surfaces** (see [04-delivery.md#4-place-version-sync](04-delivery.md)):
+2. **Bump version in all 3 surfaces** (see [04-delivery.md#4-place-version-sync](04-delivery.md)):
    * CLI script header comment: `# Version: X.Y.Z`
    * CLI script `VERSION="X.Y.Z"` variable
    * `.claude-plugin/plugin.json` `"version": "X.Y.Z"`
-   * `test/test-cli.sh` version assertion
+   * (v0.2 planned: a `verify.sh` version-consistency check would make this the fourth surface.)
 3. **Update CHANGELOG.md.** Move any `[Unreleased]` entries under a new `[X.Y.Z] - YYYY-MM-DD` header. Add new entries for any release-only changes.
-4. **Run the test suite.** `./test/test-cli.sh` must pass 100%. Version-consistency test ([05-invariants.md](05-invariants.md)) catches a missed version bump from step 2.
+4. **Run the validator.** `./verify.sh` must pass with `Failed: 0`. Version-consistency belongs to v0.2; until then, eyeball-review the diff in step 5 to catch a missed bump.
 5. **Commit and push the version bump.** One commit, message like `chore(release): vX.Y.Z`. Push to your default branch.
 6. **Build the release artifacts.**
    ```bash
