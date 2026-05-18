@@ -47,7 +47,7 @@ Her director starts asking her for the writeups.
 - **[Drift detection + REFRESH](../../CAPABILITIES.md#how-it-stays-accurate)** keeps her contextualizer fresh through her
   morning routine, so the next customer call uses today's truth, not last
   month's.
-- **[Multi-source synthesis](../../CAPABILITIES.md#how-it-scales)** spans codebase + customer docs + integration
+- **[Multi-source synthesis](../../CAPABILITIES.md#how-it-synthesizes-across-sources)** spans codebase + customer docs + integration
   patterns in one navigator.
 
 [← Back to all personas](./README.md)

@@ -42,8 +42,8 @@ shared modules to reuse, the internal packages to depend on, the design system, 
 
 ## Why it works
 
-- **[Multi-source synthesis](../../CAPABILITIES.md#how-it-scales):** Maria's contextualizer already contained her codebase's context formatted to optimize agentic navigation through that context.
-- **[Composability](../../CAPABILITIES.md#how-it-composes)**: contextualizers are project skills, so they are able to activate
+- **[Multi-source synthesis](../../CAPABILITIES.md#how-it-synthesizes-across-sources):** Maria's contextualizer already contained her codebase's context formatted to optimize agentic navigation through that context.
+- **[Composability](../../CAPABILITIES.md#per-domain-contextualizers-compose-cleanly)**: contextualizers are project skills, so they are able to activate
   alongside other workflows without special wiring.
 - **The architecture document a codebase never had** is the artifact in her
   hands at the end — auditable, version-controlled, reviewable by humans

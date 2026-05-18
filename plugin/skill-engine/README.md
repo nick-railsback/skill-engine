@@ -11,5 +11,5 @@ You're reading this because you installed the plugin. Here's what just happened:
 **Next step:** `/skill-engine:engine-bootstrap https://github.com/<your-org>/<your-repo>`
 
 **For the why behind the engine** — see the [project README](https://github.com/nick-railsback/skill-engine/blob/main/README.md).
-**For the full path** — see the [quickstart](https://github.com/nick-railsback/skill-engine/blob/main/docs/quickstart.md).
-**For the load-bearing decisions** — see the [doctrine](https://github.com/nick-railsback/skill-engine/blob/main/docs/doctrine.md).
+**For the full path** — see the [quickstart](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/quickstart.md).
+**For the load-bearing decisions** — see the [doctrine](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/doctrine.md).

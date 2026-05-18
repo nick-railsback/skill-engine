@@ -118,8 +118,9 @@ The legacy-rescue story is one shape skill-engine takes. Here are others.
   five competing agentic-payments protocols by spinning up one contextualizer
   per protocol and composing them against his business context.
 - **[The Senior Product Manager](./docs/personas/senior-product-manager.md)** —
-  Technical-adjacent but not a coder. Pressure-tests roadmap features against
-  the platform's actual constraints before championing them upward.
+  Technical-adjacent, not a coder. Composes her predecessor's strategy memos
+  with the live platform monorepo to surface where intent and reality have
+  drifted — before championing the next roadmap.
 
 Not your situation? [Open an issue](https://github.com/nick-railsback/skill-engine/issues)
 describing how you'd want to use it.
@@ -127,7 +128,7 @@ describing how you'd want to use it.
 ## Where this is in its life
 
 This is v0.1.0. There is one worked example, one maintainer who built it because
-he needed it did not yet exist.
+he needed it and it did not yet exist.
 
 If you've ever stood in front of a codebase that outlived its authors, or
 handed a junior engineer documentation you couldn't vouch for, you already

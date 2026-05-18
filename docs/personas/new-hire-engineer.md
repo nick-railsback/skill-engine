@@ -56,7 +56,7 @@ feedback. He becomes one of the team's leading contributors before his
 
 ## Why it works
 
-- **[Hint-driven DISCOVER](../../CAPABILITIES.md#how-it-gets-built)** lets him tune the contextualizer to his job
+- **[Goal-given DISCOVER](../../CAPABILITIES.md#how-it-gets-built)** lets him tune the contextualizer to his job
   description in plain English.
 - **[SELF-AUDIT](../../CAPABILITIES.md#how-it-knows-its-still-right)** catches the broken links and stale references his
   contextualizer would otherwise inherit from the company's actual docs.

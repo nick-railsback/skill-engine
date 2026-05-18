@@ -61,7 +61,7 @@ he just stops loading that contextualizer — no shared config to edit.
 
 ## Why it works
 
-- **[Multi-contextualizer composition](../../CAPABILITIES.md#how-it-composes)** lets him reason about cross-protocol
+- **[Multi-contextualizer composition](../../CAPABILITIES.md#how-it-synthesizes-across-sources)** lets him reason about cross-protocol
   fit without merging everything into one mega-contextualizer.
 - **[source-paths.json kind discriminators](../../CAPABILITIES.md#how-it-gets-built)** (`git-managed` for spec repos,
   `external-doc` for marketing pages) cover the heterogeneous sources each

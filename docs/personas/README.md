@@ -6,7 +6,7 @@ need — *staying oriented inside a codebase too large to hold in your head* —
 shows up across different professional contexts.
 
 I've personally used skill-engine in three of these modes: daily feature work
-in a vast ecosystem (like the Newly-Hired Senior Engineer, minus the new-hire
+in a vast ecosystem (like the Newly-Hired Engineer, minus the new-hire
 part), efficiency hunting (like the Forward-Deployed Engineer), and the
 one-time legacy rescue (the founding-myth case). The other two — the Solutions
 Engineer and the Senior Product Manager — extrapolate cleanly from the same
@@ -35,9 +35,10 @@ one contextualizer per protocol, composes them with his business-context
 skill, and reasons about fit across the whole stack at once.
 
 ### [The Senior Product Manager](./senior-product-manager.md)
-Technical-adjacent, not a coder. Received a contextualizer hand-off from her
-staff engineer (as a zip into Claude Desktop). Pressure-tests roadmap features
-against the platform's actual constraints before championing them upward.
+Technical-adjacent, not a coder. Composes her predecessor's strategy memos
+with the live platform monorepo to surface where documented intent and
+deployed reality have drifted — before championing the next quarter's
+roadmap upward.
 
 ## Not your situation?
 
