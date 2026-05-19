@@ -7,7 +7,7 @@
     {
       "name": "skill-engine",
       "source": "./plugin/skill-engine",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "description": "Teach Claude your codebase. Keep it taught. Plugin that builds and maintains a curated index of multiple repositories, reviewer-in-the-loop on every change.",
       "homepage": "https://github.com/nick-railsback/skill-engine"
     }

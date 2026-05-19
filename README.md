@@ -128,7 +128,7 @@ describing how you'd want to use it.
 
 ## Where this is in its life
 
-This is v0.1.1. There is one worked example, one maintainer who built it because
+This is v0.2.0. There is one worked example, one maintainer who built it because
 he needed it and it did not yet exist.
 
 If you've ever stood in front of a codebase that outlived its authors, or
