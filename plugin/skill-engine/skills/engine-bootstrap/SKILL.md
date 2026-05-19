@@ -88,8 +88,7 @@ Accept all of these source-input shapes:
 | `git@github.com:<org>/<repo>.git` | git-managed source on GitHub (SSH form) |
 | `git+ssh://...` | git-managed source (generic SSH) |
 | `https://gitlab.com/<group>/<repo>`, `https://bitbucket.org/<user>/<repo>` | git-managed source (other hosts) |
-| `https://<host>/<path>/<page>.html` | external-doc source (single doc) |
-| `https://<host>/<path>/docs/...` (no git-host signal) | external-doc source (doc site) |
+| `https://<host>/<path...>` (any HTTP/HTTPS URL with no git-host signal) | web-doc source (default `crawl_mode: sitemap`) |
 | Absolute local path (`/Users/...`, `~/...`, `/home/...`) | local-path source |
 | Relative local path (`./foo`, `../bar`, bare `foo` referencing an existing dir) | local-path source (resolved to absolute at intake) |
 
@@ -104,11 +103,13 @@ either a git source or a doc site), ask one targeted question in
 user-language — never the engine's `kind` value directly. The canonical
 disambiguator:
 
-> Is `<input>` a source-code repo or a standalone document?
+> Is `<input>` a source-code repo or a documentation site?
 
 Accept `repo` / `doc` (or full words) and map internally: `repo` → `kind:
-git-managed`, `doc` → `kind: external-doc`. **On any other response**
-(blank `<Enter>`, `local`, `quit`, typo) re-prompt with:
+git-managed`, `doc` → `kind: web-doc` (the engine never produces
+`kind: external-doc` from URL intake — see *What this skill does NOT do*
+below). **On any other response** (blank `<Enter>`, `local`, `quit`,
+typo) re-prompt with:
 
 > Please answer `repo` or `doc` — or enter `q` to skip just this entry and
 > continue with the rest of the intake.
@@ -122,9 +123,9 @@ land in `source-paths.json`.
 
 A URL of the form `https://github.com/<org>` (no `<repo>` segment) is
 neither a recognizable git source nor a docs page — it points at an org
-landing page. **Don't fall through to the external-doc catch-all**; that
-would silently stamp `kind: external-doc` against a URL the engine
-cannot meaningfully crawl. Instead, re-prompt:
+landing page. **Don't fall through to the web-doc catch-all**; that
+would silently stamp `kind: web-doc` against a URL whose sitemap and
+page list the engine cannot meaningfully resolve. Instead, re-prompt:
 
 > `<url>` looks like a GitHub org landing page, not a specific repo or
 > doc. Paste the URL of a specific repo (e.g., `https://github.com/<org>/<repo>`)
@@ -145,7 +146,7 @@ For each accepted source, compute the following without prompting the user:
 |---|---|
 | `https://github.com/<org>/<repo>` | `<org>-<repo>` (lowercase; non-alphanumerics → hyphen; collapse runs) |
 | `git@github.com:<org>/<repo>.git` | `<org>-<repo>` (same rule, drop `.git`) |
-| `https://<host>/<path...>` (external-doc) | last meaningful path segment, lowercased; if it's a file, drop the extension |
+| `https://<host>/<path...>` (web-doc) | last meaningful path segment, lowercased; if it's a file, drop the extension. If the URL has no path segments (host-root like `https://docs.example.com/`), fall back to the host with non-alphanumerics → hyphen (e.g., `docs-example-com`). |
 | Local absolute or relative path | basename of the resolved absolute path, lowercased |
 
 On collision (two sources slug to the same id), append `-2`, `-3`, ... to the
@@ -263,14 +264,17 @@ locates the root itself from the project working directory.
 ### Stamping `research/source-paths.json`
 
 Replace the empty `"sources": []` from the template with one entry per
-intaken source, in the order supplied. Each entry:
+intaken source, in the order supplied. The per-entry shape depends on
+`kind`:
+
+**`kind: "git-managed"`** — set `url`; add `"branch": "<name>"` only if
+Step 2.4 recorded a non-default branch:
 
 ```json
 {
   "id": "<computed-slug>",
-  "kind": "<git-managed | external-doc | local-path | web-doc>",
-  "url": "<original-url-if-url>",
-  "path": "<resolved-absolute-path-if-local>",
+  "kind": "git-managed",
+  "url": "<original-url>",
   "status": "intake",
   "archived": false,
   "lifecycle": { "state": "unknown", "last_checked": null, "last_checked_sha": null, "proposed_url": null },
@@ -278,16 +282,42 @@ intaken source, in the order supplied. Each entry:
 }
 ```
 
-Set `url` only on URL-shaped sources; set `path` only on local-path sources.
-The fields are not exclusive at the schema level (a git-managed source the
-user has cloned locally could carry both), but at intake only one is set.
+**`kind: "web-doc"`** — set `url`; default `crawl_mode` to `"sitemap"`.
+Bootstrap does not resolve the sitemap or page list here; Step 3.6
+populates the cache and the optional `sitemap_url` / `page_list` fields
+remain absent until the user edits them (or DISCOVER proposes them):
 
-If the user supplied a non-default branch in Step 2.4 for this source,
-add a `"branch": "<name>"` key alongside `url`. Omit the key entirely
-when the user accepted the default — downstream code defaults to HEAD
-when the field is absent. Never record an explicit `"branch": "main"`
-or `"branch": "master"` from Step 2.4; the absent-field convention is
-load-bearing for the future-proofing reason documented in Step 2.4.
+```json
+{
+  "id": "<computed-slug>",
+  "kind": "web-doc",
+  "url": "<original-url>",
+  "crawl_mode": "sitemap",
+  "status": "intake",
+  "archived": false,
+  "lifecycle": { "state": "unknown", "last_checked": null, "last_checked_sha": null, "proposed_url": null },
+  "discovered_via": null
+}
+```
+
+**`kind: "local-path"`** — set `path` to the resolved absolute path:
+
+```json
+{
+  "id": "<computed-slug>",
+  "kind": "local-path",
+  "path": "<resolved-absolute-path>",
+  "status": "intake",
+  "archived": false,
+  "lifecycle": { "state": "unknown", "last_checked": null, "last_checked_sha": null, "proposed_url": null },
+  "discovered_via": null
+}
+```
+
+Bootstrap does **not** produce `kind: "external-doc"` entries: that kind
+is for pre-curated local `.md` content addressed by a contextualizer-
+internal `path`, not for a URL the user pastes at intake. External-doc
+entries land in `source-paths.json` via DISCOVER or hand-edit.
 
 `schema_version: 1` from the template stays as-is. The schema is additive;
 existing v1 files continue to parse cleanly.
@@ -641,3 +671,7 @@ the cache explicitly via `/skill-engine:clean-cache`.
   intake would force a multi-source intake to abort halfway; failing on
   DISCOVER lets the user paste the whole list and address broken entries
   in batch.
+- It does not produce `kind: "external-doc"` entries. external-doc
+  sources are pre-curated local markdown addressed by a contextualizer-
+  internal `path` (see [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md#kind-external-doc)); they arrive in `source-paths.json`
+  via DISCOVER or hand-edit, not via URL intake.
