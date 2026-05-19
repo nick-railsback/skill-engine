@@ -84,7 +84,7 @@ The `<area-domain>-` prefix in `references/<area-domain>-*.md` is a routing sign
 
 The bijection invariant (see "The bijection invariant" below) is unaffected by prefix choice - that contract holds regardless of how `<area-domain>-*` is filled in. The guidance here is about routing UX, not contract compliance.
 
-### External-doc sources on source-paths.json
+### `kind: "external-doc"`
 
 A `research/source-paths.json` entry can carry an optional `kind` discriminator that names the harvest treatment the engine applies to a source root. When `kind` is absent — the existing-corpus state for every contextualizer that has shipped before this addition — the entry receives the **git-managed source-root** treatment documented in [`03-engine.md`](03-engine.md): per-source SHA via `git rev-parse HEAD`, then sparse-clone or shallow-clone crawl when the SHA has changed. Back-compat is total — every existing source-paths.json entry continues to behave exactly as it did before the discriminator was introduced; `kind` is purely additive. Entries that explicitly set `kind: "external-doc"` receive the external-doc treatment described below.
 
@@ -96,7 +96,9 @@ A `research/source-paths.json` entry can carry an optional `kind` discriminator 
 }
 ```
 
-**What `kind: "external-doc"` means.** The `path` field points at pre-curated markdown content that lives outside any code repository — for example, a generic accessibility reference, a SharePoint-style compliance snapshot, an authored markdown sourced outside the navigated code repos. The engine treats this content as a first-class source for [DISCOVER](08-discover-pipeline.md) without applying the git-managed SHA-then-clone flow. Harvest semantics:
+**What `kind: "external-doc"` means.** The `path` field points at pre-curated markdown content that lives outside any code repository — for example, a generic accessibility reference, a SharePoint-style compliance snapshot, an authored markdown sourced outside the navigated code repos. The engine treats this content as a first-class source for [DISCOVER](08-discover-pipeline.md) without applying the git-managed SHA-then-clone flow. external-doc is **not a bootstrap-intake kind** — it carries a contextualizer-internal `path`, not a URL. Entries of this kind arrive in `research/source-paths.json` via DISCOVER, hand-edit, or a future workflow; the engine-bootstrap scaffolder produces `kind: "web-doc"` for doc-site URLs (see [`kind: "web-doc"`](#kind-web-doc)).
+
+Harvest semantics:
 
 * **Directory `path`.** The `path` resolves to a directory containing one-or-more `.md` files, scanned **recursively** so nested subdirectories are included (the exact walk recipe — `find -L`, the `-type f -o -type l` filter, and symlink handling — is canonicalized in the Symlink containment paragraph below and the `external-doc-frontmatter` named check in the contextualizer-side `verify.sh` the plugin stamps at bootstrap). Recursion is deliberate — external-doc directories typically mirror upstream wiki or SharePoint hierarchies the maintainer has not flattened; a shallow scan would silently skip the bulk of the content.
 * **Single-file `path`.** A contextualizer that ships exactly one external-doc `.md` file (the canonical example: one accessibility best-practices markdown injected at a known path) supports `kind: "external-doc"` with `path` resolving directly to the `.md` file rather than wrapping it in a directory. The verify check handles both shapes uniformly.

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "docs-example-com",
+      "kind": "web-doc",
+      "url": "https://docs.example.com/",
+      "crawl_mode": "sitemap",
+      "status": "intake",
+      "archived": false,
+      "lifecycle": { "state": "unknown", "last_checked": null, "last_checked_sha": null, "proposed_url": null },
+      "discovered_via": null
+    }
+  ]
+}

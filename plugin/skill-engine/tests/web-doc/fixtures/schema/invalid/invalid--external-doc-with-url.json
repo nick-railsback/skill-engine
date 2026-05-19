@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "url-on-external-doc",
+      "kind": "external-doc",
+      "url": "https://docs.example.com/",
+      "path": "external-fixtures",
+      "status": "intake",
+      "archived": false,
+      "lifecycle": { "state": "unknown", "last_checked": null, "last_checked_sha": null, "proposed_url": null },
+      "discovered_via": null
+    }
+  ]
+}

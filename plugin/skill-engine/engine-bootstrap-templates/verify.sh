@@ -213,10 +213,44 @@ else
             *) fail "sources[$idx] ($id): status '$status' not in {intake, proposed, confirmed, rejected}"; entries_ok=0 ;;
           esac
         fi
-        if [ -z "$url" ] && [ -z "$path" ]; then
-          fail "sources[$idx] ($id): neither url nor path is set — at least one is required"
-          entries_ok=0
-        fi
+        case "$kind" in
+          git-managed)
+            if [ -z "$url" ]; then
+              fail "sources[$idx] ($id): url is required when kind is git-managed"
+              entries_ok=0
+            fi
+            ;;
+          web-doc)
+            if [ -z "$url" ]; then
+              fail "sources[$idx] ($id): url is required when kind is web-doc"
+              entries_ok=0
+            fi
+            if [ -n "$path" ]; then
+              fail "sources[$idx] ($id): path '$path' set on kind 'web-doc' — web-doc sources are URL-addressed, not path-addressed"
+              entries_ok=0
+            fi
+            ;;
+          external-doc)
+            if [ -z "$path" ]; then
+              fail "sources[$idx] ($id): path is required when kind is external-doc"
+              entries_ok=0
+            fi
+            if [ -n "$url" ]; then
+              fail "sources[$idx] ($id): url '$url' set on kind 'external-doc' — external-doc sources are path-addressed (pre-curated local markdown), not URL-addressed"
+              entries_ok=0
+            fi
+            ;;
+          local-path)
+            if [ -z "$path" ]; then
+              fail "sources[$idx] ($id): path is required when kind is local-path"
+              entries_ok=0
+            fi
+            if [ -n "$url" ]; then
+              fail "sources[$idx] ($id): url '$url' set on kind 'local-path' — local-path sources are filesystem-addressed, not URL-addressed"
+              entries_ok=0
+            fi
+            ;;
+        esac
         if [ -n "$branch" ]; then
           if [ "$kind" != "git-managed" ]; then
             fail "sources[$idx] ($id): branch '$branch' set on kind '$kind' — branch is git-managed only"
