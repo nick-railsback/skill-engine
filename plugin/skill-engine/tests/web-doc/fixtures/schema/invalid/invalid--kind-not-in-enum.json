@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "bad",
+      "kind": "fictional-kind",
+      "url": "https://example.com/",
+      "status": "intake",
+      "lifecycle": { "state": "reachable" }
+    }
+  ]
+}

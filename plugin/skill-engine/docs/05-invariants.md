@@ -29,7 +29,7 @@ The engine runs the suite before surfacing changes for review.
 * [Hermetic test environment](#hermetic-test-environment)
 * [Suggested adoption order](#suggested-adoption-order)
 
-> **v0.2 aspirational.** The byte-equality-fixture + `test/test-cli.sh` harness described in this chapter is the v0.2 contract — not yet implemented in v0.1.x. The v0.1.x validation gate is the stamped `verify.sh` (catalog bijection, frontmatter discipline, link integrity, schema). The design below is preserved as the v0.2 specification; expect Invariants 1 and 4 in particular to shift as v0.2 lands.
+> **Pre-fixture-harness aspirational.** The byte-equality-fixture + `test/test-cli.sh` harness described in this chapter is the fixture-harness contract — not yet implemented in the pre-fixture-harness state. The pre-fixture-harness validation gate is the stamped `verify.sh` (catalog bijection, frontmatter discipline, link integrity, schema). The design below is preserved as the fixture-harness specification; expect Invariants 1 and 4 in particular to shift as the fixture-harness milestone lands.
 
 ## Test framework primitives
 

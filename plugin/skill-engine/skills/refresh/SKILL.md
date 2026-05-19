@@ -79,6 +79,38 @@ When `/skill-engine:refresh` is invoked:
 
    and exit cleanly.
 
+1.5. **Cache layout migration (one-time).** Earlier engine versions
+   stored git-managed clones flat at
+   `~/.cache/skill-engine/<source_id>-<sha>/`. The current layout is
+   `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`. On every
+   REFRESH invocation, check for flat-layout entries:
+
+   ```bash
+   cache_root="${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}"
+   # Allow-list: a flat-layout git-managed clone has a .git/HEAD file inside
+   # a directory at the cache root. Anything else (future kind subdirs, stray
+   # directories) is intentionally not migrated.
+   flat_entries=$(for d in "$cache_root"/*/; do
+     [ -d "$d" ] || continue
+     [ -f "$d/.git/HEAD" ] || continue
+     printf '%s\n' "${d%/}"
+   done)
+   ```
+
+   If any are found, prompt **once per session**:
+
+   ```
+   Found <N> cache entries in the old flat layout.
+   Relocate to ~/.cache/skill-engine/git-managed/? This is a one-shot
+   mv (local-only, not committed). Decline to re-clone on next REFRESH.
+   [y/N]
+   ```
+
+   On `y`: `mv` each entry into `git-managed/`. On `n`: skip; the
+   existing re-clone path handles cache miss on next REFRESH. The
+   user's choice is not persisted — the prompt fires next REFRESH if
+   any flat entries remain.
+
 2. **Thin-schema migration (transparent).** If any `sources[i]` entry
    still carries a `chunks[]` field (legacy schema from earlier engine
    versions), flatten it away on first invocation: write back the file
@@ -145,6 +177,104 @@ referenced), emit a lifecycle sweep dry-run per [`04-delivery.md`](https://githu
 The user accepts or rejects the sweep through the protocol documented
 there (proposal-token + per-file SHA integrity gates). The engine
 does not auto-mutate references on lifecycle transition.
+
+## Phases
+
+The four phases below give REFRESH a concrete sequential shape after
+pre-flight. Run them in order; each phase's outputs feed the next.
+
+### Phase 1 — HEAD probe (kind-dispatched)
+
+| Kind | Probe command | Records to lifecycle |
+|---|---|---|
+| `git-managed` | `git ls-remote --heads <url> <branch>` | `last_checked_sha` = first column |
+| `web-doc` | `HTTP HEAD <url>` | `last_checked` = now; if redirect → `state: "moved"`, `proposed_url` set; if 4xx → `state: "removed"` |
+| `external-doc` | n/a (local content) | n/a |
+| `local-path` | n/a (local content) | n/a |
+
+For `web-doc`, use WebFetch or the available MCP fetch tool with HTTP
+HEAD if supported; fall back to GET with body discarded if the tool
+doesn't expose HEAD. Conservative default: any non-zero probe exit maps
+to `lifecycle.state: "unknown"`, NOT `"removed"`.
+
+For `git-managed` probes, the tool-choice guidance in "Tool preference
+for git-managed sources" below (gh/git CLI over WebFetch; how to pick
+`<ref>` when `branch` is present vs. absent) applies.
+
+### Phase 2 — Decay check (web-doc only)
+
+For each `web-doc` source with `status: "confirmed"` and a cached
+snapshot:
+
+1. Read `_crawl-manifest.json`'s `crawl_date` and the source's `decay`
+   value (from any of the snapshot file's frontmatter — they should all
+   match; use the first).
+2. Compute `expires_at = crawl_date + decay`. If `decay == "none"`,
+   skip (crawl-once).
+3. If `now > expires_at`, mark the source for re-crawl.
+
+Prompt the user **once per session** with the full list of expired
+sources:
+
+```
+<N> web-doc sources are past their decay budget:
+  - <source_id_1> (crawled <D1>, decay <X1>, <Y1> overdue)
+  - <source_id_2> ...
+
+Re-crawl now? [y/N/individual]
+```
+
+`individual` mode prompts per-source.
+
+### Phase 3 — Apply (re-crawl + diff surfacing)
+
+For each web-doc source approved for re-crawl:
+
+1. Execute the bootstrap Step 3.6 crawl procedure with the same source
+   config (sitemap discovery, filters, budget, robots).
+2. Compute the new `crawl_id` from the fresh page set.
+3. If `new_crawl_id == old_crawl_id`, no content changed — update
+   `lifecycle.last_checked` only, discard the new tmp directory.
+4. Otherwise, compute diff:
+   - **Added pages**: in new manifest, not in old.
+   - **Removed pages**: in old manifest, not in new.
+   - **Changed pages**: same URL, different content_hash.
+5. Update `lifecycle.last_crawl_id` to the new value.
+6. Surface in the REFRESH closing line:
+
+```
+web-doc source <source_id>:
+  +<A> pages added (consider covering in references)
+  -<R> pages removed (review references citing these for cut_block)
+  ~<C> pages changed (references citing these need content_hash update)
+
+Old snapshot at ~/.cache/skill-engine/web-doc/<source_id>-<old_id>/
+retained pending reference review.
+```
+
+7. Cache GC: defer deletion of the old `<old_id>` directory until no
+   active reference cites a content_hash inside it. The next REFRESH
+   sweeps unreferenced old directories.
+
+### Phase 4 — Cache GC pass (web-doc only)
+
+After all re-crawls complete, walk
+`~/.cache/skill-engine/web-doc/<source_id>-*/` for each source. For each
+directory that is NOT the source's current `lifecycle.last_crawl_id`,
+check whether any reference file in the contextualizer cites a
+content_hash present in that directory's `_crawl-manifest.json`:
+
+```bash
+# Pseudocode: for each old crawl directory, grep all references for any
+# content_hash listed in its manifest. If zero hits, it's GC-eligible.
+```
+
+GC-eligible directories are listed in the REFRESH summary; user
+confirms before deletion. (Aligns with the "engine does not act without
+consent" doctrine — old caches stay until the user OKs removal.)
+
+The git-managed cache GC rules in "Cache garbage collection" below are
+complementary: Phase 4 covers `web-doc/` only.
 
 ## Tool preference for git-managed sources
 

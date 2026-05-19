@@ -1,0 +1,4 @@
+{ "schema_version": 1, "sources": [
+  { "id": "x", "kind": "web-doc", "url": "https://example.com/", "crawl_mode": "sitemap",
+    "crawl_budget": 0, "status": "intake", "lifecycle": {"state":"reachable"} }
+]}

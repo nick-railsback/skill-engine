@@ -1,6 +1,6 @@
 # 02-Artifact contract
 
-This chapter is the **artifact contract**: the file structure the engine produces and the invariants every reference and navigator must satisfy. The engine in [03-engine.md](03-engine.md) (via the contextualizer-side `verify.sh`) and the v0.2 test-suite design in [05-invariants.md](05-invariants.md) both treat this contract as the spec they validate against. If a deliverable from the engine doesn't match this shape, the pre-approval validation rejects it.
+This chapter is the **artifact contract**: the file structure the engine produces and the invariants every reference and navigator must satisfy. The engine in [03-engine.md](03-engine.md) (via the contextualizer-side `verify.sh`) and the fixture-harness test-suite design in [05-invariants.md](05-invariants.md) both treat this contract as the spec they validate against. If a deliverable from the engine doesn't match this shape, the pre-approval validation rejects it.
 
 The conventions are not stylistic. The navigator's loading model and the engine's pre-approval validation both depend on predictable structure - skipping one surfaces as a test failure or a runtime read failure later. The rationale traces back to [01-principles.md](01-principles.md), particularly the frontmatter discipline and the `disable-model-invocation` workaround.
 
@@ -14,7 +14,7 @@ The conventions are not stylistic. The navigator's loading model and the engine'
 * [The bijection invariant (the load-bearing one)](#the-bijection-invariant-the-load-bearing-one)
 * [Why these conventions exist](#why-these-conventions-exist)
 
-> **v0.1.x scope note.** This chapter describes the artifact-contract surface as a whole. Mentions of the byte-equality fixture and the full test-suite harness below belong to the v0.2 design (canonical in [05-invariants.md](05-invariants.md)); v0.1.x ships with the stamped `verify.sh` as the single validator — covering no-frontmatter, catalog bijection, navigator/reference frontmatter, source-paths schema, and the optional SKILL.json trijection. Inline "(v0.2)" tags flag the boundary where it matters; treat the rest as the current v0.1.x contract.
+> **Pre-fixture-harness scope note.** This chapter describes the artifact-contract surface as a whole. Mentions of the byte-equality fixture and the full test-suite harness below belong to the fixture-harness design (canonical in [05-invariants.md](05-invariants.md)); the pre-fixture-harness state ships with the stamped `verify.sh` as the single validator — covering no-frontmatter, catalog bijection, navigator/reference frontmatter, source-paths schema, and the optional SKILL.json trijection. Inline "(fixture-harness)" tags flag the boundary where it matters; treat the rest as the current pre-fixture-harness contract.
 
 ## The three artifacts
 
@@ -122,6 +122,37 @@ decay: 30d
 **The footgun.** Blending un-tagged generic references with repo-derived signal is a portfolio-grade mistake — the lint check exists precisely to catch it at scaffold time, and the commit-time check enforces it again at the public boundary. A reviewer reading the navigator at consumption time must be able to distinguish "this came from our internal design system's repo" from "this came from a generic best-practices markdown someone dropped in". Provenance tagging via `source_id` plus mandatory `source_url` in frontmatter is the signal that makes the distinction visible; un-tagged content blended into the corpus silently erases it. The lint is the defense.
 
 **Symlink containment.** External-doc paths may legitimately follow symlinks — a `references/external/` symlink to a sibling directory synced from an upstream wiki or compliance source is a real authoring pattern. The harvest walk uses `find -L` to follow symlinks, AND every resolved target is `realpath`-checked for containment within the contextualizer repo root: a resolved target outside the root is rejected at scaffold-lint time (by the engine-bootstrap scaffolder) AND at commit time (by the `external-doc-frontmatter` named check in the contextualizer's `verify.sh`). The cycle cap is 16 hops — symlink-to-self, `A → B → A`, and longer cycles all fail loudly naming both the offending starting symlink and the resolved cycle path. macOS BSD `realpath` and GNU `realpath -e` differ on cycle behavior (BSD silently produces a partial result; GNU errors); the check normalizes by attempting `realpath -e` first and falling back to a pure-bash hop-counting loop (POSIX-bash only, no third-party deps) when `-e` is unsupported, so the check is deterministic across the cross-platform tiers documented in [`01-principles.md`](01-principles.md). The failure message names the offending symlink path AND the resolved target. DISCOVER refuses to harvest any content from outside-root targets — the rejection fires at the harvest entry point, not deeper in the pipeline, so no partial-harvest state is possible.
+
+### `kind: "web-doc"`
+
+Documentation-site content acquired via the model's installed fetch
+tool (WebFetch or MCP fetch). Snapshots live in a gitignored cache at
+`~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/`; one `.md` file
+per crawled page, with the same provenance frontmatter
+(`source_url`, `crawl_date`, `decay`) as `external-doc` files.
+
+Citation form: `source_url + content_hash + crawl_date` — the cache is
+gitignored, so the reviewer on a different machine verifies by
+re-fetching the URL and comparing content_hash.
+
+Schema fields:
+
+| Field | Required | Notes |
+|---|---|---|
+| `url` | yes | Root site URL. REFRESH HEAD-probes this. |
+| `crawl_mode` | yes | `"sitemap"` or `"list"`. |
+| `sitemap_url` | no (sitemap mode only) | Override auto-discovery. |
+| `page_list` | yes (list mode only) | URLs sharing the source `url`'s origin. |
+| `crawl_filters` | no | `{ include: [glob], exclude: [glob] }`, default `{ include: ["/**"], exclude: [] }`. |
+| `crawl_budget` | no | Integer in [1, 5000], default 200. |
+| `branch` | **rejected** | Schema violation on web-doc. |
+
+The `_crawl-manifest.json` file at the cache root records the audit
+trail (pages, failures, robots-disallows, budget truncation).
+
+The recipe for setting up a web-doc source — sitemap vs. list mode,
+filtering, budget, decay — lives in
+[`docs/recipes/web-doc-setup.md`](recipes/web-doc-setup.md).
 
 ### source-paths.json entry shape
 
@@ -392,7 +423,7 @@ References are direct, imperative, code-forward, and concrete. Show the code, th
 ### Reference size budget
 **< 500 lines, < 18KB** per file. If you're at the limit, split the reference - don't compress the prose. Splitting also forces a useful question: are you covering one topic or two?
 
-The max-line-count and max-byte-count constraint is part of the v0.2 invariants design — see [05-invariants.md](05-invariants.md). v0.1.x relies on reviewer eyeball-judgment against this budget until the v0.2 harness lands; `verify.sh` does not currently enforce it.
+The max-line-count and max-byte-count constraint is part of the fixture-harness invariants design — see [05-invariants.md](05-invariants.md). The pre-fixture-harness state relies on reviewer eyeball-judgment against this budget until the fixture-harness lands; `verify.sh` does not currently enforce it.
 
 ### Reference depth (one level)
 
@@ -522,7 +553,7 @@ source_id = sha256(path-relative-to-contextualizer-root)[:8]
 Five properties this form pins:
 
 * **The input is the source path relative to the contextualizer root, not the absolute path.** Absolute paths are local to one maintainer's filesystem; hashing them would give a different `source_id` to a colleague who clones the contextualizer to a different directory, breaking the per-source cache the moment the work crossed machines.
-* **The hash function is SHA-256**, matching the project's choice for the v0.2 byte-equality-fixture design (and the same family the engine already uses for SHA-pinned permalinks).
+* **The hash function is SHA-256**, matching the project's choice for the fixture-harness byte-equality-fixture design (and the same family the engine already uses for SHA-pinned permalinks).
 * **The output is the first 8 hex characters** of the digest — 32 bits, roughly 4.3 billion values.
 * **The relative path is normalized to POSIX-canonical form before hashing.** Trailing slashes, leading `./`, and repeated separators are stripped; `./foo/`, `foo`, and `foo/` all produce the same `source_id`. Symlinks are not expanded — the path is treated as a logical name. The chapter prescribes the normalization semantically; the specific shell, scripting-language, or library invocation is an implementation concern, not contract surface.
 * **The normalized path is rendered as UTF-8 bytes in NFC Unicode normalization, with forward-slash separators, case-preserving, before SHA-256 is applied.** Filesystems disagree on these defaults — some return NFD-decomposed filenames where others return NFC; some accept backslashes where others reject them — so without an explicit normalization the same logical path would hash differently across operating systems and the cross-machine stability promised at the top of this section would not hold. Case is preserved as-typed: `Foo` and `foo` produce different `source_id`s; on case-insensitive filesystems the maintainer's responsibility is to use consistent casing in the source-paths configuration across machines.
@@ -590,7 +621,7 @@ Use this when the sections are truly independent - they don't share gotchas, aud
 2.  Draft new reference files following the six prescribed sections; each is *complete*, not a fragment.
 3.  Update the navigator catalog (add rows; update the source reference's description to reflect what remains).
 4.  Add cross-reference map entries that route old query patterns to the new destinations.
-5.  *(v0.2 aspirational, once the byte-equality fixture harness ships.)* Add byte-equality fixture entries for each new reference — see [05-invariants.md](05-invariants.md). v0.1.x skips this step.
+5.  *(pre-fixture-harness aspirational, once the byte-equality fixture harness ships.)* Add byte-equality fixture entries for each new reference — see [05-invariants.md](05-invariants.md). The pre-fixture-harness state skips this step.
 6.  Re-point existing references' "Related References" sections.
 7.  Run pre-approval validation: catalog bijection, no-frontmatter, `./verify.sh`.
 

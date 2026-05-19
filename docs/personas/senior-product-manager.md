@@ -29,10 +29,11 @@ can't remember what it concluded. Planning is in six days.
 ## The intervention
 
 Priya registers two sources with skill-engine. The first is
-`external-doc`: her predecessor's Confluence space, exported to markdown
-— eighteen months of strategy memos, planning decks, and retros, with
-`source_url` pointing back to the live pages and a `crawl_date` so she
-knows what's stale. That's *intent* — the thread of what the surface was
+`web-doc`: her predecessor's Confluence space, crawled (via
+`crawl_mode: sitemap` where the space exposes a sitemap, otherwise
+`crawl_mode: list` with an explicit `page_list`) — eighteen months of
+strategy memos, planning decks, and retros, with `source_url` pointing
+back to the live pages and a `crawl_date` so she knows what's stale. That's *intent* — the thread of what the surface was
 supposed to become. The second is `git-managed`: the platform monorepo
 where all three teams ship — services, schemas, feature flags. That's
 *reality* — what the surface actually is. She runs the navigator with
@@ -65,8 +66,8 @@ solvable.
   same kind of source; skill-engine's navigator holds them together so
   disagreement between *intent* and *reality* becomes a visible,
   queryable artifact.
-- **[Three first-class source kinds](../../CAPABILITIES.md#how-it-gets-built)** —
-  `external-doc` registration with `source_url` and `crawl_date`
+- **[Four first-class source kinds](../../CAPABILITIES.md#how-it-gets-built)** —
+  `web-doc` registration with `source_url` and `crawl_date`
   provenance means Priya's predecessor's documentation participates as
   a first-class source, not as pasted-in context. The schema, not a
   one-off prompt, is what holds.

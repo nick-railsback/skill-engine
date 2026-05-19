@@ -86,7 +86,7 @@ Why this shape and not, say, twenty per-topic skills, or a single mega-skill, or
 1. **Frontmatter check:** every modified reference still starts with content, not `---`
 2. **Catalog bijection check:** navigator catalog rows still correspond 1:1 with primary reference files
 3. **Validator execution:** `./verify.sh` passes end-to-end
-4. **Checksum fixture refresh (v0.2 aspirational):** `test/fixtures/source-body-checksums.txt` regeneration is part of the v0.2 byte-equality contract; v0.1.x relies on `verify.sh` for content shape.
+4. **Checksum fixture refresh (pre-fixture-harness aspirational):** `test/fixtures/source-body-checksums.txt` regeneration is part of the fixture-harness byte-equality contract; the pre-fixture-harness state relies on `verify.sh` for content shape.
 
 If any check fails, the diff isn't surfaced; the engine fixes the issue first. This makes "engine proposed bad output" a fail-closed condition rather than a fail-to-the-human.
 

@@ -1,0 +1,1 @@
+crawl_mode 'spider' not in {sitemap, list}

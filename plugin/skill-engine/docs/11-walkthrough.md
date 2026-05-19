@@ -105,6 +105,8 @@ This is the **on-demand load** pattern in action. `library-plugins.md` could be 
 
 For `library-context` after a year in production, here's what a run looks like under the goal-given posture documented in [08-discover-pipeline.md](08-discover-pipeline.md).
 
+> **Aside — web-doc upstreams.** If the upstream is a documentation site (e.g. MkDocs / Docusaurus / Sphinx), use `kind: web-doc` with `crawl_mode: sitemap`. The walkthrough below shows `git-managed` as the primary example; the `web-doc` flow differs only in step 3.6 (sitemap crawl) and step 5.5 (frontmatter check on the cache). See [recipes/web-doc-setup.md](recipes/web-doc-setup.md).
+
 The contextualizer's `research/source-paths.json` carries three entries: `library` (the main repo), `library-cli` (a downstream CLI consumer), and `library-bench` (the benchmark suite that consumes both). All three are at `status: confirmed`, `lifecycle.state: reachable`. The team invokes `/skill-engine:discover`; the model reads each source via `gh repo view` / `git ls-tree` (preferring the CLI over WebFetch for `kind: git-managed`) and considers what to write.
 
 > **Sidebar — no local cache.** If no `~/.cache/skill-engine/library-*/` directory exists (the team declined the seed offer at bootstrap, or recently ran `/skill-engine:clean-cache`), DISCOVER's pre-flight step 6 prompts once per git-managed source before reading:

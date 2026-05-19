@@ -46,6 +46,24 @@ least one of `url`/`path`. The `status` enum is validated when present.
 `archived`, `discovered_via`, and any other additive fields are
 tolerated (additive schema evolution).
 
+### `kind` discriminators
+
+The `kind` field names the harvest treatment the engine applies. Four
+values are accepted; the canonical schema for each lives in
+[`02-artifact-contract.md`](02-artifact-contract.md):
+
+| `kind` | What it harvests | Required schema fields beyond the base | Canonical doctrine |
+|---|---|---|---|
+| `git-managed` | Git-hosted source code. `url` required. | optional `branch` | [`02-artifact-contract.md` §"source-paths.json entry shape"](02-artifact-contract.md#source-pathsjson-entry-shape) |
+| `external-doc` | Pre-curated `.md` content outside any code repo. `path` required (directory or single file). | `.md` files carry provenance frontmatter (`source_url`, `crawl_date`, `decay`) | [`02-artifact-contract.md` §"`kind: "external-doc"`"](02-artifact-contract.md#external-doc-sources-on-source-pathsjson) |
+| `web-doc` | Documentation-site content acquired via WebFetch or MCP fetch. `url` and `crawl_mode` required. | `sitemap_url` (sitemap mode, optional) or `page_list` (list mode, required); optional `crawl_filters`, `crawl_budget`; `branch` rejected | [`02-artifact-contract.md` §"`kind: "web-doc"`"](02-artifact-contract.md#kind-web-doc) |
+| `local-path` | Non-git local-filesystem source. `path` required. | none | [`02-artifact-contract.md` §"source-paths.json entry shape"](02-artifact-contract.md#source-pathsjson-entry-shape) |
+
+Each `kind` has its own cache layout under
+`~/.cache/skill-engine/<kind>/<source_id>-<discriminator>/`; see
+[`03-engine.md` §"Cache layout"](03-engine.md#cache-layout-per-kind-subdirectories)
+for the full per-kind directory shape.
+
 **Optional `branch`** (`kind: "git-managed"` only). Names the upstream
 ref REFRESH and DISCOVER track. Absent ⇒ HEAD. Set this when the
 contextualizer follows a non-default branch like `dev`, `nonprod`, or

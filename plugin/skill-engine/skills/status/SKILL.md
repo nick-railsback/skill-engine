@@ -89,6 +89,26 @@ If multiple `<source_id>-*/` directories exist for the same `source_id`
 (i.e., older SHAs were not GC'd because REFRESH has not run yet), flag
 them as a hint in the Cache section, but do not delete.
 
+### Cache listing
+
+`~/.cache/skill-engine/git-managed/`:
+| source_id | sha | last_fetched |
+|---|---|---|
+| ... | ... | ... |
+
+`~/.cache/skill-engine/web-doc/`:
+| source_id | crawl_id | page_count | crawl_date | decay_remaining |
+|---|---|---|---|---|
+| ... | ... | ... | ... | ... |
+
+Old flat-layout entries (if present):
+| dir | last_modified |
+|---|---|
+| ~/.cache/skill-engine/<source_id>-<sha>/ | ... |
+
+(The old-layout listing exists until the user runs the REFRESH migration
+prompt or `clean-cache`.)
+
 ## Invariants
 
 STATUS is read-only. It surfaces findings; it does not propose edits, does not

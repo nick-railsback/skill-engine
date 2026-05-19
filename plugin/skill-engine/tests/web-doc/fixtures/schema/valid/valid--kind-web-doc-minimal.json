@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "test-doc-site",
+      "kind": "web-doc",
+      "url": "https://example.com/docs/",
+      "crawl_mode": "sitemap",
+      "status": "intake",
+      "lifecycle": { "state": "reachable" }
+    }
+  ]
+}

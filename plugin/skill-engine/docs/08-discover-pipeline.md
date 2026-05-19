@@ -129,6 +129,22 @@ prompts are a convenience over manual `git clone`, not a replacement
 for it (see [`plugin/skill-engine/skills/engine-bootstrap/SKILL.md`](plugin/skill-engine/skills/engine-bootstrap/SKILL.md)
 for the per-source clone shape).
 
+For `kind: web-doc` sources, the same pre-flight Step 6 dispatches
+to a kind-aware probe — a bare directory match under
+`~/.cache/skill-engine/web-doc/<source_id>-*/` is sufficient for a
+cache hit (web-doc snapshots carry no `.git/` to validate). On a miss,
+the user is prompted **once per source** to crawl the upstream site
+into the cache; on consent the skill runs the bootstrap Step 3.6 crawl
+procedure inline (sitemap fetch, page-budget enforcement, atomic
+rename into `~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/`);
+on decline the source is sticky-skipped for this DISCOVER session
+(no upstream live read substitutes for the missing snapshot — the
+post-run summary records an explicit "no cache, no read" notice
+naming the source). The canonical wording for both prompts and the
+full kind-dispatch flow lives in
+[`plugin/skill-engine/skills/discover/SKILL.md`](plugin/skill-engine/skills/discover/SKILL.md)
+pre-flight step 6; this chapter summarizes rather than duplicates.
+
 The clone cache persists across runs; REFRESH garbage-collects stale
 per-`source_id` SHA directories on SHA advance, STATUS surfaces what is
 on disk, and `/skill-engine:clean-cache` is the opt-in all-at-once

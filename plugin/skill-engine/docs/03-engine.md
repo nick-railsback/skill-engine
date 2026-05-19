@@ -72,6 +72,39 @@ The persistent local-clone cache runs through a four-stage **cache lifecycle**:
 
 Nothing in DISCOVER, REFRESH, or any other workflow invokes `clean-cache` automatically — the deletion gesture is reserved for the user. The full cleanup contract lives in [`09-discover-config.md`](09-discover-config.md) §"Cleanup contract"; the seed half lives in [`09-discover-config.md`](09-discover-config.md) §"Optional local clone cache".
 
+## Cache layout (per-kind subdirectories)
+
+```
+~/.cache/skill-engine/
+├── git-managed/<source_id>-<sha>/
+└── web-doc/<source_id>-<crawl_id>/
+    ├── _crawl-manifest.json
+    └── <slugified-url-path>.md
+```
+
+Cache root is `${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}`. The
+`SKILL_ENGINE_CACHE_ROOT` override exists for tests and for users with
+non-default XDG cache configuration.
+
+### `crawl_id` derivation
+
+```
+crawl_id = sha256(sorted-page-urls || concatenated-page-content-hashes)[:8]
+```
+
+Stable across re-crawls when content is unchanged (no churn). New
+directory on every content shift.
+
+### Migration from old flat layout
+
+Earlier engine versions stored cache directly at
+`~/.cache/skill-engine/<source_id>-<sha>/`. REFRESH's pre-flight detects
+this layout and offers a one-shot bulk `mv` of all flat entries into
+`~/.cache/skill-engine/git-managed/`, prompted once per session. Decline →
+those entries are re-cloned on the next REFRESH that walks them. See
+[refresh/SKILL.md § pre-flight step 1.5](../skills/refresh/SKILL.md) for
+the canonical procedure.
+
 ## Anatomy: how the engine works
 
 Under the goal-given delegation principle (see [01-principles.md](01-principles.md#1-goal-given-task-delegation)), the engine hands the model a task and validates the output. The model decides how to spend its context — what to read, what to skip, what to propose — within the bounds the task sets. When the model elects to crawl in parallel via subagents (a common choice for multi-source workflows), the following patterns apply.
@@ -203,7 +236,7 @@ Before surfacing any proposed change to the human reviewer, the agent runs autom
 1.  **Frontmatter check:** every modified reference still starts with content (e.g., a `# Title` line), not a `---` frontmatter delimiter. Failure means the agent erroneously added frontmatter; the agent strips it and rewrites.
 2.  **Catalog bijection check:** the navigator catalog rows still correspond 1:1 with `references/<area-domain>-*.md` files (see [02-artifact-contract.md](02-artifact-contract.md) for the bijection definition). Failure means the agent added a reference without adding a catalog row, or removed a file without removing its row. The agent fixes the navigator, then re-checks.
 3.  **Validator execution:** your contextualizer's `./verify.sh` passes end-to-end. Failure means something about the change broke an invariant; the agent surfaces the failing check output to the human and asks for triage rather than guessing.
-4.  **Checksum fixture refresh (v0.2 aspirational):** the per-reference SHA-256 fixture (`test/fixtures/source-body-checksums.txt`, see [05-invariants.md](05-invariants.md)) is the v0.2 byte-equality contract — not yet implemented in v0.1.x.
+4.  **Checksum fixture refresh (pre-fixture-harness aspirational):** the per-reference SHA-256 fixture (`test/fixtures/source-body-checksums.txt`, see [05-invariants.md](05-invariants.md)) is the fixture-harness byte-equality contract — not yet implemented in the pre-fixture-harness state.
 
 **Sandbox isolation.** Each validation pass runs against `/tmp/skill-engine-validate-<session-id>/` — an isolated copy of the modified surface plus the validator, not the working tree. Before the checks above run, the agent copies the full `references/` directory (so the catalog bijection check sees the complete file set), the navigator catalog, and the validator (`./verify.sh`) into the sandbox directory. The checks execute against the sandbox copy. The agent's mid-iteration fixes — repairing frontmatter, regenerating fixtures, adding missing content — operate on the sandbox copy. The working tree is byte-identical before and after validation iterates, regardless of how many fix-retry rounds the validation phase takes. On normal exit (success or failure), the sandbox is removed via `rm -rf /tmp/skill-engine-validate-<session-id>/`. `<session-id>` reuses the engine's existing format (`YYYY-MM-DDTHH-MM-SSZ-<short-suffix>`; ISO 8601 UTC with colons → hyphens, plus a 4-char random suffix) so the sandbox is correlated with the session-reflection file and the per-session state log. The implementation is `cp -R` to `/tmp/` (not `git worktree add`) per the project's bash-only constraint stack.
 
@@ -288,7 +321,7 @@ The categorization lives in the agent prompt as an explicit matrix. Don't let th
 5. Propose updates to those references (curated rewrites, not bulk replacement)
 6. Run pre-approval validation (the four checks)
 7. Surface proposed diff to human for approval
-8. On approval: write changes, update per-source state in `source-paths.json`, regenerate any README freshness counters (checksum fixture refresh is v0.2 aspirational, per the pre-approval check list above)
+8. On approval: write changes, update per-source state in `source-paths.json`, regenerate any README freshness counters (checksum fixture refresh is pre-fixture-harness aspirational, per the pre-approval check list above)
 9. On rejection: discard the proposed diff but keep the per-source SHA updates from Phase 1 (so next session knows the SHA was checked)
 
 ### SKILL (single-reference targeted update)
@@ -299,7 +332,7 @@ Same as REFRESH, but limited to one reference's resources. Faster when you're wo
 2. The engine crawls the resources and drafts a new reference following the [02-artifact-contract.md](02-artifact-contract.md) conventions
 3. The engine adds the catalog row to `SKILL.md`
 4. The engine registers resources in `research/source-paths.json`
-5. *(v0.2 aspirational.)* The engine appends the new reference's SHA-256 to the checksum fixture. v0.1.x skips this step.
+5. *(pre-fixture-harness aspirational.)* The engine appends the new reference's SHA-256 to the checksum fixture. The pre-fixture-harness state skips this step.
 6. Pre-approval validation, surface, approve, write
 
 ### STATUS (read-only dashboard)
@@ -380,7 +413,7 @@ Empty input is `n`. The opt-in is per-run — there is no setting to default thi
 On `y` or `select`, the workflow reuses the REFRESH Phase 3-6 shape:
 
 1. **Propose.** Draft the deterministic edits on a sandbox copy at `/tmp/skill-engine-validate-<session-id>/` — the same sandbox infrastructure documented above under [Pre-approval validation](#pre-approval-validation-the-load-bearing-contract). The working tree is byte-identical until Phase 6.
-2. **Validate.** Dispatch the `worker-verify` worker (see [`plugin/skill-engine/agents/worker-verify.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/agents/worker-verify.md)) against the sandbox. All three v0.1.x checks (no-frontmatter, catalog bijection, `./verify.sh`) must pass — same pre-approval contract REFRESH uses. (Checksum fixture refresh and full test suite are v0.2 aspirational; see the [Pre-approval validation](#pre-approval-validation-the-load-bearing-contract) section above.)
+2. **Validate.** Dispatch the `worker-verify` worker (see [`plugin/skill-engine/agents/worker-verify.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/agents/worker-verify.md)) against the sandbox. All three pre-fixture-harness checks (no-frontmatter, catalog bijection, `./verify.sh`) must pass — same pre-approval contract REFRESH uses. (Checksum fixture refresh and full test suite are pre-fixture-harness aspirational; see the [Pre-approval validation](#pre-approval-validation-the-load-bearing-contract) section above.)
 3. **Human review.** Surface the unified diff plus a one-line rationale per finding. Wait for explicit `APPROVE`, `DEFER`, or `REJECT`. On `DEFER`, exit cleanly with findings unchanged. On `REJECT`, append to `research/.rejection-log.json` per the rejection-memory schema.
 4. **Apply.** On `APPROVE`, write to the working tree. Append a `session_type: "SELF-AUDIT"` entry to `research/.engine-stats.json` carrying `approved_proposals` and `rejected_proposals`; log per-session detail to `research/sessions/<session-id>.json`. The state-trail schema is unchanged from REFRESH.
 

@@ -29,6 +29,12 @@ for a branch at registration time — the maintainer can supply
 approval gesture, or edit `source-paths.json` after approval. Field
 schema and regex enforcement: [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §"source-paths.json entry shape".
 
+For `web-doc` sources, citations pin three values: `source_url` (from the
+fetched URL), `content_hash` (`sha256(file)[:8]`), and `crawl_date` (ISO-8601
+UTC). The cache path is the model's read path but is NOT the citation
+target — a reviewer on a different machine verifies by re-fetching the URL
+and comparing `content_hash`.
+
 ## Contextualizer root
 
 Engine workflows operate inside a contextualizer installed as a project
@@ -65,7 +71,7 @@ authoring, catalog update, validation — lives in chapter [`03-engine.md`](http
 section of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
 
 The artifact contract a new reference must satisfy (frontmatter, filename
-conventions, catalog bijection; the byte-equality fixture is v0.2
+conventions, catalog bijection; the byte-equality fixture is pre-fixture-harness
 aspirational) is documented in [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md).
 
 ## Cadence
@@ -77,8 +83,8 @@ Ad-hoc, whenever the domain grows a new topic the catalog does not yet cover.
 Pre-approval validation runs before any write: catalog bijection,
 no-frontmatter, `./verify.sh`. See chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
 `## Pre-approval validation (the load-bearing contract)`. (Byte-equality
-fixture refresh and the full test-suite harness are v0.2 aspirational —
-v0.1.x's three-check gate ends with `verify.sh`.)
+fixture refresh and the full test-suite harness are pre-fixture-harness aspirational —
+the pre-fixture-harness three-check gate ends with `verify.sh`.)
 
 The catalog row, the reference file, and (if applicable) the new entry in
 `research/source-paths.json` are all part of the same proposal — surface
