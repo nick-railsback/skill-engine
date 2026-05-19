@@ -25,9 +25,9 @@ Eight steps, in order. Most are scriptable; treat the whole thing as a manual ch
    * CLI script header comment: `# Version: X.Y.Z`
    * CLI script `VERSION="X.Y.Z"` variable
    * `.claude-plugin/plugin.json` `"version": "X.Y.Z"`
-   * (v0.2 planned: a `verify.sh` version-consistency check would make this the fourth surface.)
+   * (fixture-harness planned: a `verify.sh` version-consistency check would make this the fourth surface.)
 3. **Update CHANGELOG.md.** Move any `[Unreleased]` entries under a new `[X.Y.Z] - YYYY-MM-DD` header. Add new entries for any release-only changes.
-4. **Run the validator.** `./verify.sh` must pass with `Failed: 0`. Version-consistency belongs to v0.2; until then, eyeball-review the diff in step 5 to catch a missed bump.
+4. **Run the validator.** `./verify.sh` must pass with `Failed: 0`. Version-consistency belongs to the fixture-harness milestone; until then, eyeball-review the diff in step 5 to catch a missed bump.
 5. **Commit and push the version bump.** One commit, message like `chore(release): vX.Y.Z`. Push to your default branch.
 6. **Build the release artifacts.**
    ```bash

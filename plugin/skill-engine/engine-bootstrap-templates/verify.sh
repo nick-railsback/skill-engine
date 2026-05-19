@@ -42,7 +42,7 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-CTX_ROOT="$SCRIPT_DIR"
+CTX_ROOT="${CTX_ROOT:-$SCRIPT_DIR}"
 
 passed=0
 failed=0
@@ -98,6 +98,11 @@ extract_frontmatter() {
       if (saw_close == 0) exit 2
     }
   ' "$1" 2>/dev/null
+}
+
+# Extract scheme + host + port from a URL. POSIX-portable.
+url_origin() {
+  printf '%s' "$1" | sed -E 's#^(https?://[^/]+).*#\1#'
 }
 
 # ────────────────────────────────────────────────────────────────────────
@@ -184,7 +189,7 @@ else
       # Line-separated records via 0x1f field separator. Field values
       # (id, kind, status, lifecycle.state) are short kebab-case / URL /
       # path strings without embedded newlines.
-      while IFS=$'\x1f' read -r idx id kind status state url path branch; do
+      while IFS=$'\x1f' read -r idx id kind status state url path branch crawl_mode; do
         [ -n "${idx:-}" ] || continue
         if [ -z "$id" ]; then
           fail "sources[$idx] missing required field: id"
@@ -192,8 +197,8 @@ else
           continue
         fi
         case "$kind" in
-          git-managed|external-doc|local-path) ;;
-          *) fail "sources[$idx] ($id): kind '$kind' not in {git-managed, external-doc, local-path}"; entries_ok=0 ;;
+          git-managed|external-doc|local-path|web-doc) ;;
+          *) fail "sources[$idx] ($id): kind '$kind' not in {git-managed, external-doc, local-path, web-doc}"; entries_ok=0 ;;
         esac
         case "$state" in
           reachable|moved|removed|unknown) ;;
@@ -224,6 +229,68 @@ else
               ;;
           esac
         fi
+        if [ "$kind" = "web-doc" ]; then
+          if [ -z "$crawl_mode" ]; then
+            fail "sources[$idx] ($id): crawl_mode is required when kind is web-doc"
+            entries_ok=0
+          else
+            case "$crawl_mode" in
+              sitemap|list) ;;
+              *) fail "sources[$idx] ($id): crawl_mode '$crawl_mode' not in {sitemap, list}"; entries_ok=0 ;;
+            esac
+          fi
+          sitemap_url="$(jq -r ".sources[$idx].sitemap_url // \"\"" "$sp_file" 2>/dev/null)"
+          page_list_len="$(jq -r ".sources[$idx].page_list | if . == null then 0 else length end" "$sp_file" 2>/dev/null)"
+
+          if [ "$crawl_mode" = "list" ]; then
+            if [ -n "$sitemap_url" ]; then
+              fail "sources[$idx] ($id): sitemap_url is not allowed when crawl_mode is 'list'"
+              entries_ok=0
+            fi
+            if [ "$page_list_len" = "0" ]; then
+              if jq -e ".sources[$idx] | has(\"page_list\")" "$sp_file" >/dev/null 2>&1; then
+                fail "sources[$idx] ($id): page_list must contain at least one URL"
+              else
+                fail "sources[$idx] ($id): crawl_mode 'list' requires page_list[]"
+              fi
+              entries_ok=0
+            fi
+            if [ "$page_list_len" -gt 0 ]; then
+              source_origin="$(url_origin "$url")"
+              cross_origin_url=""
+              while IFS= read -r page_url; do
+                [ -n "$page_url" ] || continue
+                page_origin="$(url_origin "$page_url")"
+                if [ "$page_origin" != "$source_origin" ]; then
+                  cross_origin_url="$page_url"
+                  break
+                fi
+              done < <(jq -r ".sources[$idx].page_list[]" "$sp_file" 2>/dev/null)
+              if [ -n "$cross_origin_url" ]; then
+                fail "sources[$idx] ($id): page_list URL '$cross_origin_url' is cross-origin (must share origin with source url '$url')"
+                entries_ok=0
+              fi
+            fi
+          elif [ "$crawl_mode" = "sitemap" ]; then
+            if [ "$page_list_len" != "0" ]; then
+              fail "sources[$idx] ($id): page_list is not allowed when crawl_mode is 'sitemap'"
+              entries_ok=0
+            fi
+          fi
+          if jq -e ".sources[$idx] | has(\"crawl_budget\")" "$sp_file" >/dev/null 2>&1; then
+            budget_raw="$(jq -r ".sources[$idx].crawl_budget" "$sp_file" 2>/dev/null)"
+            if ! printf '%s' "$budget_raw" | grep -qE '^[0-9]+$'; then
+              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not an integer"
+              entries_ok=0
+            elif [ "$budget_raw" -lt 1 ] || [ "$budget_raw" -gt 5000 ]; then
+              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not in [1, 5000]"
+              entries_ok=0
+            fi
+          fi
+        elif [ -n "$crawl_mode" ]; then
+          fail "sources[$idx] ($id): crawl_mode '$crawl_mode' set on kind '$kind' — crawl_mode is web-doc only"
+          entries_ok=0
+        fi
       done < <(jq -r '
         .sources
         | to_entries[]
@@ -235,7 +302,8 @@ else
             (.value.lifecycle.state // ""),
             (.value.url // ""),
             (.value.path // ""),
-            (.value.branch // "")
+            (.value.branch // ""),
+            (.value.crawl_mode // "")
           ]
         | join("")
       ' "$sp_file" 2>/dev/null)
@@ -671,6 +739,136 @@ else
     noun="references"
     [ "$ref_count" -eq 1 ] && noun="reference"
     pass "$ref_count $noun with valid frontmatter"
+  fi
+fi
+
+# ────────────────────────────────────────────────────────────────────────
+# Check 5.5 — External-doc / web-doc provenance frontmatter
+#             (external-doc-frontmatter)
+# ────────────────────────────────────────────────────────────────────────
+#
+# Every .md file under an external-doc source's path AND every .md file
+# under a web-doc source's cache directory must carry three provenance
+# keys: source_url, crawl_date, decay. Pinned regexes per the artifact
+# contract (docs/02-artifact-contract.md).
+#
+# This check walks two roots:
+#   - external-doc: <CTX_ROOT>/<source.path>/  (recursive, follow symlinks
+#     with realpath containment guard inside the walk loop)
+#   - web-doc: ~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/
+#     (recursive, only when source.status == "confirmed" and
+#     lifecycle.last_crawl_id is set)
+#
+run_check "External-doc / web-doc provenance frontmatter (external-doc-frontmatter)"
+
+if [ ! -f "$sp_file" ] || ! jq -e '(.sources | type) == "array"' "$sp_file" >/dev/null 2>&1; then
+  skip "Cannot evaluate external-doc-frontmatter — source-paths.json missing or malformed (see Check 1)"
+else
+  fm_ok=1
+  fm_count=0
+  walk_roots="$(mktemp)"
+  # Clean up the walk-roots tempfile on script exit. No other EXIT trap is
+  # set in this script, so a fresh trap is safe.
+  trap 'rm -f "$walk_roots"' EXIT
+
+  # external-doc roots
+  while IFS=$'\x1f' read -r ext_kind ext_path; do
+    [ "$ext_kind" = "external-doc" ] || continue
+    [ -n "$ext_path" ] || continue
+    abs="$CTX_ROOT/$ext_path"
+    [ -e "$abs" ] || continue
+    printf '%s\n' "$abs" >> "$walk_roots"
+  done < <(jq -r '.sources[] | [(.kind // ""), (.path // "")] | join("")' "$sp_file" 2>/dev/null)
+
+  # web-doc cache roots (only when last_crawl_id is set and status confirmed)
+  cache_root="${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}"
+  while IFS=$'\x1f' read -r wd_kind wd_status wd_sid wd_crawl_id; do
+    [ "$wd_kind" = "web-doc" ] || continue
+    [ "$wd_status" = "confirmed" ] || continue
+    [ -n "$wd_crawl_id" ] || continue
+    cache_dir="$cache_root/web-doc/$wd_sid-$wd_crawl_id"
+    [ -d "$cache_dir" ] || continue
+    printf '%s\n' "$cache_dir" >> "$walk_roots"
+  done < <(jq -r '.sources[] | [(.kind // ""), (.status // ""), (.id // ""), (.lifecycle.last_crawl_id // "")] | join("")' "$sp_file" 2>/dev/null)
+
+  while IFS= read -r root; do
+    while IFS= read -r -d '' f; do
+      # Realpath containment guard: skip any file whose canonical path
+      # is not inside the walk root. Defends against symlinked escapes
+      # under external-doc paths or web-doc cache directories.
+      canon="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)/$(basename "$f")"
+      root_canon="$(cd "$root" 2>/dev/null && pwd -P)"
+      case "$canon" in
+        "$root_canon"/*) ;;
+        *) continue ;;
+      esac
+      fm_count=$((fm_count + 1))
+      fm=$(extract_frontmatter "$f")
+      rc=$?
+      rel="${f#"$CTX_ROOT/"}"
+      [ "$rel" = "$f" ] && rel="${f#"$cache_root/"}"
+      if [ "$rc" -eq 1 ] || [ "$rc" -eq 2 ]; then
+        fail "$rel missing or malformed frontmatter"
+        fm_ok=0
+        continue
+      fi
+      if ! printf '%s\n' "$fm" | grep -qE '^source_url:[[:space:]]+https?://[^[:space:]]+$'; then
+        fail "$rel frontmatter source_url missing or fails regex ^https?://[^[:space:]]+$"
+        fm_ok=0
+      fi
+      if ! printf '%s\n' "$fm" | grep -qE '^crawl_date:[[:space:]]+[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?$'; then
+        fail "$rel frontmatter crawl_date missing or not ISO-8601 UTC"
+        fm_ok=0
+      fi
+      if ! printf '%s\n' "$fm" | grep -qE '^decay:[[:space:]]+(none|[1-9][0-9]*[dwmy])$'; then
+        fail "$rel frontmatter decay missing or not in {none, Nd, Nw, Nm, Ny}"
+        fm_ok=0
+      fi
+    done < <(find -L "$root" -type f -name '*.md' -print0 2>/dev/null)
+  done < "$walk_roots"
+
+  if [ "$fm_count" -eq 0 ]; then
+    skip "No external-doc paths or web-doc cache directories present to validate"
+  elif [ "$fm_ok" -eq 1 ]; then
+    pass "$fm_count provenance file(s) with valid frontmatter"
+  fi
+fi
+
+# ────────────────────────────────────────────────────────────────────────
+# Check 5.6 — web-doc snapshot present (web-doc-snapshot-present)
+# ────────────────────────────────────────────────────────────────────────
+#
+# WARN, not FAIL: gitignored cache may legitimately be missing on a
+# fresh clone. Actionable fix is "run /skill-engine:refresh".
+#
+run_check "Web-doc snapshot present (web-doc-snapshot-present)"
+
+if [ ! -f "$sp_file" ] || ! jq -e '(.sources | type) == "array"' "$sp_file" >/dev/null 2>&1; then
+  skip "Cannot evaluate web-doc-snapshot-present — source-paths.json missing or malformed"
+else
+  cache_root="${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}"
+  missing_count=0
+  total_count=0
+  while IFS=$'\x1f' read -r snap_kind snap_status snap_sid snap_crawl_id; do
+    [ "$snap_kind" = "web-doc" ] || continue
+    [ "$snap_status" = "confirmed" ] || continue
+    total_count=$((total_count + 1))
+    if [ -z "$snap_crawl_id" ]; then
+      warn "web-doc source '$snap_sid' has no lifecycle.last_crawl_id — run /skill-engine:refresh to seed"
+      missing_count=$((missing_count + 1))
+      continue
+    fi
+    cache_dir="$cache_root/web-doc/$snap_sid-$snap_crawl_id"
+    if [ ! -d "$cache_dir" ] || [ -z "$(ls -A "$cache_dir" 2>/dev/null)" ]; then
+      warn "web-doc source '$snap_sid' snapshot missing at $cache_dir — run /skill-engine:refresh to seed"
+      missing_count=$((missing_count + 1))
+    fi
+  done < <(jq -r '.sources[] | [(.kind // ""), (.status // ""), (.id // ""), (.lifecycle.last_crawl_id // "")] | join("")' "$sp_file" 2>/dev/null)
+
+  if [ "$total_count" -eq 0 ]; then
+    skip "No confirmed web-doc sources to check"
+  elif [ "$missing_count" -eq 0 ]; then
+    pass "$total_count web-doc snapshot(s) present"
   fi
 fi
 

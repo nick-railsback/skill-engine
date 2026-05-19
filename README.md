@@ -95,9 +95,10 @@ Claude's source of truth for an entire domain — silent propagation of wrong
 content is a worse failure than five minutes of review. Review-first is the
 default; future versions may add opt-in autonomy flags for low-risk operations.
 
-**[source-paths.json — a schema, not a config file](./CAPABILITIES.md#how-it-gets-built).** Three first-class source
-kinds (`git-managed`, `external-doc`, `local-path`) with a machine-readable
-schema other tools can conform to. The schema is the contract.
+**[source-paths.json — a schema, not a config file](./CAPABILITIES.md#how-it-gets-built).** Four first-class source
+kinds (`git-managed`, `external-doc`, `web-doc` (documentation sites crawled
+via WebFetch / MCP fetch), `local-path`) with a machine-readable schema other
+tools can conform to. The schema is the contract.
 
 [**→ Full capabilities reference**](./CAPABILITIES.md)
 

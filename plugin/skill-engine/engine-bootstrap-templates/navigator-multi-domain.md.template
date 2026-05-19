@@ -28,7 +28,7 @@ See [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/b
 
 ## How to follow source links
 
-References pin source URLs to specific commit SHAs (for git-managed sources) or crawl dates (for external-doc sources). Follow links as written — the SHA or crawl date is the version the reference was authored against. If a reference needs "current state" instead of "authored state," its prose says so explicitly. Stable version tags (`vN.M`, `vN.M.P`) are accepted equivalently to commit SHAs.
+References pin source URLs to specific commit SHAs (for git-managed sources), crawl dates (for external-doc and web-doc sources), or content hashes (for web-doc). Follow links as written — the SHA, crawl date, or content hash is the version the reference was authored against. If a reference needs "current state" instead of "authored state," its prose says so explicitly. Stable version tags (`vN.M`, `vN.M.P`) are accepted equivalently to commit SHAs.
 
 ## Markdown style for generated references
 

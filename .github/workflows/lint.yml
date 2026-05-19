@@ -47,3 +47,23 @@ jobs:
               echo "Skipping $f (not present)"
             fi
           done
+
+  doctrine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run doctrine grep checks
+        run: bash plugin/skill-engine/tests/doctrine.sh
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run web-doc tests
+        run: bash plugin/skill-engine/tests/web-doc/run.sh
+      - name: Run clean-cache tests
+        run: bash plugin/skill-engine/tests/clean-cache/run.sh
+      - name: Run migration tests
+        run: bash plugin/skill-engine/tests/migration/run.sh

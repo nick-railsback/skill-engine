@@ -83,7 +83,7 @@ Pause for confirmation. On no/abort, stop cleanly.
 
 ## Phase 3 - Bump the three version surfaces
 
-Edit each file; show a diff summary after each edit. The three surfaces are documented in `skill-engine/docs/04-delivery.md` (3-place version sync). A v0.2 enhancement will add a `verify.sh` version-consistency check; until then, run Phase 5 to catch drift.
+Edit each file; show a diff summary after each edit. The three surfaces are documented in `skill-engine/docs/04-delivery.md` (3-place version sync). A fixture-harness enhancement will add a `verify.sh` version-consistency check; until then, run Phase 5 to catch drift.
 
 1. **`bin/<area-domain>-context`** (two places):
    * Header comment: `# Version: X.Y.Z` -> `# Version: <NEW_VERSION>`
@@ -115,7 +115,7 @@ Edit each file; show a diff summary after each edit. The three surfaces are docu
 ```bash
 ./verify.sh
 ```
-Must pass with `Failed: 0`. Halt on any failure; show the failing check name(s) for triage. (Version-surface consistency is a planned v0.2 check; for now, eyeball-review the diff in Phase 6 to catch missed bumps.)
+Must pass with `Failed: 0`. Halt on any failure; show the failing check name(s) for triage. (Version-surface consistency is a planned fixture-harness check; for now, eyeball-review the diff in Phase 6 to catch missed bumps.)
 
 ## Phase 6 - Commit (destructive gate #1)
 

@@ -219,9 +219,9 @@ the issue and re-runs — never surfaces broken work to the reviewer. The
 fix-retry loop is capped at three attempts per proposal; a fourth failure
 halts and emits a structured `attempts[]` finding for human triage rather
 than masking the failure by deletion or revert. (Per-reference SHA-256
-byte-equality fixtures and a full test-suite harness are v0.2 aspirational
+byte-equality fixtures and a full test-suite harness are pre-fixture-harness aspirational
 — see [05-invariants.md](plugin/skill-engine/docs/05-invariants.md) for the
-v0.2 contract; v0.1.x ships with `verify.sh` as the single validation
+fixture-harness contract; the pre-fixture-harness state ships with `verify.sh` as the single validation
 anchor.)
 
 ### What's deliberately not built
@@ -387,14 +387,18 @@ replays cleanly when sources haven't moved and only new work is paid for.
 
 ### source-paths.json — the contract
 
-The schema for what skill-engine watches. Three first-class source kinds:
+The schema for what skill-engine watches. Four first-class source kinds:
 `git-managed` (repositories tracked by SHA-comparison and shallow or
 sparse-checkout crawl), `external-doc` (pre-curated markdown outside any
 code repository, tracked by content hash and required `source_url` /
-`crawl_date` / `decay` provenance frontmatter), and `local-path` (filesystem
-paths). Each kind has its own crawl strategy and its own staleness gate; the
-discriminator routes downstream behavior across DISCOVER, REFRESH, and the
-cache. Each entry also carries two state-machine axes that never collapse:
+`crawl_date` / `decay` provenance frontmatter), `web-doc` (documentation
+sites acquired via WebFetch / MCP fetch — see
+[docs/recipes/web-doc-setup.md](plugin/skill-engine/docs/recipes/web-doc-setup.md)
+— with sitemap discovery or an explicit `page_list`, an HTTP HEAD probe in
+REFRESH, and a cache at `~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/`),
+and `local-path` (filesystem paths). Each kind has its own crawl strategy
+and its own staleness gate; the discriminator routes downstream behavior
+across DISCOVER, REFRESH, and the cache. Each entry also carries two state-machine axes that never collapse:
 `status` (the curation lifecycle: `intake → confirmed | rejected`) and
 `lifecycle.state` (the upstream lifecycle: `reachable | moved | removed |
 unknown`). A `confirmed` source can become `removed` upstream without
@@ -405,10 +409,12 @@ the reviewer sees the full picture.
 
 `/skill-engine:engine-bootstrap` stamps a fresh contextualizer skeleton into
 `.claude/skills/<slug>-context/`. It auto-detects source kind from the URL
-shape, prompts once for an explicit `branch` when the contextualizer should
-follow a non-default ref, and offers (defaults to **No**) to seed a local
-clone of each git-managed source into `~/.cache/skill-engine/`. The engine
-never clones without explicit consent.
+shape — URLs whose path ends in `/` or lacks a `.git` suffix and whose HTTP
+HEAD `Content-Type` is `text/html` are proposed as `web-doc` with
+`crawl_mode: sitemap` — prompts once for an explicit `branch` when the
+contextualizer should follow a non-default ref, and offers (defaults to
+**No**) to seed a local clone of each git-managed source into
+`~/.cache/skill-engine/`. The engine never clones without explicit consent.
 
 ### Monorepo bootstrap
 
@@ -544,10 +550,10 @@ The version string lives in three places per contextualizer — the CLI
 script's header comment, the CLI's `VERSION` variable, and
 `.claude-plugin/plugin.json` — and the release checklist in
 [06-release-doctrine.md](plugin/skill-engine/docs/06-release-doctrine.md)
-bumps all three together. v0.1.x relies on eyeball-review of the bump diff
+bumps all three together. The pre-fixture-harness state relies on eyeball-review of the bump diff
 to catch a missed surface; a fourth surface — a `verify.sh`
 version-consistency check that would enforce match automatically — is
-v0.2 planned. When a contextualizer depends on a specific skill-engine
+fixture-harness planned. When a contextualizer depends on a specific skill-engine
 engine version, the artifact contract surfaces the mismatch rather than
 letting a maintainer see one version in the CLI and a different one in the
 navigator.
@@ -585,7 +591,7 @@ diff plus a one-line rationale per file for human review. The reviewer
 responds with `APPROVE`, `DEFER`, or `REJECT`. On approve, the engine
 writes the working tree and records the session in
 `research/.engine-stats.json`. (Per-reference SHA-256 fixture refresh is
-v0.2 aspirational; v0.1.x has no fixture-refresh step.) On reject, the
+pre-fixture-harness aspirational; the pre-fixture-harness state has no fixture-refresh step.) On reject, the
 proposal is logged to `research/.rejection-log.json` with a
 maintainer-provided rationale; at the next session activation, the engine
 clusters rejections by `category × reference` and surfaces a warning when

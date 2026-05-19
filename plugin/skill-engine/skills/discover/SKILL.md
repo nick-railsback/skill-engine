@@ -102,13 +102,17 @@ When `/skill-engine:discover` is invoked:
    corpus should not churn. (A hint always overrides the gate — it
    signals the author wants a re-look at fixed inputs.)
 
-6. **Cache-miss offer (per in-scope git-managed source).** For each
-   in-scope source with `kind: git-managed`, probe for an existing local
-   clone — and require that the matched directory actually contain a
-   `.git/` subdirectory before treating it as a warm cache:
+6. **Cache-miss offer (per in-scope source, kind-aware).** For each
+   in-scope source, probe the cache location that matches its `kind`:
+
+   - `kind: "git-managed"` → `~/.cache/skill-engine/git-managed/<source_id>-*/`
+   - `kind: "web-doc"` → `~/.cache/skill-engine/web-doc/<source_id>-*/`
+
+   **git-managed probe.** Require that the matched directory actually
+   contain a `.git/` subdirectory before treating it as a warm cache:
 
    ```bash
-   cache_dir=$(ls -d ~/.cache/skill-engine/<source_id>-*/ 2>/dev/null | head -n1)
+   cache_dir=$(ls -d ~/.cache/skill-engine/git-managed/<source_id>-*/ 2>/dev/null | head -n1)
    if [ -n "$cache_dir" ] && [ -d "${cache_dir%/}/.git" ]; then
      # cache hit — skip prompt
    else
@@ -123,30 +127,46 @@ When `/skill-engine:discover` is invoked:
    left behind). A bare directory match without `.git/` is treated as
    a cache miss, the same as no directory at all.
 
-   If no match exists, prompt the user **once**:
+   **web-doc probe.** A bare directory match under
+   `~/.cache/skill-engine/web-doc/<source_id>-*/` is sufficient for a
+   cache hit; web-doc snapshots have no equivalent of `.git/` to
+   validate.
+
+   On a miss, prompt the user **once per source**, with wording that
+   matches the kind:
+
+   **git-managed cache miss:**
 
    ```
    No local cache for <source_id>. Pre-clone from <url> into
-   ~/.cache/skill-engine/? This speeds up this DISCOVER run and
-   future REFRESH cycles. Skip if unsure. [y/N]
+   ~/.cache/skill-engine/git-managed/? This speeds up this DISCOVER
+   run and future REFRESH cycles. Skip if unsure. [y/N]
+   ```
+
+   **web-doc cache miss:**
+
+   ```
+   No local snapshot for <source_id>. Crawl <url> (<N> pages from
+   sitemap) into ~/.cache/skill-engine/web-doc/? This speeds up this
+   DISCOVER run and future REFRESH cycles. Skip if unsure. [y/N]
    ```
 
    Accept `y` or `yes` (case-insensitive, leading/trailing whitespace
    trimmed) as consent. Treat `N`, blank input, or anything else as
    decline.
 
-   On consent, clone via the same atomic-rename idiom used by
-   `engine-bootstrap/SKILL.md` Step 3.5 so a failed or interrupted
-   clone does not leave a half-written cache directory at the canonical
-   path. The `<ref>` token below resolves to the source entry's
-   `branch` field if present, else `HEAD`. The `--branch` flag on
-   `git clone` is included only when an explicit branch is set:
+   **On consent (git-managed):** clone via the same atomic-rename idiom
+   used by `engine-bootstrap/SKILL.md` Step 3.5 so a failed or
+   interrupted clone does not leave a half-written cache directory at
+   the canonical path. The `<ref>` token below resolves to the source
+   entry's `branch` field if present, else `HEAD`. The `--branch` flag
+   on `git clone` is included only when an explicit branch is set:
 
    ```bash
    # ref = source entry's "branch" if present, else HEAD
    sha=$(git ls-remote "<url>" "<ref>" | cut -f1)
-   mkdir -p ~/.cache/skill-engine/
-   dest="$HOME/.cache/skill-engine/<source_id>-$sha"
+   mkdir -p ~/.cache/skill-engine/git-managed/
+   dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
    tmpdir="${dest}.tmp.$$"
    if [ "<ref>" = "HEAD" ]; then
      git clone --depth=1 --filter=blob:none "<url>" "$tmpdir"
@@ -166,14 +186,29 @@ When `/skill-engine:discover` is invoked:
    CLI fallback documented in "Tool preference" below — do not abort
    DISCOVER on a cache failure.
 
-   On decline, proceed with the CLI fallback. Do not re-prompt within
-   this DISCOVER run; the user's "no" is sticky for the session.
+   **On consent (web-doc):** execute the bootstrap Step 3.6 crawl
+   procedure inline (sitemap fetch, page-budget enforcement, atomic
+   rename into `~/.cache/skill-engine/web-doc/<source_id>-<snapshot>/`).
+   On success, prefer local reads under the new snapshot directory for
+   the rest of this DISCOVER run.
+
+   **On decline (git-managed):** proceed with the CLI fallback. Do not
+   re-prompt within this DISCOVER run; the user's "no" is sticky for the
+   session.
+
+   **On decline (web-doc):** the source is sticky-skipped for this
+   DISCOVER session — no upstream live read substitutes for the missing
+   snapshot. Record an explicit "no cache, no read" notice naming the
+   source in the post-run summary so the author knows that source
+   contributed nothing this run.
 
    This step catches users who declined the offer at `engine-bootstrap`
-   Step 3.5, who deleted their cache via `/skill-engine:clean-cache`,
-   who added a source post-bootstrap, or whose cache directory was lost
-   for any other reason. A cache hit (existing match for `<source_id>-*/`
-   with a valid `.git/` inside) skips the prompt entirely.
+   Step 3.5 / Step 3.6, who deleted their cache via
+   `/skill-engine:clean-cache`, who added a source post-bootstrap, or
+   whose cache directory was lost for any other reason. A cache hit
+   (existing match for `<source_id>-*/` under the kind-appropriate
+   subdirectory, with a valid `.git/` inside for git-managed) skips the
+   prompt entirely.
 
 ## Tool preference for git-managed sources
 
@@ -220,6 +255,26 @@ the prompts are a convenience, not a requirement.
 
 If the cache directory exists when you start, prefer a local read
 over remote CLI calls; if absent, fall back to the CLI tools above.
+
+### Reading web-doc sources
+
+Web-doc cache directories are read identically to external-doc paths:
+walk all `.md` files recursively (`find -L`, follow symlinks with
+realpath containment guard, max 16 hops). Frontmatter validation is
+performed by the `external-doc-frontmatter` named check at commit time.
+
+**Citation form for web-doc references:**
+
+```
+Source: <source_url from frontmatter>
+Content-hash: <sha256 of file content>[:8]
+As-of: <crawl_date from frontmatter>
+```
+
+The cache path is the model's read path but is **not** what the
+reference file cites — citations must use `source_url + content_hash +
+crawl_date` so a reviewer on a different machine can verify by
+re-fetching the URL and comparing the content_hash.
 
 ## Lifecycle handling
 

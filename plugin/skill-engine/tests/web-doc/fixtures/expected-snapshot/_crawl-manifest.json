@@ -1,0 +1,16 @@
+{
+  "source_id": "mock-site",
+  "crawl_id": "8f3025fb",
+  "crawl_date": "2026-05-19T00:00:00Z",
+  "fetcher": "WebFetch",
+  "sitemap_source": "https://mock-site.test/sitemap.xml",
+  "pages": [
+    {"url": "https://mock-site.test/index.html", "file": "index.md", "content_hash": "c5b3c5e4708da7010861920d8e8ee35973abf77dc3334454c750a9b290508a3d", "bytes": 148},
+    {"url": "https://mock-site.test/docs/intro.html", "file": "docs-intro.md", "content_hash": "dd66631296ec0bbfba34db428a4493f8dc86256d374183ffac86156a9a9150ab", "bytes": 153},
+    {"url": "https://mock-site.test/docs/guide.html", "file": "docs-guide.md", "content_hash": "b40574d68082e6e8d7e9b72a8c9388b31eac93c9a452cb21b31ab46566439a0b", "bytes": 141},
+    {"url": "https://mock-site.test/blog/post.html", "file": "blog-post.md", "content_hash": "dc67fa9d745bdd462b5a2ee52b0fc1532607ae724d0536786086acf45fc8ae57", "bytes": 132}
+  ],
+  "failures": [],
+  "robots_disallows": ["/admin/*"],
+  "budget_truncated": 0
+}

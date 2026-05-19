@@ -43,7 +43,8 @@ He scaffolds one contextualizer per protocol:
 
 For each protocol contextualizer, `research/source-paths.json` registers
 the spec repository (`kind: git-managed`) and the protocol's marketing
-site (`kind: external-doc`). He runs `/skill-engine:engine-bootstrap` once
+site (`kind: web-doc`, with `crawl_mode: sitemap` when the site publishes
+one, otherwise `crawl_mode: list` with an explicit `page_list`). He runs `/skill-engine:engine-bootstrap` once
 per protocol, then `/skill-engine:discover`. Because the navigator
 descriptions follow the WHEN-not-WHAT discipline, each one fires only on
 questions about its specific protocol — not on every payment question.
@@ -64,7 +65,7 @@ he just stops loading that contextualizer — no shared config to edit.
 - **[Multi-contextualizer composition](../../CAPABILITIES.md#how-it-synthesizes-across-sources)** lets him reason about cross-protocol
   fit without merging everything into one mega-contextualizer.
 - **[source-paths.json kind discriminators](../../CAPABILITIES.md#how-it-gets-built)** (`git-managed` for spec repos,
-  `external-doc` for marketing pages) cover the heterogeneous sources each
+  `web-doc` for marketing pages) cover the heterogeneous sources each
   protocol publishes.
 - **[REFRESH per contextualizer](../../CAPABILITIES.md#how-it-stays-accurate)** lets each protocol's contextualizer track
   its own release cadence independently — important when one protocol
