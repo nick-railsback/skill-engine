@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [0.2.1] - 2026-05-19
+
+- fix: `engine-bootstrap` was silently miscategorizing every documentation-site URL as `kind: external-doc` because the v0.2.0 web-doc rollout updated the artifact contract, validator, and Step 3.6 crawl flow but missed the upstream Step 1 intake classifier. URL inputs now correctly route to `kind: web-doc` with default `crawl_mode: sitemap` — the bare-GitHub-org guardrail, repo/doc disambiguator, Step 2 slug rule, and Step 3 stamping all carry the rename (`plugin/skill-engine/skills/engine-bootstrap/SKILL.md`).
+- add: `verify.sh` now enforces a per-kind `url`/`path` matrix at the schema check — `git-managed` and `web-doc` require `url`, `external-doc` and `local-path` require `path`, and the three strict kinds reject the wrong-axis field. Defense-in-depth so a hand-edited malformed entry no longer slips through unrejected (`plugin/skill-engine/engine-bootstrap-templates/verify.sh`).
+- change: rename `### External-doc sources on source-paths.json` to `### \`kind: "external-doc"\`` for symmetry with the sibling `kind: "web-doc"` heading, and fix the one cross-reference that pointed at the old anchor (`plugin/skill-engine/docs/02-artifact-contract.md`, `plugin/skill-engine/docs/09-discover-config.md`).
+- add: three web-doc test fixtures pinning the post-fix bootstrap stamp shape and both validator-rejected shapes (`external-doc` missing `path`; `external-doc` carrying a `url`) (`plugin/skill-engine/tests/web-doc/fixtures/`).
+
 ## [0.2.0] - 2026-05-19
 
 - add: `web-doc` as a fourth first-class source kind alongside `git-managed`, `external-doc`, `local-path`. Documentation sites are crawled via the model's installed fetch tool (WebFetch / MCP fetch) with `crawl_mode: sitemap` or `crawl_mode: list`, bounded by `crawl_budget`, snapshotted to `~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/` with `source_url` / `crawl_date` / `decay` provenance frontmatter on every captured `.md` (`plugin/skill-engine/docs/{02-artifact-contract,03-engine,08-discover-pipeline,09-discover-config}.md`, `plugin/skill-engine/skills/discover/SKILL.md`, `plugin/skill-engine/docs/recipes/web-doc-setup.md`).
