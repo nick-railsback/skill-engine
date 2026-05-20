@@ -16,6 +16,32 @@ When asked a question this navigator's domain covers:
 3. If the question spans multiple references, consult the **Cross-reference map**.
 4. If a reference points at a source URL for deeper detail, follow it only if the reference itself didn't answer the question.
 
+## Claims policy
+
+Mode: `cite-by-default` (override: `offer-cite-on-request` — for contextualizers whose users prefer to ask for citations on a per-answer basis).
+Citation syntax: `inline-cite-suffix` (override: `blockquote-with-permalink` — for domains where exact wording matters, e.g. legal text, license terms, or API contracts).
+Inline-cite shape: a trailing parenthetical naming the reference filename, e.g. *Tools are stateless (mcp-server-design.md).* — not footnote markers, not bracketed numerics.
+
+Answers grounded in this contextualizer's references should carry their provenance plainly. Cite what is load-bearing; don't decorate orientational prose with citations; if no reference was opened, say so in the footer rather than fake it. The voice is competent and careful — not anxious, not apologetic, and without "as an AI assistant" hedging.
+
+1. Always end response with one-line provenance footer (format defined under **Provenance footer** below).
+2. Inline-cite load-bearing claims (versions, defaults, signatures, deprecations, behavior a user could reasonably get wrong by guessing).
+3. Do not cite orientational prose.
+4. One claim, one citation; do not repeat the citation across adjacent sentences.
+5. If no reference was opened to answer the question, say so plainly in the footer (`"Answered from general knowledge — no {{LIBRARY}} references consulted"`). Never fake the footer.
+
+### Provenance footer
+
+Format (verbatim, modulo placeholder substitution):
+
+    *References consulted: foo.md, bar.md. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*
+
+The `{{LIBRARY}}`, `{{VERSION}}`, and `{{INDEX_URL}}` tokens are **agent-substituted at answer time** from the contextualizer's known source set — they are not engine-stamp-substituted at bootstrap, so they appear literally in the stamped `SKILL.md` and are filled by the answering model, not by the scaffolder. Italic delimiters are `*…*` rather than `_…_` so that substituted names containing underscores (e.g. `scikit_learn`) do not terminate the italic span early.
+
+The reference list reflects the references actually read while answering — derived from the agent's tool-use trace (which `Read` calls landed on `references/*.md`), not invented by the model. The template instructs the model to emit the footer; the list is what the model can audit against its own tool calls. (Implementation choice: template-instruction-plus-auditability, rather than runtime injection by the using-agent layer — runtime injection assumes trace-aware template substitution at invocation time, which is not mechanically guaranteed across platforms. A future platform that supports such injection can supersede this contract without changing the footer's wire format.)
+
+If zero references were opened, emit the rule-5 wording rather than an empty list.
+
 ## Catalog
 
 *No references yet.* Run `/skill-engine:discover` to populate this catalog. DISCOVER reads the registered sources, discovers the essence of the content, and writes reference files that satisfy the four reference invariants. Each catalog row below points at one of those references.
