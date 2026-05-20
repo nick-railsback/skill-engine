@@ -800,10 +800,7 @@ if [ ! -f "$sp_file" ] || ! jq -e '(.sources | type) == "array"' "$sp_file" >/de
 else
   fm_ok=1
   fm_count=0
-  walk_roots="$(mktemp)"
-  # Clean up the walk-roots tempfile on script exit. No other EXIT trap is
-  # set in this script, so a fresh trap is safe.
-  trap 'rm -f "$walk_roots"' EXIT
+  walk_roots=()
 
   # external-doc roots
   while IFS=$'\x1f' read -r ext_kind ext_path; do
@@ -811,7 +808,7 @@ else
     [ -n "$ext_path" ] || continue
     abs="$CTX_ROOT/$ext_path"
     [ -e "$abs" ] || continue
-    printf '%s\n' "$abs" >> "$walk_roots"
+    walk_roots+=("$abs")
   done < <(jq -r '.sources[] | [(.kind // ""), (.path // "")] | join("")' "$sp_file" 2>/dev/null)
 
   # web-doc cache roots (only when last_crawl_id is set and status confirmed)
@@ -822,10 +819,13 @@ else
     [ -n "$wd_crawl_id" ] || continue
     cache_dir="$cache_root/web-doc/$wd_sid-$wd_crawl_id"
     [ -d "$cache_dir" ] || continue
-    printf '%s\n' "$cache_dir" >> "$walk_roots"
+    walk_roots+=("$cache_dir")
   done < <(jq -r '.sources[] | [(.kind // ""), (.status // ""), (.id // ""), (.lifecycle.last_crawl_id // "")] | join("")' "$sp_file" 2>/dev/null)
 
-  while IFS= read -r root; do
+  # Empty-array iteration under `set -u` errors on bash < 4.4; the
+  # `${walk_roots[@]+…}` guard sidesteps that without changing non-empty
+  # semantics. The `fm_count == 0` skip path downstream still fires.
+  for root in ${walk_roots[@]+"${walk_roots[@]}"}; do
     while IFS= read -r -d '' f; do
       # Realpath containment guard: skip any file whose canonical path
       # is not inside the walk root. Defends against symlinked escapes
@@ -859,7 +859,7 @@ else
         fm_ok=0
       fi
     done < <(find -L "$root" -type f -name '*.md' -print0 2>/dev/null)
-  done < "$walk_roots"
+  done
 
   if [ "$fm_count" -eq 0 ]; then
     skip "No external-doc paths or web-doc cache directories present to validate"
