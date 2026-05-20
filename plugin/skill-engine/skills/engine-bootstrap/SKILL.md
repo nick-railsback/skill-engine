@@ -239,6 +239,16 @@ The accepted name becomes the **`<contextualizer-slug>`** used in Step 3.
 
 ## Step 3 — Stamping
 
+**Bootstrap writes directly to the live tree.** Unlike DISCOVER and
+REFRESH, which stage their writes to `<slug>-context.proposed/` for
+explicit user review before promotion (see `discover/SKILL.md` §
+Staging directory), bootstrap stamps straight into
+`.claude/skills/<slug>-context/`. There is nothing to review yet — the
+user has explicitly invoked bootstrap to scaffold a fresh
+contextualizer from templates, and there is no pre-existing live tree
+to diff against. The staging-dir model exists to prevent silent
+overwrites of curated state; bootstrap's first-stamp is not that.
+
 Copy the following files from the plugin's `engine-bootstrap-templates/`
 directory into `.claude/skills/<contextualizer-slug>-context/` under the
 project working directory, preserving line endings as-is (LF-only in the

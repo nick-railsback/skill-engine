@@ -12,16 +12,58 @@ workflow.
 ## Routing
 
 When invoked, do the following in order. A contextualizer is installed at
-`.claude/skills/<slug>-context/`; its `research/.research-state.json` is
+one of three install levels (`~/.claude/skills/`, `~/.claude/local/skills/`,
+or `<repo>/.claude/skills/`); its `research/.research-state.json` is
 the canonical setup-state marker.
 
-From the project working directory (the parent of `.claude/`), locate the
-contextualizer root:
+Locate the contextualizer root by searching all three install levels:
 
 ```bash
-ctx_roots=$(find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null)
+ctx_roots=$(
+  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+  done
+)
 ctx_count=$(printf '%s\n' "$ctx_roots" | grep -c .)
 ```
+
+### Pending-proposal pre-step (runs before case dispatch)
+
+Before dispatching to a workflow, check for pending proposals — any
+`*-context.proposed/` directory that DISCOVER or REFRESH left behind
+under the same three install roots:
+
+```bash
+proposed_dirs=$(
+  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context.proposed' 2>/dev/null
+  done
+)
+```
+
+If any proposed dirs exist, surface a one-line note naming each one and
+the three commands that gate its disposition, then exit without
+dispatching to any workflow (the note is the entire output):
+
+```
+Pending proposal at <path>. Run /skill-engine:review <slug>, /skill-engine:apply <slug>, or /skill-engine:discard <slug> before re-running discover/refresh.
+```
+
+Rationale: re-running DISCOVER or REFRESH while a proposed dir already
+exists would either overwrite the pending changes silently or surface
+a confusing diff. The user is the right one to decide whether to
+promote, discard, or keep iterating; the router refuses to choose for
+them. The pre-step short-circuits before any case-1/case-2/case-3/case-4
+branch fires.
+
+Bootstrap (`engine-bootstrap`) is exempt from this gate — it is
+explicitly invoked to scaffold a new contextualizer and writes
+directly to the live tree, not through the staging model. The router
+only short-circuits the workflows that operate on an already-stamped
+contextualizer (`discover`, `refresh`, `status`, `self-audit`,
+`new-reference`).
 
 1. **No contextualizer installed.** `ctx_count == 0` ⇒ this is a fresh
    project with no contextualizer yet. Route to **engine-bootstrap**:

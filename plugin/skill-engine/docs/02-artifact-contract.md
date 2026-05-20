@@ -40,6 +40,10 @@ That's the whole filesystem surface. Three concepts:
 
 There is no `index.md` and no metadata file in `references/`. The structure stays one level deep: `references/` contains either a flat `.md` file or a directory-form reference (which is itself the reference, not a nested namespace). See `### Reference depth (one level)` below for the contract.
 
+### Staging directory shape (DISCOVER and REFRESH write here, not live)
+
+DISCOVER and REFRESH do not write into the live `<slug>-context/` directly. Both write to a sibling staging directory at `<install>/<slug>-context.proposed/` that mirrors the live skill's structure (`SKILL.md`, `verify.sh`, `research/...`, `references/...`) plus a `.review/` subdirectory carrying `manifest.json` (an `entries[]` list of `{path, status, sha_before, sha_after}` records — `status` is one of `added`, `modified`, `removed`, `unchanged`) and a filled-in `REVIEW.md` (the predict-then-compare audit trail stamped from `engine-bootstrap-templates/REVIEW.md.template`). The user reviews the proposal via `/skill-engine:review <name>`, promotes it via `/skill-engine:apply <name>`, or throws it away via `/skill-engine:discard <name>`. Bootstrap is exempt — `engine-bootstrap` stamps directly into the live tree because there is nothing to review at first-scaffold time. The four reference invariants and the named checks in `verify.sh` are evaluated against the staging directory before its `manifest.json` is finalized; a `verify.sh` failure aborts the proposed-dir write and the user never sees a broken proposal.
+
 ## The navigator (SKILL.md)
 
 ### Frontmatter - exactly two fields

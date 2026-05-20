@@ -16,30 +16,85 @@ rewards.
 ## Contextualizer root
 
 Engine workflows operate inside a contextualizer installed as a project
-skill at `.claude/skills/<slug>-context/`. Every path below —
-`research/...`, `references/...`, `verify.sh` — resolves relative to that
-directory.
+skill at one of three install levels:
 
-Before reading or writing anything, locate the root from the project
-working directory:
+- **User-level:** `~/.claude/skills/<slug>-context/`
+- **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
+- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+
+Every path below — `research/...`, `references/...`, `verify.sh` —
+resolves relative to whichever directory matches. Before reading or
+writing anything, locate the root by searching all three install
+levels in order:
 
 ```bash
-ctx_roots=$(find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null)
+set -euo pipefail
+ctx_roots=$(
+  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+  done
+)
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
 if [ "$n" -eq 0 ]; then
-  echo "No contextualizer found under .claude/skills/*-context/. Run /skill-engine:engine-bootstrap first."
+  echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers under .claude/skills/; specify one:"
+  echo "Multiple contextualizers found; specify one:"
   printf '%s\n' "$ctx_roots"
   exit 1
 fi
 CTX_ROOT="$ctx_roots"
+CTX_PROPOSED="${CTX_ROOT}.proposed"
 ```
 
-Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
-every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
-`$CTX_ROOT/verify.sh`.
+`$CTX_PROPOSED` is the **staging directory** that mirrors the live
+contextualizer's structure. DISCOVER and REFRESH write to it instead
+of `$CTX_ROOT`; the live skill is untouched until the user runs
+`/skill-engine:apply <name>` to promote the proposal. See the next
+subsection.
+
+Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`
+**for reads**, and `$CTX_PROPOSED/research/foo` **for writes**. Same
+asymmetry for `references/foo`, `SKILL.md`, and `verify.sh`. The
+exception is `~/.cache/skill-engine/...` — upstream-source clones land
+in the live cache, not in the proposed dir (the proposed-dir model is
+about contextualizer-internal writes, not the upstream-source cache).
+
+### Staging directory
+
+The proposed directory sits as a sibling of the live contextualizer:
+
+```
+<install>/<slug>-context/             ← live (untouched by DISCOVER/REFRESH)
+<install>/<slug>-context.proposed/    ← staging (this run writes here)
+```
+
+Two cases for how `$CTX_PROPOSED` is populated:
+
+- **First run** (no prior DISCOVER against this contextualizer; `$CTX_ROOT/references/` is empty): create `$CTX_PROPOSED/` from scratch with the full set of generated files. The promoted apply lands the first reference set into the live tree.
+
+- **REFRESH-against-existing** or **incremental DISCOVER**: `$CTX_PROPOSED/` is a shallow copy-on-write. Files this run regenerates are written under `$CTX_PROPOSED/`; files left untouched are not copied — the manifest (see below) records them as `unchanged`, and `/skill-engine:apply <name>` leaves the corresponding live files alone.
+
+At the end of every DISCOVER or REFRESH run, after `verify.sh` passes against `$CTX_PROPOSED/`, write `$CTX_PROPOSED/.review/manifest.json` with `schema_version: 1` and one entry per file in the contextualizer:
+
+```json
+{
+  "schema_version": 1,
+  "entries": [
+    { "path": "references/foo.md", "status": "added",    "sha_before": null,      "sha_after": "abc1234" },
+    { "path": "references/bar.md", "status": "modified", "sha_before": "def5678", "sha_after": "9abc012" },
+    { "path": "references/baz.md", "status": "removed",  "sha_before": "11112222","sha_after": null },
+    { "path": "research/source-paths.json", "status": "unchanged", "sha_before": "33334444", "sha_after": "33334444" }
+  ]
+}
+```
+
+Null-field convention is pinned: `status: "added"` ⇒ `sha_before: null`; `status: "removed"` ⇒ `sha_after: null`; `status: "unchanged"` ⇒ both shas populated and equal.
+
+Also stamp the `REVIEW.md.template` into `$CTX_PROPOSED/.review/REVIEW.md` so the user has the predict-then-compare scaffold to fill. The template ships in the plugin's `engine-bootstrap-templates/` directory; resolve it at runtime as `$CLAUDE_PLUGIN_ROOT/engine-bootstrap-templates/REVIEW.md.template` (the same convention `engine-bootstrap` uses for the navigator templates). Stamp it with one substitution: the literal token `<name>` in the template body becomes the contextualizer slug without the `-context` suffix (e.g., for `$CTX_ROOT = ~/.claude/skills/vitejs-vite-context/`, `<name>` ⇒ `vitejs-vite`).
+
+Three commands gate the promotion: `/skill-engine:review <name>` inspects the manifest and opens `REVIEW.md`; `/skill-engine:apply <name>` promotes the proposed dir to live; `/skill-engine:discard <name>` removes the proposed dir without promoting. The user signs off in `REVIEW.md` Step 3 before `apply` will run.
 
 ## Output contract
 
@@ -283,8 +338,26 @@ For each in-scope source, decide whether its upstream is still
 [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) for the four-state field). If you
 detect a transition:
 
-- Update `source-paths.json` immediately (the file is the single
-  source of truth for `lifecycle.state`).
+- Update `source-paths.json` immediately by writing to
+  `$CTX_PROPOSED/research/source-paths.json`. The first time this run
+  needs to record a transition, seed the proposed file as a
+  copy-on-write of the live file before mutating it:
+
+  ```bash
+  if [ ! -f "$CTX_PROPOSED/research/source-paths.json" ]; then
+    mkdir -p "$CTX_PROPOSED/research"
+    cp "$CTX_ROOT/research/source-paths.json" "$CTX_PROPOSED/research/source-paths.json"
+  fi
+  # …then apply the transition to the proposed file.
+  ```
+
+  The manifest records `source-paths.json` as `modified`. The
+  lifecycle transitions you detect are part of the proposal the user
+  reviews; promoting them silently to the live tree before review
+  would defeat the staging-dir model. The live
+  `$CTX_ROOT/research/source-paths.json` is the read baseline; the
+  staged transitions land live only after `/skill-engine:apply`
+  promotes the proposal.
 - If the transition would affect existing reference files or the
   navigator (a `moved` URL is cited; a `removed` source is
   referenced), emit a lifecycle sweep dry-run per [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md).
@@ -363,6 +436,13 @@ and is NOT the style to imitate — the example contextualizer at
 
 ## Post-run summary
 
+Before rendering the summary, finalize the staging directory: run
+`$CTX_PROPOSED/verify.sh` and confirm it exits 0, then write
+`$CTX_PROPOSED/.review/manifest.json` per the schema and stamping
+convention documented in § Staging directory. A non-zero `verify.sh`
+exit aborts the proposed-dir write with a diagnostic; the user never
+sees a `REVIEW.md` for a broken proposal.
+
 At end-of-run, produce a paragraph-form summary for the author with
 four components (no multi-column tables, no interactive menus):
 
@@ -420,6 +500,18 @@ four components (no multi-column tables, no interactive menus):
    `--hint='you missed packages/plugin-vue'` or `--hint='include
    docs/guide/ at high priority'`. The `--hint` flag is consumed by
    the next session as additional context.
+
+5. **Staging-dir handoff line** (always last, even for no-op runs).
+   Render one line naming the proposed directory and the three
+   review/apply/discard commands:
+
+   ```
+   Proposal staged at <slug>-context.proposed/. Run /skill-engine:review <slug> to inspect, /skill-engine:apply <slug> to promote, /skill-engine:discard <slug> to throw away.
+   ```
+
+   `<slug>` is the contextualizer slug without the `-context` suffix
+   (e.g., for `$CTX_ROOT = ~/.claude/skills/vitejs-vite-context/`, the
+   slug is `vitejs-vite`).
 
 The summary is paragraph-form; ≤30 lines of text is typical. It is the
 author's primary signal that your choices were defensible (coverage +
