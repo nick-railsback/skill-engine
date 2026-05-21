@@ -5,13 +5,14 @@ description: When the user wants the engine to audit its own configuration and r
 
 # Self-audit
 
-Run the five drift checks against the contextualizer's current state: stale
+Run the six drift checks against the contextualizer's current state: stale
 date, broken URL, long-untouched reference, catalog-vs-content disagreement,
-cross-reference-vs-content disagreement. Read-only by default; after the
-findings table prints, offers an opt-in propose → validate → approve gate
-for the two deterministic checks (stale dates, catalog-row drift). The
-other three checks remain advisory — they print a one-line recommendation
-each and the human acts manually.
+cross-reference-vs-content disagreement, review-state staleness. Read-only
+by default; after the findings table prints, offers an opt-in propose →
+validate → approve gate for the three deterministic checks (stale dates,
+catalog-row drift, review-state staleness). The other three checks remain
+advisory — they print a one-line recommendation each and the human acts
+manually.
 
 ## Contextualizer root
 
@@ -79,16 +80,80 @@ notices a contract-side question while running, it belongs in the
 session-reflection's `## Template ambiguities` block, not the findings
 list.
 
+## Check 6 — review-state staleness
+
+Check 6 surfaces the case where the contextualizer's persisted sign-off
+(`research/review-state.json`, written by `/skill-engine:apply` per Batch 4
+AC1) has aged out of agreement with the upstream-state record carried in
+`research/source-paths.json` per-source `lifecycle.last_checked` fields.
+SELF-AUDIT is read-only by default; Check 6 runs the same way and only
+proposes a mutation through the existing auto-fix opt-in prompt.
+
+**Staleness heuristic.** A contextualizer's `review_state` is auto-flipped
+to `"stale"` when either of the following holds:
+
+- **Ledger present and outdated.** `research/review-state.json` exists with
+  `review_state ∈ {"reviewed", "provisional"}` AND **any** in-scope
+  `git-managed` source in `research/source-paths.json` has
+  `lifecycle.last_checked > reviewed_at` AND `lifecycle.last_checked_sha`
+  is non-null. The semantics: REFRESH only writes `last_checked` (and only
+  writes `last_checked_sha`) when it successfully probed upstream; a
+  `last_checked` newer than `reviewed_at` therefore signals "REFRESH
+  observed upstream after the user attested" — strictly stronger than
+  "time has passed." Per-source granularity is OR-reduced: any one source
+  qualifying flips the whole skill to stale.
+- **Ledger absent on a legacy skill.** When `research/review-state.json`
+  does not exist AND the skill carries at least one in-scope `git-managed`
+  source with a non-null `lifecycle.last_checked_sha`, the skill predates
+  Batch 4 and is treated as stale on the first SELF-AUDIT run that
+  surfaces it. Fresh-bootstrap skills with no `last_checked_sha` yet (no
+  DISCOVER/REFRESH has probed) are N/A, not stale.
+
+SELF-AUDIT does not differentiate per-source staleness in the finding — it
+surfaces the skill as one unit. The maintainer's options after a staleness
+finding are (a) run REFRESH to bring the references in line with current
+SHAs, then `apply` with `reviewed`, or (b) hand-edit `review-state.json`
+to bump `reviewed_at` and attest that the user reviewed the implicit diff.
+
+**Output format.** Check 6 emits a `[WARN]` line in the existing
+SELF-AUDIT output format:
+
+```
+[WARN] review-state-stale: reviewed_at 2026-04-02T14:00:00Z; source <id>'s last_checked is 2026-05-15T09:31:00Z (sha def5678). Run REFRESH + apply or accept the staleness flag.
+```
+
+When no in-scope `git-managed` source carries a `last_checked_sha` (fresh
+bootstrap, pre-DISCOVER), Check 6 emits one N/A entry with the standard
+one-line reason: `[N/A] review-state-stale: no in-scope git-managed source has been probed yet.`
+
+**Auto-fix class.** Check 6 is auto-fixable in the Check-1/Check-4 sense:
+there is a single deterministic mutation — rewrite
+`research/review-state.json` so `review_state: "stale"` (other fields
+unchanged). Wire it into the auto-fix opt-in prompt alongside Checks 1
+and 4.
+
+**Bypass of the staging gate.** The Check-6 mutation is NOT routed through
+the Batch-3 `<slug>-context.proposed/` staging gate. SELF-AUDIT's existing
+fix flow writes directly to the working tree via its sandbox-validate
+→ APPROVE path, and `review-state.json` mutations follow that same
+pattern. The rationale: a stale flag is engine state about the skill's
+review status, not skill content; routing it through `.proposed/` +
+`REVIEW.md` would invert the trust signal (the engine asking the user to
+predict whether their own ledger should say stale).
+
 ## Optional fix flow
 
 After the findings table, when total findings > 0, classify each finding as
-auto-fixable (Checks 1 and 4) or judgment-required (Checks 2, 3, 5). The two
-auto-fixable checks have a single correct mutation:
+auto-fixable (Checks 1, 4, and 6) or judgment-required (Checks 2, 3, 5).
+The three auto-fixable checks have a single correct mutation:
 
 - **Check 1 (stale `as of` dates):** refresh the date to today's UTC date.
 - **Check 4 (catalog row vs frontmatter `description`):** sync the catalog
   row's one-line description to the reference frontmatter's `description:`
   field (the canonical statement).
+- **Check 6 (review-state staleness):** rewrite
+  `research/review-state.json` so `review_state: "stale"` (other fields
+  unchanged).
 
 When at least one auto-fixable finding exists, prompt the human (with `K = N − M`, the count of judgment-required findings):
 
@@ -117,6 +182,11 @@ recommendations: `references/foo.md:42 — broken URL; replace manually`,
 `references/bar.md — unchanged 8mo while source advanced 73 commits; run
 /skill-engine:refresh`, `cross-reference map: billing → identity — verify
 routing manually`.
+
+Check 6 (review-state staleness) is auto-fixable and follows the same
+`y` / `n` / `select` prompt — `M` counts include Check 6 findings. The
+single mutation rewrites `research/review-state.json` so
+`review_state: "stale"`; other fields stay as-is.
 
 When all findings are judgment-required (M == 0), skip the prompt and print
 only the recommendation list.

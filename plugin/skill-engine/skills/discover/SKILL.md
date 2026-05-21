@@ -130,6 +130,26 @@ When `/skill-engine:discover` is invoked:
 
    and exit cleanly.
 
+1.5. **verify.sh template drift detection.** DISCOVER compares the live
+   `$CTX_ROOT/verify.sh` against the engine's current template at
+   `$CLAUDE_PLUGIN_ROOT/engine-bootstrap-templates/verify.sh` via byte-for-byte
+   SHA-256 equality. The check is shared with REFRESH (see
+   `refresh/SKILL.md` § Pre-flight step 1.6 for the bash); both routes use
+   the same fallback resolution (`$HOME/.claude/plugins/skill-engine` →
+   `$HOME/.claude/local/plugins/skill-engine`) and the same three-case
+   dispatch (engine template unreachable → silent N/A in the Coverage
+   report; live `verify.sh` absent → manifest entry `{status: "added",
+   sha_before: null, sha_after: <content-hash>}`; SHAs differ → manifest
+   entry `{status: "modified", sha_before, sha_after}`). The manifest's
+   `sha_*` fields use the same content-hash form (7-char prefix) the rest
+   of the manifest uses.
+
+   When drift is staged, DISCOVER writes the engine template to
+   `$CTX_PROPOSED/verify.sh` and the disagreement set in `REVIEW.md` Step 2
+   surfaces the re-stamp alongside any content changes from this DISCOVER
+   run. DISCOVER MUST NOT write directly to `$CTX_ROOT/verify.sh` — every
+   re-stamp flows through the staging gate.
+
 2. **Identify in-scope sources.** A source is in-scope if:
    - `archived: false` (or field absent — defaults to false),
    - `lifecycle.state ∈ {reachable, unknown}` (`removed` is skipped;

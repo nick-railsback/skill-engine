@@ -133,6 +133,60 @@ When `/skill-engine:refresh` is invoked:
    user's choice is not persisted — the prompt fires next REFRESH if
    any flat entries remain.
 
+1.6. **verify.sh template drift detection.** REFRESH compares the live
+   `$CTX_ROOT/verify.sh` against the engine's current template at
+   `$CLAUDE_PLUGIN_ROOT/engine-bootstrap-templates/verify.sh` via byte-for-byte
+   SHA-256 equality. Neither file embeds timestamps, machine-specific paths,
+   or RCS-keyword drift sources, so the SHA is content-stable across machines
+   and runs. The drift check is shared with DISCOVER; both routes funnel into
+   the same staging-gate handoff so re-stamping is visible in the user's
+   `REVIEW.md` disagreement set instead of silently overwriting.
+
+   ```bash
+   engine_template="${CLAUDE_PLUGIN_ROOT:-}/engine-bootstrap-templates/verify.sh"
+   if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "$engine_template" ]; then
+     # Fallback: walk the conventional plugin install candidates.
+     for cand in "$HOME/.claude/plugins/skill-engine" "$HOME/.claude/local/plugins/skill-engine"; do
+       if [ -f "$cand/engine-bootstrap-templates/verify.sh" ]; then
+         engine_template="$cand/engine-bootstrap-templates/verify.sh"
+         break
+       fi
+     done
+   fi
+   ```
+
+   Three cases:
+
+   - **Engine template unreachable** (plugin uninstalled but stamped skill
+     remains — degenerate, reachable). Skip the drift check silently; emit
+     one N/A line in the post-run summary's Coverage report
+     (`verify.sh template drift check skipped — engine template unreachable`).
+     Do not abort the run.
+   - **Live `verify.sh` absent** (first-run regeneration: user ran
+     `engine-bootstrap` but not yet `discover`/`refresh`). Emit the engine
+     template into `$CTX_PROPOSED/verify.sh` unconditionally; the manifest
+     entry is `{status: "added", sha_before: null, sha_after: <content-hash-of-engine-template>}`,
+     matching the Batch 3 AC1.6 null-field convention for `added`. The
+     `sha_*` fields use the same content-hash form (7-char prefix) the rest
+     of the manifest uses — see `discover/SKILL.md` § Staging directory for
+     the manifest example. The SHA-256 used for the equality comparison
+     above is the engine-internal signal; the manifest's `sha_*` fields are
+     the user-visible record.
+   - **Live `verify.sh` present and SHAs differ.** Write the engine template
+     to `$CTX_PROPOSED/verify.sh`; the manifest entry carries
+     `{status: "modified", sha_before: <content-hash-of-live>, sha_after: <content-hash-of-engine-template>}`.
+
+   When drift is staged, the disagreement set in `REVIEW.md` Step 2 SHOULD
+   include the re-stamp as one surfaced item (the magnitude-ranking heuristic
+   from Batch 3 AC2.2 places mechanism drift between scope changes and
+   zero-impact items). The `verify.sh` run REFRESH executes against the
+   proposed tree (`Post-run summary` below) runs against the **new**
+   `verify.sh` — the new template must pass its own checks against the
+   proposed tree, or staging is aborted with a diagnostic.
+
+   REFRESH MUST NOT write directly to `$CTX_ROOT/verify.sh` under any
+   code path. Every re-stamp flows through the staging gate.
+
 2. **Thin-schema migration (transparent).** If any `sources[i]` entry
    still carries a `chunks[]` field (legacy schema from earlier engine
    versions), flatten it away on first invocation: write back the file
