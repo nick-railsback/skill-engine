@@ -45,6 +45,22 @@ Two things, both load-bearing:
    - **Creative-input gesture.** End with the invitation to rerun
      with a hint: `/skill-engine:discover --hint='<your hint>'`.
 
+### Paragraph→permalink density
+
+Every prose paragraph in an emitted reference must have a SHA-pinned
+GitHub permalink within 5 lines (above, below, or inside the paragraph).
+The permalink shape is `https://github.com/<owner>/<repo>/blob/<40-hex-sha>/<path>` —
+stable version tags like `v1.2.3` are accepted equivalently; unpinned
+`blob/main/...` URLs do not satisfy the requirement. SELF-AUDIT Check 7
+enforces ≥80% paragraph→permalink coverage corpus-wide; emit references
+with substantially higher per-file coverage so the corpus aggregate has
+headroom.
+
+This makes the structural-honesty claim downstream documentation makes —
+that any paragraph without a nearby permalink should be treated as
+unverified — mechanically true. The cost is one extra source-repo
+pointer per paragraph; the alternative is unverifiable curation.
+
 ### Proposal threshold
 
 The approval gate is the filter, not the agent. A candidate that is

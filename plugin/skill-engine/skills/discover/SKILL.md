@@ -454,6 +454,22 @@ prose in this SKILL.md file itself is hard-wrapped for legacy reasons
 and is NOT the style to imitate — the example contextualizer at
 [`examples/library-context/SKILL.md`](https://github.com/nick-railsback/skill-engine/blob/main/examples/library-context/SKILL.md) is the style to imitate.
 
+## Paragraph→permalink density
+
+Every prose paragraph in an emitted reference must have a SHA-pinned
+GitHub permalink within 5 lines (above, below, or inside the paragraph).
+The permalink shape is `https://github.com/<owner>/<repo>/blob/<40-hex-sha>/<path>` —
+stable version tags like `v1.2.3` are accepted equivalently; unpinned
+`blob/main/...` URLs do not satisfy the requirement. SELF-AUDIT Check 7
+enforces ≥80% paragraph→permalink coverage corpus-wide; emit references
+with substantially higher per-file coverage so the corpus aggregate has
+headroom.
+
+This makes the structural-honesty claim downstream documentation makes —
+that any paragraph without a nearby permalink should be treated as
+unverified — mechanically true. The cost is one extra source-repo
+pointer per paragraph; the alternative is unverifiable curation.
+
 ## Post-run summary
 
 Before rendering the summary, finalize the staging directory: run

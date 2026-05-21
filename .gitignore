@@ -4,3 +4,6 @@
 *.swo
 .idea/
 .vscode/
+
+# dev experiments testing provenence of paragraph→permalink coverage via Claude API
+/experiments/

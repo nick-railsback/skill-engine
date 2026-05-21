@@ -5,14 +5,14 @@ description: When the user wants the engine to audit its own configuration and r
 
 # Self-audit
 
-Run the six drift checks against the contextualizer's current state: stale
+Run the seven drift checks against the contextualizer's current state: stale
 date, broken URL, long-untouched reference, catalog-vs-content disagreement,
-cross-reference-vs-content disagreement, review-state staleness. Read-only
-by default; after the findings table prints, offers an opt-in propose →
-validate → approve gate for the three deterministic checks (stale dates,
-catalog-row drift, review-state staleness). The other three checks remain
-advisory — they print a one-line recommendation each and the human acts
-manually.
+cross-reference-vs-content disagreement, review-state staleness,
+paragraph→permalink density. Read-only by default; after the findings table
+prints, offers an opt-in propose → validate → approve gate for the three
+deterministic checks (stale dates, catalog-row drift, review-state
+staleness). The other four checks remain advisory — they print a one-line
+recommendation each and the human acts manually.
 
 ## Contextualizer root
 
@@ -44,7 +44,7 @@ every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 
 ## Doctrine surface
 
-The complete SELF-AUDIT protocol — what the five drift checks do, what they
+The complete SELF-AUDIT protocol — what the seven drift checks do, what they
 emit, how the reviewer acts on findings — lives in chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
 under `## SELF-AUDIT (drift audit)` and the `## Workflow: SELF-AUDIT` section
 of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
@@ -141,10 +141,93 @@ review status, not skill content; routing it through `.proposed/` +
 `REVIEW.md` would invert the trust signal (the engine asking the user to
 predict whether their own ledger should say stale).
 
+## Check 7 — paragraph→permalink density
+
+Check 7 measures structural-honesty density on the references corpus:
+the fraction of prose paragraphs that carry a SHA-pinned (or stable-tag-
+pinned) GitHub permalink within 5 lines. The check is scoped to
+`$CTX_ROOT/references/**/*.md` only — the navigator (`$CTX_ROOT/SKILL.md`)
+is a router and is intentionally out of scope, the same way the `verify.sh`
+SHA-pin invariant carves out navigator prose. Companion files under
+`references/` participate on equal footing with primaries.
+
+**Threshold.** ≥80% corpus-wide coverage required to PASS. The threshold
+was sourced from the AI-1 measurement that motivated the check: 46.9%
+corpus-wide coverage across the MCP contextualizer's references, with a
+7%–87% by-file range. 80% leaves a ≤20% remainder that is reviewable in a
+single read and makes the structural-honesty disclaimer — *"where a
+paragraph lacks a nearby permalink, treat the claim as unverified"* —
+mechanically true, not aspirational.
+
+**What counts.**
+
+- *Prose paragraph:* a maximal run of consecutive non-blank lines that
+  is not a heading, fenced code block, table row/separator, bullet or
+  numbered list item (including indented continuations), blockquote,
+  HTML comment, or leading frontmatter block.
+- *Permalink:* a URL matching the canonical SHA-pinned shape
+  `https://github.com/<owner>/<repo>/(blob|tree)/<40-hex-sha>/<path>`,
+  or a stable-tag-pinned URL of shape
+  `https://github.com/<owner>/<repo>/(blob|tree)/v<X>[.<Y>[.<Z>]]/<path>`.
+  Unpinned `blob/main/...` URLs and non-GitHub URLs do not satisfy the
+  density check.
+- *Within ≤5 lines:* at least one in-scope permalink appears in any line
+  in the range `[paragraph_start - 5, paragraph_end + 5]` in the same
+  file. Above, below, or inside the paragraph all count.
+
+**Aggregation.** The threshold is corpus-wide: total covered paragraphs
+divided by total in-scope paragraphs across all `references/**/*.md`
+files. Per-file numbers are computed and surfaced for diagnostic purposes
+only — the corpus-wide aggregate is the pass/fail gate.
+
+**N/A cases.** Check 7 emits `[N/A]` and exits 0 when the references
+directory is absent or empty (fresh bootstrap, no DISCOVER emission yet),
+or when the corpus contains fewer than 5 total in-scope paragraphs (the
+ratio is not meaningful below that floor).
+
+**Output format.** Single-line header for PASS / N/A / FAIL:
+
+```
+[PASS] permalink-density: corpus coverage 87.3% (268/307 paragraphs) ≥80% threshold
+[N/A]  permalink-density: no references emitted yet
+[N/A]  permalink-density: only 3 paragraphs in scope (need ≥5 for a meaningful ratio)
+[FAIL] permalink-density: corpus coverage 64.2% (197/307 paragraphs) below 80% threshold
+```
+
+On FAIL, the header is followed by one indented line per reference file
+with sub-80% per-file coverage (sorted ascending by per-file coverage),
+and one further-indented line per uncovered paragraph naming its start
+line and a 60-character prefix of its first line:
+
+```
+  references/foo-bar.md: 12.5% (1/8 paragraphs covered)
+    L23:  This widget integrates with the upstream subsystem to provide
+    L47:  Refunds follow a state machine — initiated, pending, settled
+```
+
+**How it runs.** Check 7 invokes the bundled Python lint:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/tests/permalink_density.py" \
+  "$CTX_ROOT/references" --threshold 0.80
+```
+
+The lint writes its findings to stdout in the format above and exits 0
+(PASS / N/A) or 1 (FAIL). SELF-AUDIT reads the exit code + stdout and
+rolls the result into its findings table as a Check 7 row.
+
+**No auto-fix.** Check 7 is judgment-required, not auto-fixable. There
+is no mechanical mutation that adds a meaningful permalink to a
+paragraph — the right citation depends on what the paragraph asserts,
+and the act of citing IS the curation work the contextualizer author
+does. Surfacing the offending paragraphs is the entire fix prompt; the
+author follows the recommendations file-by-file and re-runs SELF-AUDIT
+until coverage clears the threshold.
+
 ## Optional fix flow
 
 After the findings table, when total findings > 0, classify each finding as
-auto-fixable (Checks 1, 4, and 6) or judgment-required (Checks 2, 3, 5).
+auto-fixable (Checks 1, 4, and 6) or judgment-required (Checks 2, 3, 5, 7).
 The three auto-fixable checks have a single correct mutation:
 
 - **Check 1 (stale `as of` dates):** refresh the date to today's UTC date.
@@ -176,12 +259,14 @@ validate → approve gate documented in [`03-engine.md`](https://github.com/nick
    `research/sessions/<session-id>.json`; append a
    `session_type: "SELF-AUDIT"` entry to `research/.engine-stats.json`.
 
-For judgment-required findings (Checks 2, 3, 5), print a one-line
+For judgment-required findings (Checks 2, 3, 5, 7), print a one-line
 recommendation per finding and exit without drafting any mutation. Sample
 recommendations: `references/foo.md:42 — broken URL; replace manually`,
 `references/bar.md — unchanged 8mo while source advanced 73 commits; run
 /skill-engine:refresh`, `cross-reference map: billing → identity — verify
-routing manually`.
+routing manually`, `references/foo-bar.md — 12.5% paragraph→permalink
+coverage (below 80% threshold); add SHA-pinned permalinks to the uncovered
+paragraphs listed above`.
 
 Check 6 (review-state staleness) is auto-fixable and follows the same
 `y` / `n` / `select` prompt — `M` counts include Check 6 findings. The
