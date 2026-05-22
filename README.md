@@ -1,13 +1,19 @@
 # skill-engine
 
-**Teach Claude your codebase. Keep it taught.**
+> Teach Claude your codebase. Keep it taught.
 
-You get dropped into a codebase. No docs. No original builders. You ask Claude a
-question and it gives you a textbook answer — correct for some repo, not for yours.
+[![CI](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml) [![Version](https://img.shields.io/badge/version-v0.3.0-blue)](https://github.com/nick-railsback/skill-engine/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Scans: bandit · semgrep · shellcheck](https://img.shields.io/badge/scans-bandit%20%C2%B7%20semgrep%20%C2%B7%20shellcheck-475569)](https://github.com/nick-railsback/skill-engine/blob/main/.github/workflows/security.yml)
 
-Skill-engine fixes that. It reads your repository, writes down what it finds, and
-hands that context to Claude on every question. Your codebase, not the internet's
-best guess.
+skill-engine turns the repos and docs of your given domain area into a Claude a skill
+you can use elsewhere — registering each source in `source-paths.json`,
+cloning it to `~/.cache/skill-engine/` on your confirmation, and generating a
+contextualizer skill that loads its index on demand.
+
+> Anthropic's skill spec existed, but my work didn't fit it — many repos, conflicting conventions across teams, a moving target I couldn't maintain by hand. Anthropic described the destination; I needed the road.
+>
+> I built a prototype first for daily feature development, then to spot efficiency opportunities across the ecosystem, then once to rescue a 20-year-old application on a one-month deadline when the original builders were gone.
+>
+> Each use surfaced the next gap the spec hadn't addressed: drift detection, multi-source synthesis, reviewer gates, evaluation. Each gap is now closed.
 
 **Same question. Two different realities.**
 
@@ -40,25 +46,6 @@ layer the spec never had to provide.
 
 If pip is to PEPs what Kubernetes is to container primitives — skill-engine is that
 layer for Anthropic's skill-directory pattern.
-
-## Why I built this
-
-The spec existed. Anthropic had published it: a skill maps to a directory of
-reference markdown files Claude reads on demand. The pattern was sound. For
-simple cases, it was enough.
-
-But my actual work wasn't simple. A vast ecosystem — many repos, conflicting
-conventions across teams, internal modules I needed Claude to know about every
-day. Maintaining one skill folder by hand against a moving target wasn't
-sustainable. The spec described a destination. It did not describe how to
-build the road.
-
-So I built a prototype of this engine. First for daily feature development. Then to identify
-efficiency opportunities across the ecosystem. Then — once — to rescue a
-20-year-old legacy application on a one-month deadline, when the original
-builders were gone and the documentation didn't exist. Each use surfaced the
-next gap the spec hadn't addressed: drift detection, multi-source synthesis,
-reviewer gates, evaluation. Each gap is now closed.
 
 ## The load-bearing capability
 
@@ -135,6 +122,47 @@ If you've ever stood in front of a codebase that outlived its authors, or
 handed a junior engineer documentation you couldn't vouch for, you already
 understand what this is for. The rest is just building.
 
+## Safety Model
+
+Skill-engine treats one failure as worse than all others: silent propagation
+of wrong content into a contextualizer that then becomes Claude's source of
+truth for an entire domain. When a snapshot drifts from upstream, or an
+upstream change carries a subtle regression, downstream users inherit the
+corruption without noticing. By the time it surfaces — Claude confidently
+citing a stale invariant, a removed file, a contradicted convention — the
+loss is no longer local. Five minutes of review beats five weeks of
+debugging Claude's wrong answers.
+
+Every upstream change enters as a proposal, never an auto-merge. The reviewer
+is the gate: a snapshot is only promoted to the bundle once a human has
+compared the proposed change against the version it replaces. Each accepted
+snapshot records the upstream commit SHA it was reviewed against, so the
+bundle carries its own provenance. When upstream moves past a pinned
+snapshot, drift surfaces loudly rather than silently — and surfaces back
+through the reviewer, not around them. The engine never mutates git state on
+the user's behalf. Reviewer-in-the-loop is not a setting; it is the only mode.
+
+```mermaid
+graph LR
+  A[upstream] --> B[snapshot proposal]
+  B --> R[reviewer]
+  R --> C[SHA-pin]
+  C --> D[bundle]
+  D --> E[agent context]
+  E -. drift detected .-> R
+  style R fill:#475569,stroke:#1e293b,color:#fff,stroke-width:2px
+```
+
+- **Lint** — ≥80% of load-bearing paragraphs carry a permalink within 5 lines.
+- **SHA-pinning** — every snapshot records the commit it was reviewed against.
+- **Drift surfacing** — stale snapshots fail loudly, not silently.
+
+> **Quote the line, or name its absence.**
+
+*skill-engine will never ship an auto-accept mode. If you want one, fork.*
+
+See [`SECURITY.md`](./SECURITY.md) for vulnerability reporting and supported versions.
+
 ## Quickstart
 
 ```
@@ -156,3 +184,26 @@ lives in [docs/doctrine.md](./plugin/skill-engine/docs/doctrine.md).
 Dependencies: bash, git, `jq`. No Node, no npm, no scheduler. The default
 cadence is manual; reviewer-in-the-loop is the default operating mode. Both
 defaults are deliberate — and revisable as the project matures.
+
+## FAQ
+
+<!-- Batch 8/9: most-asked operational question goes here, above the safety-model entry. -->
+
+> **Q: Why reviewer-in-the-loop instead of auto-merge for snapshot updates?**
+>
+> A: Auto-merge is faster. That is the honest comparison, and it's where
+> I'll start. The trade is different: when a snapshot moves into a contextualizer,
+> it becomes Claude's source of truth for an entire domain. A corrupted
+> snapshot doesn't fail loudly — it propagates. Claude cites the wrong
+> invariant. A team inherits the corruption silently, and by the time a user
+> catches the contradiction, every downstream answer rooted in that snapshot
+> is suspect. The cost of review is roughly five minutes per snapshot
+> update. The cost of a silent bad snapshot can run for weeks before someone
+> notices the pattern, and the cleanup touches every conversation that
+> referenced the corrupted region. The Mermaid flow above is deliberate:
+> drift detection re-enters the loop through the reviewer, not around.
+> Surfacing drift is itself a reviewable event, not a background patch.
+> Future versions may add opt-in autonomy flags for low-risk operations —
+> log rotation, cache eviction, telemetry. Auto-merge for snapshot content
+> is not on the roadmap for the v0.x line, and a fork that wires it in
+> would be welcome but explicitly unsupported.
