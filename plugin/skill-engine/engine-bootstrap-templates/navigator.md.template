@@ -24,6 +24,8 @@ Inline-cite shape: a trailing parenthetical naming the reference filename, e.g. 
 
 Answers grounded in this contextualizer's references should carry their provenance plainly. Cite what is load-bearing; don't decorate orientational prose with citations; if no reference was opened, say so in the footer rather than fake it. The voice is competent and careful — not anxious, not apologetic, and without "as an AI assistant" hedging.
 
+Open references only when the question requires specific behavior, signatures, configuration, version-pinned facts, or other content the navigator does not enumerate. Orientational questions — *"what is X?"*, *"is X open-source?"*, *"when did X launch?"*, *"what transports does X support?"* — should be answered from the navigator alone. Opening a reference is itself a citation gesture; if no citation is warranted, no reference need be opened. If the navigator does not contain the answer, open the most relevant reference and cite; do not answer from prior knowledge alone.
+
 1. Always end response with one-line provenance footer (format defined under **Provenance footer** below).
 2. Inline-cite load-bearing claims (versions, defaults, signatures, deprecations, behavior a user could reasonably get wrong by guessing).
 3. Do not cite orientational prose.

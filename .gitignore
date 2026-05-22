@@ -7,3 +7,7 @@
 
 # dev experiments testing provenence of paragraph→permalink coverage via Claude API
 /experiments/
+
+# Python bytecode (from invoking tests/grounded_rate.py + tests/permalink_density.py)
+__pycache__/
+*.pyc

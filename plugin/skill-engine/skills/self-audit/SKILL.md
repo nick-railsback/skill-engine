@@ -5,13 +5,13 @@ description: When the user wants the engine to audit its own configuration and r
 
 # Self-audit
 
-Run the seven drift checks against the contextualizer's current state: stale
+Run the eight drift checks against the contextualizer's current state: stale
 date, broken URL, long-untouched reference, catalog-vs-content disagreement,
 cross-reference-vs-content disagreement, review-state staleness,
-paragraph→permalink density. Read-only by default; after the findings table
+paragraph→permalink density, grounded-citation rate. Read-only by default; after the findings table
 prints, offers an opt-in propose → validate → approve gate for the three
 deterministic checks (stale dates, catalog-row drift, review-state
-staleness). The other four checks remain advisory — they print a one-line
+staleness). The other five checks remain advisory — they print a one-line
 recommendation each and the human acts manually.
 
 ## Contextualizer root
@@ -44,7 +44,7 @@ every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 
 ## Doctrine surface
 
-The complete SELF-AUDIT protocol — what the seven drift checks do, what they
+The complete SELF-AUDIT protocol — what the eight drift checks do, what they
 emit, how the reviewer acts on findings — lives in chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
 under `## SELF-AUDIT (drift audit)` and the `## Workflow: SELF-AUDIT` section
 of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
@@ -224,10 +224,104 @@ does. Surfacing the offending paragraphs is the entire fix prompt; the
 author follows the recommendations file-by-file and re-runs SELF-AUDIT
 until coverage clears the threshold.
 
+## Check 8 — grounded-citation rate
+
+Check 8 measures behavioral structural-honesty on the answering side:
+for each `needs_reference` prompt in `$CTX_ROOT/research/eval-prompts.json`,
+did the answering model both (a) open ≥1 reference via the
+`read_reference` tool AND (b) include a SHA-pinned (or stable-tag-pinned)
+GitHub permalink in its final response text? The check is the empirical
+counterpart to Check 7's corpus-side density: Check 7 asks whether the
+references *contain* permalinks near load-bearing prose; Check 8 asks
+whether the model *emits* one when it answers.
+
+**Opt-in.** Check 8 makes paid Anthropic API calls (~$0.01–$0.05 per run,
+sometimes more for long prompt corpora or many references). Unlike Checks
+1–7 — bash-local and free — Check 8 only runs when the maintainer sets
+the `SKILL_ENGINE_RUN_EVAL` environment variable. The opt-in is per
+invocation; there is no setting to default it on. When the opt-in is
+absent, Check 8 emits an `[N/A]` row noting how to enable it — there is
+no silent skip.
+
+**Threshold.** ≥80% by default; override via the runner's `--threshold`
+flag. Symmetric with Check 7's density threshold; same reviewability
+rationale — below 80% means more than one prompt in five fails to honor
+the structural-honesty policy from the navigator's Claims policy block.
+
+**What counts as a permalink.** The same canonical SHA-pinned and
+stable-tag-pinned GitHub URL shapes Check 7 uses. The two checks import
+the regex from a single module so the permalink contract has one source
+of truth.
+
+**N/A behavior.** When `eval-prompts.json` is absent or carries 0
+prompts, Check 8 emits `[N/A]` and exits 0 without calling the API.
+Contextualizers with no eval corpus pay nothing. When the file exists
+but its schema is invalid (e.g., missing `prompts` key, missing required
+prompt fields), Check 8 emits `[FAIL]` rather than silently skipping —
+a malformed corpus would otherwise look identical to "no corpus."
+
+**Dependency.** Check 8 requires the `anthropic` Python SDK
+(and `httpx`, which `anthropic` pulls in). The engine does not ship a
+Python dependency manifest; install with `pip install anthropic` once
+per workstation. On `ImportError`, Check 8 exits 3 (distinct from FAIL
+exit 1 and runner-failure exit 2) and prints an install hint.
+
+**Tool-surface caveat.** Check 8 uses a custom `read_reference` tool
+(the AI-4 harness shape), not the generic `Read` tool real Claude Code
+agents see. The choice gives a cleaner signal on citation behavior given
+the agent has chosen to open, at the cost of not measuring over-opening
+on doesn't-need prompts. Comparing scores across a future tool-surface
+change would be invalid — re-baseline rather than compare.
+
+**No auto-fix.** Check 8 is judgment-required, not auto-fixable. A low
+`grounded_rate` is remediated by curating the references corpus
+(Check 7's surface), revising the navigator's Claims policy block, or
+deciding the prompt corpus is unrepresentative — none of which the
+engine can mutate mechanically.
+
+**Output format.** Single-line header for PASS / N/A / FAIL (column
+aligned with Check 7 — two spaces after `[N/A]`):
+
+```
+[PASS] grounded-rate: 80.0% (4/5 prompts grounded) ≥80% threshold (cost: $0.04)
+[N/A]  grounded-rate: no eval prompts defined (research/eval-prompts.json absent)
+[N/A]  grounded-rate: eval-prompts.json has 0 prompts
+[N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~$0.01–$0.05 per run)
+[FAIL] grounded-rate: 40.0% (2/5 prompts grounded) below 80% threshold (cost: $0.05)
+[FAIL] grounded-rate: eval-prompts.json schema invalid — missing 'prompts' key
+```
+
+On FAIL, the header is followed by one indented line per non-grounded
+prompt naming the prompt id, the first failure marker
+(`no-reference-opened`, `no-permalink-in-response`,
+`tool-turn-cap-exceeded`, `per-prompt-timeout`, `api-error`), and a
+60-char prefix of the prompt text:
+
+```
+  n02 [no-reference-opened]:  List the parameters of MCPServer.run() and their de
+  n04 [no-permalink-in-response]:  What happens when an elicitation request time
+```
+
+**How it runs.** SELF-AUDIT checks the opt-in env var first; on opt-in,
+invokes the bundled Python runner:
+
+```bash
+if [ -n "${SKILL_ENGINE_RUN_EVAL:-}" ]; then
+  python3 "$CLAUDE_PLUGIN_ROOT/tests/grounded_rate.py" "$CTX_ROOT" --threshold 0.80
+else
+  echo "[N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~\$0.01–\$0.05 per run)"
+fi
+```
+
+The runner writes its findings to stdout and exits 0 (PASS or N/A), 1
+(FAIL or schema invalid), 2 (runner failure — every prompt errored), or
+3 (ImportError on `anthropic`). SELF-AUDIT reads the exit code and rolls
+the result into its findings table as a Check 8 row.
+
 ## Optional fix flow
 
 After the findings table, when total findings > 0, classify each finding as
-auto-fixable (Checks 1, 4, and 6) or judgment-required (Checks 2, 3, 5, 7).
+auto-fixable (Checks 1, 4, and 6) or judgment-required (Checks 2, 3, 5, 7, 8).
 The three auto-fixable checks have a single correct mutation:
 
 - **Check 1 (stale `as of` dates):** refresh the date to today's UTC date.
@@ -259,14 +353,16 @@ validate → approve gate documented in [`03-engine.md`](https://github.com/nick
    `research/sessions/<session-id>.json`; append a
    `session_type: "SELF-AUDIT"` entry to `research/.engine-stats.json`.
 
-For judgment-required findings (Checks 2, 3, 5, 7), print a one-line
+For judgment-required findings (Checks 2, 3, 5, 7, 8), print a one-line
 recommendation per finding and exit without drafting any mutation. Sample
 recommendations: `references/foo.md:42 — broken URL; replace manually`,
 `references/bar.md — unchanged 8mo while source advanced 73 commits; run
 /skill-engine:refresh`, `cross-reference map: billing → identity — verify
 routing manually`, `references/foo-bar.md — 12.5% paragraph→permalink
 coverage (below 80% threshold); add SHA-pinned permalinks to the uncovered
-paragraphs listed above`.
+paragraphs listed above`, `grounded_rate 40.0% (below 80% threshold) — review
+the per-prompt failure markers; remediate by tightening the Claims policy block,
+expanding inline permalinks in references (Check 7), or revising the prompt corpus`.
 
 Check 6 (review-state staleness) is auto-fixable and follows the same
 `y` / `n` / `select` prompt — `M` counts include Check 6 findings. The

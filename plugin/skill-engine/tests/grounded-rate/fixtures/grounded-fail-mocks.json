@@ -1,0 +1,26 @@
+{
+  "_note": "Mock responses for the FAIL fixture. Three prompts: one grounded, one opened-no-permalink, one no-reference-opened. grounded_rate = 1/3 ≈ 33%, below the 80% threshold → FAIL exit 1.",
+  "records": [
+    {
+      "references_opened": ["alpha.md"],
+      "turns_used": 1,
+      "final_response_text": "The `Alpha` class lives at https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py.",
+      "input_tokens": 1200,
+      "output_tokens": 60
+    },
+    {
+      "references_opened": ["beta.md"],
+      "turns_used": 1,
+      "final_response_text": "The migration guide describes a few breaking changes. Beta no longer accepts the legacy positional argument.",
+      "input_tokens": 1300,
+      "output_tokens": 70
+    },
+    {
+      "references_opened": [],
+      "turns_used": 0,
+      "final_response_text": "Gamma is a standard interface — no specific implementation detail to surface here.",
+      "input_tokens": 800,
+      "output_tokens": 30
+    }
+  ]
+}
