@@ -166,7 +166,7 @@ test_byte_equality_references() {
 
   local actual_files
   actual_files=$(cd skills/<area-domain>-context/references && \
-    ls <area-domain>-*.md | sort)
+    find . -maxdepth 1 -type f -name '<area-domain>-*.md' 2>/dev/null | sed 's|^\./||' | sort)
 
   local untracked
   untracked=$(comm -23 \
@@ -199,7 +199,7 @@ A simple regenerator script:
 ```bash
 # scripts/refresh-fixture.sh
 cd skills/<area-domain>-context/references
-for f in <area-domain>-*.md; do
+find . -maxdepth 1 -type f -name '<area-domain>-*.md' 2>/dev/null | sed 's|^\./||' | while IFS= read -r f; do
   printf "%s\t%s\n" "$f" "$(sha256sum "$f" | awk '{print $1}')"
 done | sort > ../../../test/fixtures/source-body-checksums.txt
 ```
@@ -214,7 +214,7 @@ The navigator's Catalog table and the set of primary references must be in 1:1 c
 
 1. Extract catalog rows from `SKILL.md` between the `## Catalog` heading and the next `##` heading.
 2. From those rows, extract the filename pattern: `references/<area-domain>-*.md`.
-3. List actual filesystem primaries: `ls references/<area-domain>-*.md`.
+3. List actual filesystem primaries: `find references -maxdepth 1 -type f -name '<area-domain>-*.md'`.
 4. Both sets, sorted, must be identical.
 5. Also: count duplicate rows (a catalog row appearing twice signals copy-paste error).
 
@@ -231,7 +231,7 @@ test_catalog_bijection() {
   # List filesystem primaries
   local fs_set
   fs_set=$(cd skills/<area-domain>-context/references && \
-    ls <area-domain>-*.md 2>/dev/null | sort)
+    find . -maxdepth 1 -type f -name '<area-domain>-*.md' 2>/dev/null | sed 's|^\./||' | sort)
 
   # Compare
   if [ "$catalog_set" != "$fs_set" ]; then
@@ -269,7 +269,7 @@ Reference files start with a `# Title` Markdown heading. They never start with `
 test_no_frontmatter_references() {
   local fail=0
 
-  for ref in skills/<area-domain>-context/references/*.md; do
+  while IFS= read -r ref; do
     # Read first non-blank, non-BOM line
     local first_line
     first_line=$(awk 'BEGIN{FS=""} /[^[:space:]]/ {
@@ -282,7 +282,7 @@ test_no_frontmatter_references() {
       echo "[FAIL] $ref starts with YAML frontmatter"
       fail=1
     fi
-  done
+  done < <(find skills/<area-domain>-context/references -maxdepth 1 -type f -name '*.md' 2>/dev/null)
 
   return $fail
 }
@@ -336,7 +336,7 @@ test_reference_size_caps() {
   local max_bytes=$((18 * 1024)) # 18 KB
   local fail=0
 
-  for ref in skills/<area-domain>-context/references/<area-domain>-*.md; do
+  while IFS= read -r ref; do
     local line_count byte_count
     
     line_count=$(wc -l < "$ref" | tr -d ' ')
@@ -351,7 +351,7 @@ test_reference_size_caps() {
       echo "[FAIL] $ref exceeds byte cap: $byte_count > $max_bytes"
       fail=1
     fi
-  done
+  done < <(find skills/<area-domain>-context/references -maxdepth 1 -type f -name '<area-domain>-*.md' 2>/dev/null)
 
   return $fail
 }
@@ -411,7 +411,7 @@ test_package_zip_hygiene() {
 
   "$REPO_ROOT/bin/<area-domain>-context" package > /dev/null
   local zip
-  zip=$(ls <area-domain>-context-*.zip)
+  zip=$(find . -maxdepth 1 -type f -name '<area-domain>-context-*.zip' 2>/dev/null | head -n1)
 
   # Top-level entry
   local top_entries

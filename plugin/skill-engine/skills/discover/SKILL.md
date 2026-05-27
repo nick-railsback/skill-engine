@@ -198,7 +198,7 @@ When `/skill-engine:discover` is invoked:
    contain a `.git/` subdirectory before treating it as a warm cache:
 
    ```bash
-   cache_dir=$(ls -d ~/.cache/skill-engine/git-managed/<source_id>-*/ 2>/dev/null | head -n1)
+   cache_dir=$(find ~/.cache/skill-engine/git-managed -mindepth 1 -maxdepth 1 -type d -name '<source_id>-*' 2>/dev/null | head -n1)
    if [ -n "$cache_dir" ] && [ -d "${cache_dir%/}/.git" ]; then
      # cache hit — skip prompt
    else

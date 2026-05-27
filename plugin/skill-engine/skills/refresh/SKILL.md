@@ -116,10 +116,9 @@ When `/skill-engine:refresh` is invoked:
    # Allow-list: a flat-layout git-managed clone has a .git/HEAD file inside
    # a directory at the cache root. Anything else (future kind subdirs, stray
    # directories) is intentionally not migrated.
-   flat_entries=$(for d in "$cache_root"/*/; do
-     [ -d "$d" ] || continue
+   flat_entries=$(find "$cache_root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | while IFS= read -r d; do
      [ -f "$d/.git/HEAD" ] || continue
-     printf '%s\n' "${d%/}"
+     printf '%s\n' "$d"
    done)
    ```
 
