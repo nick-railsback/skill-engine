@@ -401,7 +401,8 @@ The per-verb shape looks like this — adapt to your repo's threat model and dro
       "Bash(gh issue view:*)",
       "Bash(gh pr view:*)",
       "Bash(gh repo view:*)",
-      "Read(${CLAUDE_PLUGIN_DATA}/**)"
+      "Read(${CLAUDE_PLUGIN_DATA}/**)",
+      "Edit(.claude/skills/**)"
     ],
     "ask": [
       "Bash(gh api:*)"
@@ -416,9 +417,56 @@ The per-verb shape looks like this — adapt to your repo's threat model and dro
 
 The `Read(${CLAUDE_PLUGIN_DATA}/**)` entry is what lets the engine's `SessionStart` hook hydrate state from the plugin-managed location (see "Hooks-vs-permissions interaction" below); without it the hook would surface a permission diagnostic on every session start.
 
+The `Edit(.claude/skills/**)` entry suppresses the per-write prompt for the engine's in-project skill writes only — the stamping, promotion, and staging steps that land files under `.claude/skills/`. `Edit` is the umbrella file-edit verb: it covers `Write` and `NotebookEdit` too, so no separate `Write(.claude/skills/**)` row is needed. Critically, this is **prompt-suppression only**. It does *not* punch through a user-level `deny` on `.claude/**`, and it does *not* override an OS-level sandbox restriction — an `allow` cannot widen either layer. A user who denies or sandboxes `.claude/**` and then hits a blocked write should see the engine's sandbox-block diagnostic (see "When a `.claude/skills/**` write is blocked" below), which routes them to the narrow fix rather than the prompt.
+
 The `deny` list is the load-bearing piece. It encodes the engine's release doctrine — no auto-merge, no daemons, no destructive force-push — as enforceable guardrails (see [06-release-doctrine.md](06-release-doctrine.md) for the underlying anti-recommendations). A user who installs this contextualizer without the deny list still gets a working engine, but loses the safety net the doctrine prescribes.
 
 **Forward-rot note.** Claude Code's per-verb permission grammar evolves with each release. If a future release documents a different grammar form, re-validate your `.claude/settings.json` against the new shape before adoption.
+
+### When a `.claude/skills/**` write is blocked
+
+The `Edit(.claude/skills/**)` grant above suppresses the *prompt* for the engine's in-project skill writes, but it cannot widen a user's `deny` or sandbox. A hardened user — one who `deny`s `.claude/**`, or runs a tightened OS-level sandbox — will hit a hard block when the engine tries to stamp, promote, or stage files there. The engine's contract at that seam is to fail loudly and precisely, naming the path and the *narrow* remedy.
+
+This is the canonical sandbox-block diagnostic. The three engine write surfaces — `engine-bootstrap` Step 3 stamping, `apply` Promotion, and `discover`/`refresh` staging into `<slug>-context.proposed/` — each cross-reference this section rather than restating it.
+
+The engine is a set of markdown skills an agent follows, not compiled code, so "detection" here is an agent-followed behavior, not a registered exception handler. **When a write targeting a `.claude/skills/**` path is rejected, the writing skill instructs the agent to emit the diagnostic below and stop** — not silently retry, not silently skip the file. Two write modalities reach this seam, and the diagnostic covers both:
+
+- **Tool-call write** — an `Edit` / `Write` / `NotebookEdit` the agent issues is rejected, by a permission `deny` or by the sandbox refusing the path.
+- **Shell write** — a `cp` / `mv` / `mkdir -p` / `chmod` in stamping or promotion exits non-zero with a permission / `EPERM` signature under a restricted-filesystem sandbox.
+
+The diagnostic names three things (a fourth for shell writes):
+
+1. **The exact path** the write was attempting — the literal file (e.g. `.claude/skills/langchain-context/references/streaming.md`), never a glob or a generality.
+2. **The exact remedy** — either add a scoped `sandbox.filesystem.allowWrite` entry *for that path* to the user's settings, or remove the `deny` rule that covers it. Scoped to the path, not the whole tree.
+3. **The exact retry** — the engine workflow to re-invoke once the grant is widened, chosen by which surface failed: `/skill-engine:apply <name>`, `/skill-engine:engine-bootstrap`, or `/skill-engine:discover` / `/skill-engine:refresh`.
+4. **(Shell writes only)** the literal failed command — the exact `cp` / `mv` / `mkdir -p` / `chmod` line — so the user can confirm the path and rerun it manually after widening the grant.
+
+A tool-call-write diagnostic looks like this (the agent fills in the real path and the surface-appropriate retry command):
+
+```
+✗ Blocked writing .claude/skills/langchain-context/references/streaming.md
+
+  The write was refused before it reached disk — a permission `deny` on
+  .claude/**, or an OS-level sandbox restriction. This is your environment's
+  guard, not an engine error.
+
+  A permissions `allow` (including Edit(.claude/skills/**)) cannot lift either
+  one: a `deny` always wins over an `allow`, and the sandbox sits below the
+  permission layer entirely. To unblock this one path, do ONE of:
+
+    • add a scoped sandbox.filesystem.allowWrite entry for the path, e.g.
+        "sandbox": { "filesystem": { "allowWrite":
+          [".claude/skills/langchain-context/references/streaming.md"] } }
+    • or remove the `deny` rule covering .claude/** from your settings.
+
+  Then re-run:  /skill-engine:apply langchain
+```
+
+A shell-write diagnostic adds the literal command that failed, e.g. `cp ... .claude/skills/langchain-context/verify.sh`, immediately under the path line, so the user can rerun it by hand once the grant is widened.
+
+<!-- doctrine:sandbox-prose-exempt:start -->
+**Why the grant alone cannot fix this — the two layers are independent.** Claude Code's permission rules (`allow` / `ask` / `deny`) and the OS-level sandbox are separate gates. A permission `allow` never overrides a user-level `deny` — deny-first wins across every settings scope — and it never overrides a sandbox restriction, which is applied to the Bash process below the permission layer entirely. Widening one gate says nothing about the other. The remedy is therefore always to *narrow* the block: a scoped `sandbox.filesystem.allowWrite` entry for the failing path, or removal of the specific `deny`. The remedy is **never** to disable the sandbox, to turn off the sandbox, or to run the engine without the sandbox. The engine will not ask a user to lower a machine-wide defense in order to write one file; the correct fix is always the narrow grant for the path that was blocked.
+<!-- doctrine:sandbox-prose-exempt:end -->
 
 ### Forward note: Node.js hook portability
 

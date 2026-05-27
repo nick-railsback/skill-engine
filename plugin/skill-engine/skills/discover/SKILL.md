@@ -70,6 +70,17 @@ The proposed directory sits as a sibling of the live contextualizer:
 <install>/<slug>-context.proposed/    ← staging (this run writes here)
 ```
 
+For project- and user-level installs `$CTX_PROPOSED` resolves under
+`.claude/skills/`, so a user `deny` on `.claude/**` or a tightened sandbox
+blocks staging writes just as it blocks live writes. **If a write into
+`$CTX_PROPOSED` is rejected** — a denied `Write`/`Edit` or a non-zero /
+`EPERM` exit under a restricted sandbox — do not retry blindly or skip the
+file. Emit the sandbox-block diagnostic per
+[`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md)
+§ "When a `.claude/skills/**` write is blocked": name the exact path, the
+scoped `sandbox.filesystem.allowWrite` (or remove-`deny`) remedy, and the
+retry (`/skill-engine:discover` or `/skill-engine:refresh`).
+
 Two cases for how `$CTX_PROPOSED` is populated:
 
 - **First run** (no prior DISCOVER against this contextualizer; `$CTX_ROOT/references/` is empty): create `$CTX_PROPOSED/` from scratch with the full set of generated files. The promoted apply lands the first reference set into the live tree.

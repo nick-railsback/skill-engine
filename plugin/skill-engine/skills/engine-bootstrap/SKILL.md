@@ -266,6 +266,15 @@ Create the parent directories (`.claude/skills/<contextualizer-slug>-context/`,
 `.claude/skills/<contextualizer-slug>-context/research/`) as part of the
 stamp.
 
+**If a stamp write is rejected** — a denied `cp` / `mkdir -p` / `chmod`,
+or a non-zero / `EPERM` exit under a restricted sandbox on a
+`.claude/skills/<contextualizer-slug>-context/` path — do not retry
+blindly or skip the file. Emit the sandbox-block diagnostic per
+[`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md)
+§ "When a `.claude/skills/**` write is blocked": name the exact path, the
+scoped `sandbox.filesystem.allowWrite` (or remove-`deny`) remedy, the
+literal failed command, and the retry (`/skill-engine:engine-bootstrap`).
+
 All `research/...` references below resolve under the contextualizer
 root (`.claude/skills/<contextualizer-slug>-context/`). The user does not
 need to `cd` into that directory to use the engine — every workflow

@@ -55,7 +55,11 @@ reads still come from the live `$CTX_ROOT/...` — the user's
 last-applied state is the baseline against which drift is measured —
 but every write goes to `$CTX_PROPOSED/...`. See `discover/SKILL.md`
 § Staging directory for the full model (manifest schema, three
-commands, REVIEW.md template stamping).
+commands, REVIEW.md template stamping) — including the sandbox-block
+diagnostic to emit when a `$CTX_PROPOSED` write under `.claude/skills/**`
+is rejected (per [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md)
+§ "When a `.claude/skills/**` write is blocked"; retry with
+`/skill-engine:refresh`).
 
 The only writes that do not redirect are upstream-source clones under
 `~/.cache/skill-engine/...` (the proposed-dir model is about

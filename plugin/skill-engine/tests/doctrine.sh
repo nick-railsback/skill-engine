@@ -160,6 +160,87 @@ if [ -n "$readonly_violations" ]; then
   fail=1
 fi
 
+# 5. No "disable the sandbox" guidance anywhere in engine skills or docs.
+# Doctrine: when a write under .claude/skills/** is blocked, the engine
+# routes the user to the NARROW fix (a scoped sandbox.filesystem.allowWrite
+# entry, or removing the deny), never the BROAD one (disabling the sandbox).
+# The engine must never tell a user to lower a machine-wide defense to use it.
+#
+# Scope: skills/ AND docs/ (*.md). The canonical sandbox-block diagnostic
+# lives in docs/04-delivery.md, which NO other doctrine check scans — so
+# docs/ is in scope here, or the rule would pass vacuously exactly where
+# the diagnostic that needs policing lives.
+#
+# Guard (scoped exclusion, in the spirit of check 4's template exclusion):
+# the canonical diagnostic narrates the prohibition itself in plain prose
+# ("the remedy is never to disable the sandbox…"). A code-span / HTML-comment
+# strip cannot tell that negated narration apart from a real recommendation,
+# so stripping alone is not a sufficient guard here. Instead, that one block
+# is fenced by sentinel comments and skipped; everywhere else ANY
+# disable-sandbox-class phrasing — even negated — fails the check. This keeps
+# the prohibition discussion confined to the single canonical block.
+#
+# Pattern set (case-insensitive): disable…sandbox, turn off…sandbox,
+# without…sandbox, sandbox…:…false, sandbox off.
+sandbox_guidance_violations=$(
+  {
+    find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
+    find "$PLUGIN_ROOT/docs" -type f -name '*.md' 2>/dev/null
+  } | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    rel="${f#"$PLUGIN_ROOT/"}"
+    awk -v file="$rel" '
+      /<!-- doctrine:sandbox-prose-exempt:start -->/ { exempt=1; next }
+      /<!-- doctrine:sandbox-prose-exempt:end -->/   { exempt=0; next }
+      exempt { next }
+      {
+        line = tolower($0)
+        if (line ~ /disable.*sandbox/ ||
+            line ~ /turn[[:space:]]+off.*sandbox/ ||
+            line ~ /without.*sandbox/ ||
+            line ~ /sandbox.*:.*false/ ||
+            line ~ /sandbox[[:space:]]+off/) {
+          print file ":" NR ":" $0
+        }
+      }
+    ' "$f"
+  done
+)
+
+if [ -n "$sandbox_guidance_violations" ]; then
+  echo "FAIL: 'disable the sandbox'-class guidance found in engine skills/docs."
+  echo "$sandbox_guidance_violations" | awk -F: '{ printf "  %s:%s\n", $1, $2 }'
+  echo "  Remedy must be narrow (scoped sandbox.filesystem.allowWrite / remove deny), never disabling the sandbox."
+  fail=1
+fi
+
+# 5b. Sentinel-balance guard for check 5's scoped exclusion.
+# An unterminated :start (a dropped or mistyped :end) would leave awk's
+# `exempt` flag set for the rest of that file, silently suppressing every
+# subsequent line from check 5 — i.e. a real "disable sandbox" recommendation
+# added below an orphaned :start would pass undetected. Fail if any scanned
+# file has mismatched start/end sentinel counts.
+sentinel_imbalance=$(
+  {
+    find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
+    find "$PLUGIN_ROOT/docs" -type f -name '*.md' 2>/dev/null
+  } | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    rel="${f#"$PLUGIN_ROOT/"}"
+    awk -v file="$rel" '
+      /<!-- doctrine:sandbox-prose-exempt:start -->/ { s++ }
+      /<!-- doctrine:sandbox-prose-exempt:end -->/   { e++ }
+      END { if (s != e) printf "%s: %d start / %d end\n", file, s, e }
+    ' "$f"
+  done
+)
+
+if [ -n "$sentinel_imbalance" ]; then
+  echo "FAIL: unbalanced doctrine:sandbox-prose-exempt sentinels (would blind check 5)."
+  echo "$sentinel_imbalance" | awk '{ print "  " $0 }'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
