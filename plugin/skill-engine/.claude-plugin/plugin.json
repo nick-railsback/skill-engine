@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "skill-engine",
-  "version": "0.2.1",
-  "description": "Teach Claude your codebase. Keep it taught.",
+  "version": "0.3.0",
+  "description": "Teach Claude your codebase, then keep it taught. On opt-in, clones registered git sources to a local cache (`~/.cache/skill-engine/`) and installs per-skill context files under your project's `.claude/skills/`. Reads only paths you register.",
   "homepage": "https://github.com/nick-railsback/skill-engine",
   "repository": "https://github.com/nick-railsback/skill-engine",
   "license": "MIT",
