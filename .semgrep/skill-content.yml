@@ -1,0 +1,131 @@
+# Custom semgrep rules for skill *content* (markdown that becomes agent context).
+#
+# Why these run in generic mode: markdown is not a first-class semgrep
+# language, and the target is dangerous patterns written inside fenced code
+# blocks and prose, which semgrep sees as generic text. So every rule uses
+# `languages: [generic]` + `paths.include: ["*.md"]` + `pattern-regex`.
+# A `paths.include` glob of "*.md" matches .md files at any depth, so it is
+# equivalent to the "**/*.md" scoping the rules target.
+#
+# Severity maps to the security workflow gate (.github/workflows/security.yml):
+#   ERROR   -> fails the gating pass (genuinely dangerous: remote-pipe-exec,
+#              sandbox-disabling flags, root/home-destructive shell)
+#   WARNING -> surfaces in the Security tab, does not fail the build (softer
+#              patterns that legitimately appear in documentation)
+#
+# Every rule carries two path carve-outs (globs are `**/`-prefixed so they
+# match anywhere in the tree and stay stable under semgrep's Semgrepignore v2):
+#   - `**/.semgrep/README.md` — that file documents each rule and must quote the
+#     very patterns the rules match, so it would self-trigger.
+#   - `**/examples/*/references/**` — vendored upstream reference docs the engine
+#     fetches verbatim (third-party install lines, eval examples, etc.). They
+#     are not skill-engine-authored content and we do not rewrite them, so
+#     linting them as our own guidance produces false positives.
+# The rationale for each rule and each carve-out lives in `.semgrep/README.md`.
+rules:
+  # ---------------------------------------------------------------------------
+  # 1. Remote script piped straight into a shell. Indefensible in skill content:
+  #    skill markdown becomes agent context, so a `curl ... | sh` here can be
+  #    surfaced to a user as a suggested command that runs unreviewed code.
+  - id: skill-content-curl-pipe-sh
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include: ["*.md"]
+      exclude: ["**/.semgrep/README.md", "**/examples/*/references/**"]
+    pattern-regex: |-
+      (curl|wget)\s[^\n|]*\|\s*(sudo\s+)?(ba)?sh\b
+    message: >-
+      Skill content contains a 'curl ... | sh' (or 'wget ... | sh') pattern.
+      Piping a remote script straight into a shell runs unreviewed code, and
+      skill markdown becomes agent context, so this can reach a user as a
+      suggested command. Download and review the script first, or describe the
+      steps explicitly.
+
+  # ---------------------------------------------------------------------------
+  # 2. Instructions to disable the sandbox or grant blanket permissions. Scoped
+  #    to concrete, high-signal tokens (config flags / settings) rather than the
+  #    prose phrase "disable the sandbox" — the engine docs legitimately discuss
+  #    the sandbox (e.g. doctrine that says NEVER to disable it), and a prose
+  #    match would false-positive on that. The prose case for engine skills is
+  #    already covered by tests/doctrine.sh; this rule extends a concrete net to
+  #    all markdown (examples, references, docs).
+  - id: skill-content-disable-sandbox-or-broad-permissions
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include: ["*.md"]
+      exclude: ["**/.semgrep/README.md", "**/examples/*/references/**"]
+    pattern-regex: |-
+      --dangerously-skip-permissions|bypassPermissions|["']?sandbox["']?\s*[:=]\s*false|grant\s+(all|broad|full)\s+permissions?|allow\s+all\s+(tools|permissions)
+    message: >-
+      Skill content instructs disabling the sandbox or granting blanket
+      permissions. Skill markdown becomes agent context, so this can nudge an
+      agent or user to lower a machine-wide defense. Narrow the specific grant
+      the task needs instead of widening the gate.
+
+  # ---------------------------------------------------------------------------
+  # 3. Root- or home-destructive shell, and chmod 777. The repo legitimately
+  #    documents `rm -rf` of scoped temp/cache paths ($tmpdir, /tmp/..., relative
+  #    trees) all over the engine docs, so the rule must NOT match those: it
+  #    fires only when the removal targets `/`, `/*`, `~`, or $HOME, plus any
+  #    `chmod 777`. `sudo` is gated only in its destructive form (sudo rm -rf of
+  #    a dangerous root) — bare `sudo apt-get` in an example is not a content
+  #    footgun. See .semgrep/README.md for the target-scoping rationale.
+  - id: skill-content-destructive-shell
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include: ["*.md"]
+      exclude: ["**/.semgrep/README.md", "**/examples/*/references/**"]
+    pattern-regex: |-
+      chmod\s+(-R\s+)?(0)?777\b|(sudo\s+)?rm\s+-[rf]+\s+(--\s+)?["']?(/(\s|"|'|\*|$)|~(/|\s|"|'|$)|\$\{?HOME)
+    message: >-
+      Skill content contains a root/home-destructive shell command (rm -rf of
+      /, /*, ~, or $HOME) or chmod 777. In agent context this can be surfaced
+      as a runnable command. Scope the path to a specific temp/cache directory
+      and use least-privilege permissions.
+
+  # ---------------------------------------------------------------------------
+  # 4. eval of a string or command. Softer (WARNING): eval appears in
+  #    teaching/reference docs, but in skill content it is a code-injection
+  #    vector worth a human glance. Scoped to call-like syntax (`eval(` or
+  #    `eval "`/`eval '`/`eval $`/`eval ` + backtick) to avoid matching the
+  #    words "evaluation"/"evals" that pervade this repo.
+  - id: skill-content-eval
+    languages: [generic]
+    severity: WARNING
+    paths:
+      include: ["*.md"]
+      exclude: ["**/.semgrep/README.md", "**/examples/*/references/**"]
+    pattern-regex: |-
+      \beval\s*\(|\beval\s+["'`$]
+    message: >-
+      Skill content uses eval on a string or command. eval executes arbitrary
+      input and is a code-injection vector; in agent context an agent may
+      reproduce it. Prefer an explicit dispatch (case/if) or a parameterized
+      call.
+
+  # ---------------------------------------------------------------------------
+  # 5. Unpinned `pip install` (no ==/>=/<=/~=/!=, not -e/-r/local). Softer
+  #    (WARNING): unpinned installs are a supply-chain footgun, but vendored
+  #    upstream reference docs under examples/*/references/ faithfully reproduce
+  #    third-party install lines we do not control, so those are carved out to
+  #    keep the Security tab signal clean. The rule still warns on skill-engine's
+  #    own skill content.
+  - id: skill-content-unpinned-pip-install
+    languages: [generic]
+    severity: WARNING
+    paths:
+      include: ["*.md"]
+      exclude: ["**/.semgrep/README.md", "**/examples/*/references/**"]
+    patterns:
+      - pattern-regex: |-
+          pip3?\s+install\s+[^\n]+
+      - pattern-not-regex: |-
+          install\s+[A-Za-z0-9_.\-\[\]]+\s*(==|>=|<=|~=|!=)|\s-e\b|--editable|\s-r\b|--requirement|install\s+\.
+    message: >-
+      Skill content shows an unpinned 'pip install'. Without a version
+      constraint the resolved package can change under you; in skill content
+      that becomes a reproducibility and supply-chain footgun. Pin a version
+      (pip install pkg==X.Y) or document why it floats.
