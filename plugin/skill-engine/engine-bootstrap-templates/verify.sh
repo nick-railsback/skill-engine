@@ -189,7 +189,7 @@ else
       # Line-separated records via 0x1f field separator. Field values
       # (id, kind, status, lifecycle.state) are short kebab-case / URL /
       # path strings without embedded newlines.
-      while IFS=$'\x1f' read -r idx id kind status state url path branch crawl_mode; do
+      while IFS=$'\x1f' read -r idx id kind src_status state url src_path branch crawl_mode; do
         [ -n "${idx:-}" ] || continue
         if [ -z "$id" ]; then
           fail "sources[$idx] missing required field: id"
@@ -204,13 +204,13 @@ else
           reachable|moved|removed|unknown) ;;
           *) fail "sources[$idx] ($id): lifecycle.state '$state' not in {reachable, moved, removed, unknown}"; entries_ok=0 ;;
         esac
-        if [ -z "$status" ]; then
+        if [ -z "$src_status" ]; then
           fail "sources[$idx] ($id) missing required field: status"
           entries_ok=0
         else
-          case "$status" in
+          case "$src_status" in
             intake|proposed|confirmed|rejected) ;;
-            *) fail "sources[$idx] ($id): status '$status' not in {intake, proposed, confirmed, rejected}"; entries_ok=0 ;;
+            *) fail "sources[$idx] ($id): status '$src_status' not in {intake, proposed, confirmed, rejected}"; entries_ok=0 ;;
           esac
         fi
         case "$kind" in
@@ -225,13 +225,13 @@ else
               fail "sources[$idx] ($id): url is required when kind is web-doc"
               entries_ok=0
             fi
-            if [ -n "$path" ]; then
-              fail "sources[$idx] ($id): path '$path' set on kind 'web-doc' — web-doc sources are URL-addressed, not path-addressed"
+            if [ -n "$src_path" ]; then
+              fail "sources[$idx] ($id): path '$src_path' set on kind 'web-doc' — web-doc sources are URL-addressed, not path-addressed"
               entries_ok=0
             fi
             ;;
           external-doc)
-            if [ -z "$path" ]; then
+            if [ -z "$src_path" ]; then
               fail "sources[$idx] ($id): path is required when kind is external-doc"
               entries_ok=0
             fi
@@ -241,7 +241,7 @@ else
             fi
             ;;
           local-path)
-            if [ -z "$path" ]; then
+            if [ -z "$src_path" ]; then
               fail "sources[$idx] ($id): path is required when kind is local-path"
               entries_ok=0
             fi
