@@ -1,6 +1,6 @@
 ---
 name: review
-description: When the user wants to inspect a pending DISCOVER or REFRESH proposal. Prints the changed-file manifest, the configured diff command, and opens the proposal's `REVIEW.md` so the user can fill predictions, see the disagreement set, and sign off — before `apply` promotes the staged directory into the live contextualizer.
+description: Review a staged proposal and sign off before applying it.
 ---
 
 # Review

@@ -1,6 +1,6 @@
 ---
 name: discard
-description: When the user wants to throw away a pending DISCOVER or REFRESH proposal without promoting it. Removes `<name>-context.proposed/` entirely after a one-line confirmation; the live contextualizer at `<name>-context/` is untouched.
+description: Discard a staged proposal without promoting it.
 ---
 
 # Discard

@@ -1,6 +1,6 @@
 ---
 name: apply
-description: When the user wants to promote a pending DISCOVER or REFRESH proposal from `<name>-context.proposed/` to the live contextualizer at `<name>-context/`. Runs only after `/skill-engine:review <name>` has surfaced the diff and the user has ticked exactly one Step 3 sign-off box (other than `reject`).
+description: Promote a reviewed proposal into the live contextualizer.
 ---
 
 # Apply

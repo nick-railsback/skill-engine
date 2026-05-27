@@ -1,6 +1,6 @@
 ---
 name: config-set
-description: When the user wants to persist an engine-wide configuration value, such as the diff command `/skill-engine:review` prints. Writes to the engine's plugin-data config file. Accepts `<key> "<value>"` argument shape; the only key the engine reads today is `diff.tool`.
+description: Set an engine-wide config value (currently the `review` diff tool).
 ---
 
 # Config set

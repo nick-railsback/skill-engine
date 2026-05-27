@@ -95,12 +95,16 @@ contextualizer (`discover`, `refresh`, `status`, `self-audit`,
 
    The chapter doctrine in [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) enumerates six workflows
    (REFRESH, SKILL, NEW, STATUS, DISCOVER, SELF-AUDIT). The plugin surface
-   ships five distinct slash-commands plus the router, the scaffolder,
-   and `clean-cache` (eight skills total): the chapter's `SKILL` workflow
-   — single-reference targeted update — is reachable via `new-reference`
-   with an existing reference named in scope, so the two collapse to one
-   plugin command. `/skill-engine:clean-cache` is invoked directly, not
-   routed through this entry-point skill.
+   ships twelve skills: the five maintenance workflows above that this
+   router dispatches to, plus the router itself, the scaffolder
+   (`engine-bootstrap`), `clean-cache`, and the four review-workflow skills
+   (`review`, `apply`, `discard`, `config-set`). The chapter's `SKILL`
+   workflow — single-reference targeted update — is reachable via
+   `new-reference` with an existing reference named in scope, so the two
+   collapse to one plugin command. `clean-cache` and the four
+   review-workflow skills are invoked directly, not routed through this
+   entry-point skill (the pending-proposal pre-step above surfaces the
+   `review` / `apply` / `discard` commands when a staged proposal exists).
 
    If the user did not name a workflow, render the menu from the engine
    chapter's "The menu" section and wait for the human to pick one.
