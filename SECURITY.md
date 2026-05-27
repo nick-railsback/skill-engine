@@ -17,7 +17,7 @@ The repository's automated checks look for a narrow, well-defined set of problem
 - **semgrep** matches code against rules for known-risky patterns across languages.
 - **bandit** scans Python for common security anti-patterns, should any Python land in the tree.
 
-The broader scanning suite (`gitleaks`, `semgrep`, `bandit`) is wired through the CI security workflow — a later addition to this repository, not yet present on this branch.
+The broader scanning suite (`gitleaks`, `semgrep`, `bandit`) is wired through the CI security workflow (`.github/workflows/security.yml`), which runs on every pull request, on pushes to `main`, and on a weekly schedule. bandit and semgrep findings surface in the repository's Security tab.
 
 What these checks do *not* do, and are not meant to:
 
