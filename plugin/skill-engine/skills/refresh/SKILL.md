@@ -166,7 +166,7 @@ When `/skill-engine:refresh` is invoked:
      `engine-bootstrap` but not yet `discover`/`refresh`). Emit the engine
      template into `$CTX_PROPOSED/verify.sh` unconditionally; the manifest
      entry is `{status: "added", sha_before: null, sha_after: <content-hash-of-engine-template>}`,
-     matching the Batch 3 AC1.6 null-field convention for `added`. The
+     matching the manifest's null-field convention for `added` entries. The
      `sha_*` fields use the same content-hash form (7-char prefix) the rest
      of the manifest uses — see `discover/SKILL.md` § Staging directory for
      the manifest example. The SHA-256 used for the equality comparison
@@ -178,7 +178,7 @@ When `/skill-engine:refresh` is invoked:
 
    When drift is staged, the disagreement set in `REVIEW.md` Step 2 SHOULD
    include the re-stamp as one surfaced item (the magnitude-ranking heuristic
-   from Batch 3 AC2.2 places mechanism drift between scope changes and
+   places mechanism drift between scope changes and
    zero-impact items). The `verify.sh` run REFRESH executes against the
    proposed tree (`Post-run summary` below) runs against the **new**
    `verify.sh` — the new template must pass its own checks against the

@@ -56,8 +56,8 @@ Set diff.tool = "<value>" in $CLAUDE_PLUGIN_DATA/config.json.
 
 ## What this skill does NOT do
 
-- It does not list current values. A separate `config-list` skill would be the symmetric surface; it is out of scope for the v0.3.0 review-workflow batch.
+- It does not list current values. A separate `config-list` skill would be the symmetric surface; it is out of scope for the v0.3.0 review workflow.
 - It does not unset values. Hand-edit `config.json` to remove a key, or set it back to the engine default.
 - It does not validate the diff tool against the user's shell environment. The engine treats `<value>` as opaque.
 - It does not gate keys against a schema. Any `<key>` accepted by the argument parser is written; readers (`/skill-engine:review`) read the keys they know and ignore the rest.
-- It does not enforce read-only-ness on user-configured diff tools. The doctrine constraint "no engine git mutations" binds the engine, not user config (the `git.readonly` lint in a later batch codifies engine-codebase read-only-ness).
+- It does not enforce read-only-ness on user-configured diff tools. The doctrine constraint "no engine git mutations" binds the engine, not user config (the `git.readonly` lint codifies engine-codebase read-only-ness).

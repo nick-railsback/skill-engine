@@ -59,7 +59,7 @@ fi
 # not the user) are permitted. Allow-list is closed; any verb not listed
 # fails the check. Open by structure (a lint), not by convention.
 #
-# Allow-list (Batch 4 AC5.2):
+# Allow-list:
 #   diff, status, log, show, clone, ls-remote, ls-tree, ls-files,
 #   rev-parse, cat-file
 #
@@ -74,7 +74,7 @@ fi
 #                                          legitimately carry user-side
 #                                          mutating verbs)
 #
-# Excluded files (Batch 4 AC5.5) — these stamp into the user's own release
+# Excluded files — these stamp into the user's own release
 # workflow and pre-commit hook; their `git add` / `git commit` / `git push` /
 # `git describe` invocations are the user's commits, not the engine's:
 #   engine-bootstrap-templates/release-command.md.template

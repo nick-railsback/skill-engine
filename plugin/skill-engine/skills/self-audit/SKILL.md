@@ -83,8 +83,8 @@ list.
 ## Check 6 — review-state staleness
 
 Check 6 surfaces the case where the contextualizer's persisted sign-off
-(`research/review-state.json`, written by `/skill-engine:apply` per Batch 4
-AC1) has aged out of agreement with the upstream-state record carried in
+(`research/review-state.json`, written by `/skill-engine:apply`) has aged
+out of agreement with the upstream-state record carried in
 `research/source-paths.json` per-source `lifecycle.last_checked` fields.
 SELF-AUDIT is read-only by default; Check 6 runs the same way and only
 proposes a mutation through the existing auto-fix opt-in prompt.
@@ -105,7 +105,7 @@ to `"stale"` when either of the following holds:
 - **Ledger absent on a legacy skill.** When `research/review-state.json`
   does not exist AND the skill carries at least one in-scope `git-managed`
   source with a non-null `lifecycle.last_checked_sha`, the skill predates
-  Batch 4 and is treated as stale on the first SELF-AUDIT run that
+  the review-state ledger and is treated as stale on the first SELF-AUDIT run that
   surfaces it. Fresh-bootstrap skills with no `last_checked_sha` yet (no
   DISCOVER/REFRESH has probed) are N/A, not stale.
 
@@ -133,7 +133,7 @@ unchanged). Wire it into the auto-fix opt-in prompt alongside Checks 1
 and 4.
 
 **Bypass of the staging gate.** The Check-6 mutation is NOT routed through
-the Batch-3 `<slug>-context.proposed/` staging gate. SELF-AUDIT's existing
+the `<slug>-context.proposed/` staging gate. SELF-AUDIT's existing
 fix flow writes directly to the working tree via its sandbox-validate
 → APPROVE path, and `review-state.json` mutations follow that same
 pattern. The rationale: a stale flag is engine state about the skill's

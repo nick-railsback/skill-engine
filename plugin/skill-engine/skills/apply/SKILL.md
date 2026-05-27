@@ -154,7 +154,7 @@ Audit trail (REVIEW.md + manifest.json) preserved at <install>/<name>-context/.r
 ## What this skill does NOT do
 
 - It does not run `verify.sh` post-promotion. The proposed tree's `verify.sh` already passed before DISCOVER or REFRESH wrote its manifest (per `discover/SKILL.md` § Staging directory), so the live tree inherits that property by file move. A separate post-apply verify is redundant work.
-- It does not write `review-state.json` to the proposed tree. The ledger is engine state about the promotion event, not part of the reviewable proposal — DISCOVER and REFRESH must not stage it, and the manifest must not enumerate it (Batch 4 AC1.4).
+- It does not write `review-state.json` to the proposed tree. The ledger is engine state about the promotion event, not part of the reviewable proposal — DISCOVER and REFRESH must not stage it, and the manifest must not enumerate it.
 - It does not `git add` or `git commit` the live tree. The user decides what to commit and when. The engine's "no git mutations" doctrine binds (`_bmad-output/epics.md` § "Locked project decisions" #1).
 - It does not auto-promote on sign-off. The user runs `apply` explicitly; sign-off in `REVIEW.md` is necessary but not sufficient.
 - It does not preserve a backup of the pre-apply live tree. If a `modified` overwrites a file the user wishes they had kept, recovery is via `git` (whatever the user's repo history holds) — not via the engine.
