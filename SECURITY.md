@@ -32,7 +32,7 @@ The plugin declares exactly one hook: a `SessionStart` bootstrap hook, declared 
 The engine ships no other hooks, and it injects none into your `.claude/settings.json`. Hooks fire automatically on your events; an engine that quietly registered hooks in your settings would be acting without a prompt — exactly the trust this project refuses to ask for. That refusal rests on three layers:
 
 - **Doctrine** — the project's standing rule that the engine adds no hooks to your settings and mutates no git state on your behalf.
-- **The `make hooks-audit` target** — a check that fails if the plugin's declared hooks drift from the single one documented here. It lands in a later batch; it is named here as the intended mechanism, not something already runnable on this branch.
+- **The `make hooks-audit` target** — a check that fails if the plugin's declared hooks drift from the single one documented here. It runs locally in under five seconds (`make hooks-audit`) and in CI on every pull request, so drift surfaces as a failing check rather than something a reviewer has to remember to look for.
 - **The empty `hooks` block** in the bundled `.claude/settings.json` — a committed, zero-hook settings file whose every future change shows up in `git diff`. This is the layer you can read right now.
 
 ### What this policy does not promise

@@ -1,0 +1,16 @@
+name: Hooks Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  hooks-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run hooks audit
+        run: bash plugin/skill-engine/tests/hooks-audit.sh

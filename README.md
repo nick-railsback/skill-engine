@@ -2,7 +2,7 @@
 
 > Teach Claude your codebase. Keep it taught.
 
-[![CI](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml) [![Version](https://img.shields.io/badge/version-v0.3.0-blue)](https://github.com/nick-railsback/skill-engine/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Scans: bandit · semgrep · shellcheck](https://img.shields.io/badge/scans-bandit%20%C2%B7%20semgrep%20%C2%B7%20shellcheck-475569)](https://github.com/nick-railsback/skill-engine/blob/main/.github/workflows/security.yml)
+[![CI](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml) [![Hooks Audit](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml) [![Version](https://img.shields.io/badge/version-v0.3.0-blue)](https://github.com/nick-railsback/skill-engine/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Scans: bandit · semgrep · shellcheck](https://img.shields.io/badge/scans-bandit%20%C2%B7%20semgrep%20%C2%B7%20shellcheck-475569)](https://github.com/nick-railsback/skill-engine/blob/main/.github/workflows/security.yml)
 
 skill-engine turns the repos and docs of your given domain area into a Claude a skill
 you can use elsewhere — registering each source in `source-paths.json`,
@@ -156,6 +156,7 @@ graph LR
 - **Lint** — ≥80% of load-bearing paragraphs carry a permalink within 5 lines.
 - **SHA-pinning** — every snapshot records the commit it was reviewed against.
 - **Drift surfacing** — stale snapshots fail loudly, not silently.
+- **Hooks audit** — `make hooks-audit` ([workflow](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml)) asserts the bundled settings ship zero hooks and the plugin declares only the single `SessionStart` bootstrap; any hook creep fails the check, not a reviewer's memory.
 
 > **Quote the line, or name its absence.**
 
@@ -1392,8 +1393,6 @@ cadence is manual; reviewer-in-the-loop is the default operating mode. Both
 defaults are deliberate — and revisable as the project matures.
 
 ## FAQ
-
-<!-- Batch 8/9: most-asked operational question goes here, above the safety-model entry. -->
 
 > **Q: Why reviewer-in-the-loop instead of auto-merge for snapshot updates?**
 >
