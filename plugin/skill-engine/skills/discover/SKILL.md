@@ -446,13 +446,13 @@ rendered Markdown reflow paragraphs at viewport width. Do not insert
 manual line breaks within a prose paragraph to keep lines under ~80
 columns — that produces mid-sentence breaks in rendered output, makes
 diffs noisier, and is inconsistent with the soft-wrapping convention
-used by the example contextualizer at [`examples/library-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/library-context).
+used by the example contextualizer at [`examples/modelcontextprotocol-python-sdk-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/modelcontextprotocol-python-sdk-context).
 
 Code blocks, tables, bullet lists, and headings follow their own
 conventions; this directive applies only to prose paragraphs. The
 prose in this SKILL.md file itself is hard-wrapped for legacy reasons
 and is NOT the style to imitate — the example contextualizer at
-[`examples/library-context/SKILL.md`](https://github.com/nick-railsback/skill-engine/blob/main/examples/library-context/SKILL.md) is the style to imitate.
+[`examples/modelcontextprotocol-python-sdk-context/SKILL.md`](https://github.com/nick-railsback/skill-engine/blob/main/examples/modelcontextprotocol-python-sdk-context/SKILL.md) is the style to imitate.
 
 ## Paragraph→permalink density
 

@@ -94,6 +94,6 @@ them together for human approval.
 
 Soft wrap reference prose: one paragraph per line, no hard line breaks at
 fixed column widths. The example contextualizer at
-[`examples/library-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/library-context) shows the intended style; the
+[`examples/modelcontextprotocol-python-sdk-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/modelcontextprotocol-python-sdk-context) shows the intended style; the
 `discover/SKILL.md` "Markdown style for emitted references" section
 documents the convention in full.

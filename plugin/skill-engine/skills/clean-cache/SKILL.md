@@ -103,7 +103,7 @@ Cache root: /Users/me/.cache/skill-engine
 Total size: 135M
 
 Directory                                                         Size  Last accessed
-git-managed/flask-flask-cccc3333                                  31M   2026-04-28
+git-managed/django-django-cccc3333                                31M   2026-04-28
 git-managed/vitejs-vite-aaaa1111                                  52M   2026-05-11
 git-managed/vitejs-vite-bbbb2222                                  52M   2026-05-12
 web-doc/anthropic-docs-eeee5555                                   42M   2026-05-15

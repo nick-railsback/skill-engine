@@ -196,7 +196,7 @@ Beyond the `kind` discriminator and the external-doc-specific provenance frontma
 
 **Citations resolve by path+content-hash.** No per-source sub-region granularity is enforced at the schema level; reference files cite their source by the `(source_id, path, sha)` triple. The chunked-source granularity layer that earlier engine versions carried has retired — DISCOVER now decides the partition it likes during a session, writes references that satisfy the four invariants, and the engine validates output via `verify.sh` rather than constraining the partition shape.
 
-**Required fields per entry post-DISCOVER-first-run.** `id`, `kind`, `url`-or-`path`, `status`, `lifecycle.state`. The contextualizer verify.sh's `source-entries` check (see [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](plugin/skill-engine/engine-bootstrap-templates/verify.sh)) enforces these required fields and the three enum constraints (`kind`, `status`, `lifecycle.state`) on every contextualizer invocation.
+**Required fields per entry post-DISCOVER-first-run.** `id`, `kind`, `url`-or-`path`, `status`, `lifecycle.state`. The contextualizer verify.sh's `source-entries` check (see [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/verify.sh)) enforces these required fields and the three enum constraints (`kind`, `status`, `lifecycle.state`) on every contextualizer invocation.
 
 **Two state-machine axes — load-bearing.** `status` (curation) and `lifecycle.state` (upstream) describe distinct things and must not be conflated. A `confirmed` source can become `removed` upstream without invalidating the curation; a `rejected` companion can still have its upstream reach `moved`. The engine surfaces both axes separately — directly in `source-paths.json` and in each workflow's post-run summary — so the two states are never collapsed into one. Conflating them would lose information at the moment the user most needs it.
 
@@ -384,7 +384,7 @@ The first line of the reference body remains `# Reference Title` (the H1). This 
 
 Under goal-given DISCOVER, the model varies a reference's body shape by what the source domain rewards — the engine validates output via the four reference invariants and `verify.sh` rather than constraining body section structure. A reference satisfies the contract as long as the invariants hold; the section names below are one acceptable shape, not a contract requirement.
 
-The six-section shape below tends to render well across a wide range of domains and is the shape the example contextualizer at [`examples/library-context/`](examples/library-context/) uses. A reference may add, remove, rename, or reorder sections when the source's natural structure calls for it.
+The six-section shape below tends to render well across a wide range of domains and is the shape the example contextualizer at [`examples/modelcontextprotocol-python-sdk-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/modelcontextprotocol-python-sdk-context) uses. A reference may add, remove, rename, or reorder sections when the source's natural structure calls for it.
 
 ```markdown
 # Reference Title

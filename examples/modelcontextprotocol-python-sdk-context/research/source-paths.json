@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "modelcontextprotocol-python-sdk",
+      "kind": "git-managed",
+      "url": "https://github.com/modelcontextprotocol/python-sdk",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-26",
+        "last_checked_sha": "3eb579948a4719d606d2adbd1f3f69371c9c0f48",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    }
+  ]
+}
