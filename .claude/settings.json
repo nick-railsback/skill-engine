@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "_comment_deny": "Empty by choice. Nothing is hard-refused. This is a bundled, repo-level settings file: a deny on git commit / push (or rm) would also block the maintainer's own legitimate Claude-driven work in this repo, not just the engine. Every formerly-denied verb is ask-gated below instead, so the seatbelt is a prompt, not a wall. The explicit empty list keeps that decision visible in the diff.",
+    "deny": [],
+    "_comment_ask": "Prompt before any of these. The mutating git verbs (push, commit, reset, checkout, rebase, merge) and recursive removes (rm -rf, rm -r) are gated here rather than denied, so a human confirms each one — belt-and-suspenders with the git.readonly lint in plugin/skill-engine/tests/doctrine.sh, which independently asserts the engine itself invokes no mutating git verb. Writes land only inside the engine namespace (.claude/skills/**), where the engine proposes changes and stages removable .proposed* artifacts; permission patterns cannot scope a glob to those paths, so rm -r prompts on every recursive remove rather than shipping a hook to narrow it. Separation-by-condition: reads are auto-allowed, everything that mutates state asks first.",
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git rebase:*)",
+      "Bash(git merge:*)",
+      "Bash(rm -rf:*)",
+      "Bash(rm -r:*)",
+      "Write(.claude/skills/**)",
+      "Edit(.claude/skills/**)"
+    ],
+    "_comment_allow": "Read surface only. The engine reads installed skills and runs four read-only git invocations (diff --no-index, status, log, show), all of which the git.readonly lint whitelists as read-only — no mutating verb appears here.",
+    "allow": [
+      "Read(.claude/skills/**)",
+      "Bash(git diff --no-index:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
+    ]
+  },
+  "_comment_hooks": "Explicit empty hooks section. This bundled settings file registers zero hooks; the plugin's one narrow SessionStart bootstrap hook is declared in the plugin manifest and documented in SECURITY.md. This key is a visible commitment — any future hook proposal in this file appears as a diff.",
+  "hooks": {}
+}

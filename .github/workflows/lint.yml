@@ -33,6 +33,7 @@ jobs:
         run: |
           set -e
           paths=(
+            ".claude/settings.json"
             ".claude-plugin/marketplace.json"
             "plugin/skill-engine/.claude-plugin/plugin.json"
             "plugin/skill-engine/engine-bootstrap-templates/research-state.json.template"
