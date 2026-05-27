@@ -1,6 +1,6 @@
 ---
 name: engine-bootstrap
-description: When the user is in an empty directory and wants to scaffold a new contextualizer from the bundled templates. Accepts one or more URLs or local paths to source roots; the engine auto-detects identity, kind, and topology — the user never types engine taxonomy.
+description: Scaffold a new contextualizer from one or more source URLs or local paths.
 ---
 
 # Engine bootstrap

@@ -1,6 +1,6 @@
 ---
 name: using-skill-engine
-description: When the user invokes any engine workflow from a contextualizer directory and the appropriate sub-workflow needs to be selected based on the directory's setup state.
+description: When the user mentions skill-engine or "the engine" without naming a specific workflow, or wants first-run setup. Inspects `.claude/skills/*-context/` install state (and any pending `*-context.proposed/` proposals) across all three install levels, then dispatches to engine-bootstrap when no contextualizer exists, to discover / refresh / status / self-audit / new-reference when one is present, or asks which workflow when the choice is ambiguous.
 ---
 
 # Using the skill engine

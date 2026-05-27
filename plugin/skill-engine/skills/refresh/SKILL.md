@@ -1,6 +1,6 @@
 ---
 name: refresh
-description: When the user wants to refresh an existing contextualizer — re-check upstream state for registered sources, detect drift, and re-emit reference files where the upstream has changed. The engine hands you a task and validates your output via the four reference invariants and verify.sh.
+description: Refresh a contextualizer's references against current upstream state.
 ---
 
 # Refresh

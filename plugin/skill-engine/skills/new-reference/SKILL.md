@@ -1,6 +1,6 @@
 ---
 name: new-reference
-description: When the user wants to add a single new reference file to an existing contextualizer without running the full discover pipeline.
+description: Register one new reference in an existing contextualizer without a full discover pass.
 ---
 
 # New reference

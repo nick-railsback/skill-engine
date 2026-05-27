@@ -1,6 +1,6 @@
 ---
 name: status
-description: When the user wants a one-page report on the contextualizer's current health, recently emitted references, and pending review work.
+description: List a contextualizer's reference freshness and any pending review work.
 ---
 
 # Status

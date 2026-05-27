@@ -1,6 +1,6 @@
 ---
 name: discover
-description: When the user wants the engine to discover the essence of registered sources and emit reference files. Suitable for first runs against a fresh contextualizer and for recurring rediscovery against a maturing one. The engine hands you a task and validates your output via the four reference invariants and verify.sh.
+description: Propose new reference files for registered sources.
 ---
 
 # Discover

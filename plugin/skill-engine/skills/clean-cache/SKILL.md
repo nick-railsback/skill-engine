@@ -1,6 +1,6 @@
 ---
 name: clean-cache
-description: When the user wants to free disk space by deleting the skill-engine local clone cache (~/.cache/skill-engine/), with a dry-run preview before destructive action.
+description: Delete the skill-engine clone cache (`~/.cache/skill-engine/`), with a dry-run preview first.
 ---
 
 # Clean cache

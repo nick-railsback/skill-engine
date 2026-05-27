@@ -1,6 +1,6 @@
 ---
 name: self-audit
-description: When the user wants the engine to audit its own configuration and recently emitted artifacts for invariant violations and drift.
+description: Audit a contextualizer for drift (read-only).
 ---
 
 # Self-audit
