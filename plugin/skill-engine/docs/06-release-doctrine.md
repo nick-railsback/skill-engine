@@ -175,4 +175,4 @@ You're shipping a system that other engineers will lean on as ground truth. The 
 
 Then (whenever you want to grow the reference corpus — first runs welcome): [08-discover-pipeline.md - the DISCOVER pipeline: corpus crawling, companion proposals, lifecycle handling, post-run summary contract.](08-discover-pipeline.md)
 
-Or skip ahead to: [11-walkthrough.md - Concrete walkthrough on a library-context example](11-walkthrough.md), then the plugin's [engine-bootstrap-templates/](https://github.com/nick-railsback/skill-engine/tree/main/plugin/skill-engine/engine-bootstrap-templates) bundle to start scaffolding.
+Or skip ahead to: [11-walkthrough.md - a concrete end-to-end walkthrough](11-walkthrough.md), then the plugin's [engine-bootstrap-templates/](https://github.com/nick-railsback/skill-engine/tree/main/plugin/skill-engine/engine-bootstrap-templates) bundle to start scaffolding.

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "sessions": [
+    {
+      "session_id": "self-audit-2026-05-19",
+      "session_type": "SELF-AUDIT",
+      "timestamp": "2026-05-19",
+      "findings_total": 2,
+      "applied": 2,
+      "deferred": 0,
+      "rejected": 0
+    },
+    {
+      "session_id": "self-audit-2026-05-26",
+      "session_type": "SELF-AUDIT",
+      "timestamp": "2026-05-26",
+      "findings_total": 1,
+      "applied": 1,
+      "deferred": 0,
+      "rejected": 0
+    }
+  ]
+}

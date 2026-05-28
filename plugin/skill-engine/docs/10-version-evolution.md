@@ -262,22 +262,30 @@ There is no separate doctrine repo and no separate scaffolder repo. The unified 
 
 ## Version consistency and testing
 
-The test suite must enforce consistency across five surfaces (same pattern as [05-invariants.md](05-invariants.md)):
+The plugin states its version in several places; they must not drift. The
+release-bearing surfaces are **mechanically gated** by the version-parity check
+in [`tests/doctrine.sh`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/tests/doctrine.sh)
+(run on every PR by the Security/lint workflows); the remaining surfaces are
+manual review at bump time.
 
 | Surface | Version location | Checked by |
 |---|---|---|
-| 1. Plugin manifest | `.claude-plugin/plugin.json` `"version"` | test: `test_plugin_version_consistency` |
-| 2. Research agent system prompt | Header comment: `# Engine v0.2.0` | test: `test_agent_version_declaration` |
-| 3. Metadata schema doc | In this file (10-version-evolution.md) example blocks | test: manual review per CHANGELOG |
-| 4. CLI package command | (if CLI is present in plugin) | test: `test_cli_version_consistency` |
-| 5. Doctrine chapter examples | In unified plugin `docs/04-delivery.md` (post-Epic-3 renumber) metadata examples | test: manual review per CHANGELOG |
+| 1. Plugin manifest | `.claude-plugin/plugin.json` `"version"` | `doctrine.sh` version-parity check |
+| 2. Marketplace entry | `.claude-plugin/marketplace.json` `plugins[0].version` | `doctrine.sh` version-parity check |
+| 3. README version badge | `README.md` `badge/version-vX.Y.Z` | `doctrine.sh` version-parity check |
+| 4. README prose | `README.md` "This is vX.Y.Z" | `doctrine.sh` version-parity check |
+| 5. Doc example blocks | In this file (10-version-evolution.md) and chapter examples | manual review per CHANGELOG |
 
-When you bump to v0.2.0:
-- Update `.claude-plugin/plugin.json` to `"version": "0.2.0"`.
-- Update the engine workflow headers to `# Engine v0.2.0`.
-- Update example JSON blocks in this doc (10-version-evolution.md) to show v0.2 shape.
+The `doctrine.sh` check fails CI when surfaces 1–4 disagree, so a missed bump on
+any of them is caught before merge. (There is no `test_*`-named unit test for
+this — the gate is the `doctrine.sh` grep/jq check, not a pytest function.)
+
+When you bump the version:
+- Update `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and both
+  README spots (badge + "This is vX.Y.Z") to the same `X.Y.Z`.
+- Update example version blocks in this doc to show the new shape.
 - Regenerate any CHANGELOG-referenced example output.
-- Run tests to verify consistency.
+- Run `bash plugin/skill-engine/tests/doctrine.sh` to confirm parity (`Failed: 0`).
 
 ## Migration by version pair
 

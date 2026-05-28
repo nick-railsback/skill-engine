@@ -1,6 +1,6 @@
 ---
 name: refresh
-description: When the user wants to refresh an existing contextualizer — re-check upstream state for registered sources, detect drift, and re-emit reference files where the upstream has changed. The engine hands you a task and validates your output via the four reference invariants and verify.sh.
+description: Refresh a contextualizer's references against current upstream state.
 ---
 
 # Refresh
@@ -15,30 +15,56 @@ fixed keystroke menu, no required worker dispatch.
 ## Contextualizer root
 
 Engine workflows operate inside a contextualizer installed as a project
-skill at `.claude/skills/<slug>-context/`. Every path below —
-`research/...`, `references/...`, `verify.sh` — resolves relative to that
-directory.
+skill at one of three install levels:
 
-Before reading or writing anything, locate the root from the project
-working directory:
+- **User-level:** `~/.claude/skills/<slug>-context/`
+- **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
+- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+
+Every path below — `research/...`, `references/...`, `verify.sh` —
+resolves relative to whichever directory matches. Before reading or
+writing anything, locate the root by searching all three install
+levels in order:
 
 ```bash
-ctx_roots=$(find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null)
+set -euo pipefail
+ctx_roots=$(
+  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+  done
+)
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
 if [ "$n" -eq 0 ]; then
-  echo "No contextualizer found under .claude/skills/*-context/. Run /skill-engine:engine-bootstrap first."
+  echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers under .claude/skills/; specify one:"
+  echo "Multiple contextualizers found; specify one:"
   printf '%s\n' "$ctx_roots"
   exit 1
 fi
 CTX_ROOT="$ctx_roots"
+CTX_PROPOSED="${CTX_ROOT}.proposed"
 ```
 
-Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
-every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
-`$CTX_ROOT/verify.sh`.
+`$CTX_PROPOSED` is the **staging directory** that mirrors the live
+contextualizer's structure. REFRESH writes to it instead of
+`$CTX_ROOT`; the live skill is untouched until the user runs
+`/skill-engine:apply <name>` to promote the proposal. Drift-detection
+reads still come from the live `$CTX_ROOT/...` — the user's
+last-applied state is the baseline against which drift is measured —
+but every write goes to `$CTX_PROPOSED/...`. See `discover/SKILL.md`
+§ Staging directory for the full model (manifest schema, three
+commands, REVIEW.md template stamping) — including the sandbox-block
+diagnostic to emit when a `$CTX_PROPOSED` write under `.claude/skills/**`
+is rejected (per [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md)
+§ "When a `.claude/skills/**` write is blocked"; retry with
+`/skill-engine:refresh`).
+
+The only writes that do not redirect are upstream-source clones under
+`~/.cache/skill-engine/...` (the proposed-dir model is about
+contextualizer-internal writes; the upstream-source cache is
+independent and lives in the user-level cache root).
 
 ## Output contract
 
@@ -70,6 +96,18 @@ quality.
 
 When `/skill-engine:refresh` is invoked:
 
+0. **Guard against an unapplied proposal.** If `$CTX_PROPOSED` already exists,
+   a prior DISCOVER/REFRESH proposal is staged and not yet applied. Do not
+   layer this run onto it — halt with:
+
+   ```
+   A proposal is already staged at <slug>-context.proposed/. Apply it (/skill-engine:apply <slug>), discard it (/skill-engine:discard <slug>), or inspect it (/skill-engine:review <slug>) before running refresh again.
+   ```
+
+   Exit cleanly. This run's copy-on-write staging tree is built fresh from the
+   live baseline once the guard passes. (Same guard as `discover/SKILL.md`
+   § Pre-flight step 0 — neither route may build on a stale proposed tree.)
+
 1. **Locate state.** Read `research/source-paths.json`. If the file is
    missing, unparseable, or `sources[]` is empty, render:
 
@@ -90,10 +128,9 @@ When `/skill-engine:refresh` is invoked:
    # Allow-list: a flat-layout git-managed clone has a .git/HEAD file inside
    # a directory at the cache root. Anything else (future kind subdirs, stray
    # directories) is intentionally not migrated.
-   flat_entries=$(for d in "$cache_root"/*/; do
-     [ -d "$d" ] || continue
+   flat_entries=$(find "$cache_root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | while IFS= read -r d; do
      [ -f "$d/.git/HEAD" ] || continue
-     printf '%s\n' "${d%/}"
+     printf '%s\n' "$d"
    done)
    ```
 
@@ -110,6 +147,60 @@ When `/skill-engine:refresh` is invoked:
    existing re-clone path handles cache miss on next REFRESH. The
    user's choice is not persisted — the prompt fires next REFRESH if
    any flat entries remain.
+
+1.6. **verify.sh template drift detection.** REFRESH compares the live
+   `$CTX_ROOT/verify.sh` against the engine's current template at
+   `$CLAUDE_PLUGIN_ROOT/engine-bootstrap-templates/verify.sh` via byte-for-byte
+   SHA-256 equality. Neither file embeds timestamps, machine-specific paths,
+   or RCS-keyword drift sources, so the SHA is content-stable across machines
+   and runs. The drift check is shared with DISCOVER; both routes funnel into
+   the same staging-gate handoff so re-stamping is visible in the user's
+   `REVIEW.md` disagreement set instead of silently overwriting.
+
+   ```bash
+   engine_template="${CLAUDE_PLUGIN_ROOT:-}/engine-bootstrap-templates/verify.sh"
+   if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "$engine_template" ]; then
+     # Fallback: walk the conventional plugin install candidates.
+     for cand in "$HOME/.claude/plugins/skill-engine" "$HOME/.claude/local/plugins/skill-engine"; do
+       if [ -f "$cand/engine-bootstrap-templates/verify.sh" ]; then
+         engine_template="$cand/engine-bootstrap-templates/verify.sh"
+         break
+       fi
+     done
+   fi
+   ```
+
+   Three cases:
+
+   - **Engine template unreachable** (plugin uninstalled but stamped skill
+     remains — degenerate, reachable). Skip the drift check silently; emit
+     one N/A line in the post-run summary's Coverage report
+     (`verify.sh template drift check skipped — engine template unreachable`).
+     Do not abort the run.
+   - **Live `verify.sh` absent** (first-run regeneration: user ran
+     `engine-bootstrap` but not yet `discover`/`refresh`). Emit the engine
+     template into `$CTX_PROPOSED/verify.sh` unconditionally; the manifest
+     entry is `{status: "added", sha_before: null, sha_after: <content-hash-of-engine-template>}`,
+     matching the manifest's null-field convention for `added` entries. The
+     `sha_*` fields use the same content-hash form (7-char prefix) the rest
+     of the manifest uses — see `discover/SKILL.md` § Staging directory for
+     the manifest example. The SHA-256 used for the equality comparison
+     above is the engine-internal signal; the manifest's `sha_*` fields are
+     the user-visible record.
+   - **Live `verify.sh` present and SHAs differ.** Write the engine template
+     to `$CTX_PROPOSED/verify.sh`; the manifest entry carries
+     `{status: "modified", sha_before: <content-hash-of-live>, sha_after: <content-hash-of-engine-template>}`.
+
+   When drift is staged, the disagreement set in `REVIEW.md` Step 2 SHOULD
+   include the re-stamp as one surfaced item (the magnitude-ranking heuristic
+   places mechanism drift between scope changes and
+   zero-impact items). The `verify.sh` run REFRESH executes against the
+   proposed tree (`Post-run summary` below) runs against the **new**
+   `verify.sh` — the new template must pass its own checks against the
+   proposed tree, or staging is aborted with a diagnostic.
+
+   REFRESH MUST NOT write directly to `$CTX_ROOT/verify.sh` under any
+   code path. Every re-stamp flows through the staging gate.
 
 2. **Thin-schema migration (transparent).** If any `sources[i]` entry
    still carries a `chunks[]` field (legacy schema from earlier engine
@@ -160,9 +251,24 @@ procedure.
 **Lifecycle state.** For each in-scope source, decide whether its
 upstream is still `reachable`, `moved`, `removed`, or `unknown` (see
 [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) for the four-state field). Write
-transitions to `research/source-paths.json` immediately. Conservative
-default: any non-zero probe exit maps to `unknown`, not `removed`.
-Auto-flipping `archived` is prohibited — the user sets it.
+transitions to `$CTX_PROPOSED/research/source-paths.json`. The first
+time this run needs to record a transition, seed the proposed file as
+a copy-on-write of the live file before mutating it:
+
+```bash
+if [ ! -f "$CTX_PROPOSED/research/source-paths.json" ]; then
+  mkdir -p "$CTX_PROPOSED/research"
+  cp "$CTX_ROOT/research/source-paths.json" "$CTX_PROPOSED/research/source-paths.json"
+fi
+# …then apply the transition to the proposed file.
+```
+
+The manifest records `source-paths.json` as `modified`. The lifecycle
+transitions you detect are part of the proposal the user reviews;
+promoting them silently to the live tree before review would defeat
+the staging-dir model. Conservative default: any non-zero probe exit
+maps to `unknown`, not `removed`. Auto-flipping `archived` is
+prohibited — the user sets it.
 
 **Content drift.** For each source still `reachable` after the
 lifecycle pass, decide whether its content has changed since the last
@@ -337,6 +443,16 @@ style for emitted references" for the full convention.
 
 ## Post-run summary
 
+Before rendering the summary, finalize the staging directory. The proposed
+tree is a sparse copy-on-write, so verify against an **ephemeral merged tree**
+(live overlaid with this run's changes and the manifest's removals applied),
+not against `$CTX_PROPOSED/` directly — the exact procedure and bash are in
+`discover/SKILL.md` § Post-run summary. Confirm `verify.sh` exits 0 against
+that merged tree, then write `$CTX_PROPOSED/.review/manifest.json` per the
+schema and stamping convention documented in `discover/SKILL.md` § Staging
+directory. A non-zero `verify.sh` exit aborts the proposed-dir write with a
+diagnostic; the user never sees a `REVIEW.md` for a broken proposal.
+
 At end-of-run, produce a paragraph-form summary for the author with
 three components (no multi-column tables, no interactive menus):
 
@@ -352,6 +468,16 @@ three components (no multi-column tables, no interactive menus):
    /skill-engine:refresh --hint='<your hint>'` — for example,
    `--hint='I think packages/foo's reference is stale even though SHA
    matches; recheck against the README'`.
+
+4. **Staging-dir handoff line** (always last, even for no-op runs).
+   Render one line naming the proposed directory and the three
+   review/apply/discard commands:
+
+   ```
+   Proposal staged at <slug>-context.proposed/. Run /skill-engine:review <slug> to inspect, /skill-engine:apply <slug> to promote, /skill-engine:discard <slug> to throw away.
+   ```
+
+   `<slug>` is the contextualizer slug without the `-context` suffix.
 
 The summary is paragraph-form; ≤30 lines of text typical. It is the
 author's primary signal that drift was correctly identified and that

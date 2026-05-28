@@ -1,6 +1,6 @@
 ---
 name: status
-description: When the user wants a one-page report on the contextualizer's current health, recently emitted references, and pending review work.
+description: List a contextualizer's reference freshness and any pending review work.
 ---
 
 # Status
@@ -12,21 +12,30 @@ rejection-log clustering that suggests a doctrine gap.
 ## Contextualizer root
 
 Engine workflows operate inside a contextualizer installed as a project
-skill at `.claude/skills/<slug>-context/`. Every path below —
-`research/...`, `references/...`, `verify.sh` — resolves relative to that
-directory.
+skill at one of three install levels:
 
-Before reading anything, locate the root from the project working
-directory:
+- **User-level:** `~/.claude/skills/<slug>-context/`
+- **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
+- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+
+Every path below — `research/...`, `references/...`, `verify.sh` —
+resolves relative to whichever directory matches. Before reading
+anything, locate the root by searching all three install levels in
+order:
 
 ```bash
-ctx_roots=$(find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null)
+ctx_roots=$(
+  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+  done
+)
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
 if [ "$n" -eq 0 ]; then
-  echo "No contextualizer found under .claude/skills/*-context/. Run /skill-engine:engine-bootstrap first."
+  echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers under .claude/skills/; specify one:"
+  echo "Multiple contextualizers found; specify one:"
   printf '%s\n' "$ctx_roots"
   exit 1
 fi
@@ -36,6 +45,48 @@ CTX_ROOT="$ctx_roots"
 Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
 every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 `$CTX_ROOT/verify.sh`.
+
+## Pending proposals
+
+A staged-but-unapplied proposal sits as a sibling of the live tree at
+`${CTX_ROOT}.proposed/`. STATUS surfaces it (and how far its review has
+progressed) so a pending review does not silently rot — this is the
+"notes pending proposals waiting on human review" the intro promises.
+Read-only: STATUS reports the proposal's state but never advances it.
+
+```bash
+slug=$(basename "$CTX_ROOT"); slug="${slug%-context}"
+proposed="${CTX_ROOT}.proposed"
+if [ ! -d "$proposed" ]; then
+  printf 'No pending proposal (nothing staged).\n'
+else
+  manifest="$proposed/.review/manifest.json"
+  review="$proposed/.review/REVIEW.md"
+  if [ -f "$manifest" ]; then
+    added=$(jq '[.entries[]|select(.status=="added")]|length'    "$manifest" 2>/dev/null); added=${added:-0}
+    modified=$(jq '[.entries[]|select(.status=="modified")]|length' "$manifest" 2>/dev/null); modified=${modified:-0}
+    removed=$(jq '[.entries[]|select(.status=="removed")]|length'  "$manifest" 2>/dev/null); removed=${removed:-0}
+    printf 'Pending proposal: %s.proposed/  (%s added, %s modified, %s removed)\n' \
+      "$slug" "$added" "$modified" "$removed"
+  else
+    printf 'Pending proposal: %s.proposed/  (incomplete — no manifest; DISCOVER/REFRESH did not finish)\n' "$slug"
+  fi
+  # Review progress, mirroring apply's pre-promotion gates (read-only here).
+  if [ -f "$review" ]; then
+    ticks=$(grep -ciE '^- \[x\] (reviewed|provisional|reject)' "$review" 2>/dev/null); ticks=${ticks:-0}
+    if grep -q '___' "$review" 2>/dev/null; then
+      printf '  Review: awaiting Step 1 predictions (run /skill-engine:review %s).\n' "$slug"
+    elif grep -qF '(Run /skill-engine:review' "$review" 2>/dev/null; then
+      printf '  Review: Step 1 filled; Step 2 not yet generated (re-run /skill-engine:review %s).\n' "$slug"
+    elif [ "$ticks" -eq 1 ]; then
+      state=$(grep -iE '^- \[x\] (reviewed|provisional|reject)' "$review" | head -1 | sed -E 's/^- \[[xX]\] +//')
+      printf '  Review: signed off as %s — ready for /skill-engine:apply %s.\n' "$state" "$slug"
+    else
+      printf '  Review: not yet signed off (tick one Step 3 box, then /skill-engine:apply %s).\n' "$slug"
+    fi
+  fi
+fi
+```
 
 ## Doctrine surface
 

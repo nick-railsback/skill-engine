@@ -328,7 +328,7 @@ operational dependency?" Three reasonable shapes:
 requires durable state. Every check is "read PR diff and CI logs, decide,
 post one comment, exit." The agent is a Python script invoked by a
 workflow, importing `langchain` and `langgraph` (LangGraph is a hard dep
-of v1 anyway — `pip install langchain` pulls it in), building a
+of v1 anyway — `pip install langchain` pulls it in), <!-- nosemgrep: skill-content-unpinned-pip-install --> building a
 `create_agent` per invocation, calling `.invoke(...)` once, posting via
 the `gh` CLI, exiting. LangSmith tracing is two env vars stored as
 GitHub Actions secrets. Total operational surface added to the core

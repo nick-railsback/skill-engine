@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Keeps the action pins current across every workflow in .github/workflows/
+  # — actions/checkout, actions/setup-python, github/codeql-action. Gitleaks
+  # is CLI-installed in security.yml (the gitleaks/gitleaks-action is
+  # excluded by this repo's allowed_actions: "selected" policy), so its
+  # version is hand-bumped in that workflow rather than tracked here.
+  # Grouping all three workflows under one ecosystem entry means a single
+  # coherent bump set.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      # Group every action bump into one PR per cycle (the coherent set above).
+      github-actions:
+        patterns: ["*"]
+
+  # No "pip" entry on purpose. This repo declares no Python dependency manifest
+  # (no requirements.txt / pyproject.toml / setup.py / Pipfile) — the tracked
+  # Python is a pair of stdlib-only test helpers. A pip ecosystem entry with no
+  # manifest makes dependabot raise a recurring "dependency file not found"
+  # error on every run. Add a pip entry here if and when a manifest lands for
+  # the test scripts.

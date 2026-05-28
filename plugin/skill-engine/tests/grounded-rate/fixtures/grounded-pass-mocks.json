@@ -1,0 +1,26 @@
+{
+  "_note": "Mock responses for the grounded-PASS fixture. Three prompts, all three grounded (opened a reference AND emitted a SHA-pinned permalink in final_response_text). The permalink is the canonical Check 7 shape; the test exercises run_prompt_mocked → grade_record → PASS path without API calls.",
+  "records": [
+    {
+      "references_opened": ["alpha.md"],
+      "turns_used": 1,
+      "final_response_text": "The `Alpha` class lives at `pkg/alpha.py` (https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py).",
+      "input_tokens": 1200,
+      "output_tokens": 60
+    },
+    {
+      "references_opened": ["beta.md"],
+      "turns_used": 1,
+      "final_response_text": "Per the migration guide, see https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/MIGRATION.md for the breaking-change list.",
+      "input_tokens": 1300,
+      "output_tokens": 75
+    },
+    {
+      "references_opened": ["gamma.md"],
+      "turns_used": 1,
+      "final_response_text": "The `Gamma` interface signature is defined at https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py (tag-pinned).",
+      "input_tokens": 1150,
+      "output_tokens": 70
+    }
+  ]
+}

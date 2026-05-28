@@ -1,0 +1,18 @@
+{
+  "session_id": "self-audit-2026-05-26",
+  "session_type": "SELF-AUDIT",
+  "timestamp": "2026-05-26",
+  "findings_total": 1,
+  "findings_auto_fixable": 1,
+  "findings_judgment_required": 0,
+  "applied": [
+    {
+      "check": "stale-as-of-date",
+      "file": "SKILL.md",
+      "line": 10,
+      "mutation": "refreshed navigator narrative SHA f4753440->3eb57994 and date 2026-05-19->2026-05-26 to match lifecycle.last_checked"
+    }
+  ],
+  "verify_passed": 9,
+  "verify_failed": 0
+}

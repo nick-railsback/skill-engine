@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "langchain-ai-langchain",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/langchain",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "84e3c795ec292cd32156f65c37c1445abb94b576",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "langchain-ai-langgraph",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/langgraph",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "8cb0f3a96da422837177ca3a80a3124b6e471184",
+        "proposed_url": null
+      },
+      "discovered_via": "langchain v1 declares langgraph>=1.2.0 as a core dependency; create_agent returns a LangGraph StateGraph"
+    },
+    {
+      "id": "langchain-ai-langsmith-sdk",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/langsmith-sdk",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "df9735d0badd2b07f557e8ecf1f4765e1c03e1ab",
+        "proposed_url": null
+      },
+      "discovered_via": "Both the root README and the v1 README direct users to LangSmith for production tracing, eval, and debugging"
+    },
+    {
+      "id": "langchain-ai-deepagents",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/deepagents",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "390551d61d57ce68c2a80ed78c07eaa8e985908b",
+        "proposed_url": null
+      },
+      "discovered_via": "Root README TIP block: 'higher-level package built on LangChain for agents that have built-in capabilities for common usage patterns'"
+    },
+    {
+      "id": "langchain-ai-docs",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/docs",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "099a34b4c2f7b06f9dde0f1433f5c5d0ef979c49",
+        "proposed_url": null
+      },
+      "discovered_via": "Repo carries no in-tree docs/; CLAUDE.md and READMEs point all prose docs at docs.langchain.com, whose source lives in langchain-ai/docs"
+    },
+    {
+      "id": "langchain-ai-langchainjs",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/langchainjs",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d",
+        "proposed_url": null
+      },
+      "discovered_via": "Root README and v1 README both link to LangChain.js as the JS/TS equivalent — different-language port; recommend reject unless this contextualizer is explicitly polyglot"
+    },
+    {
+      "id": "langchain-ai-langchain-google",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/langchain-google",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "6b7d88dbd3dd703223b27458903937df02fdf242",
+        "proposed_url": null
+      },
+      "discovered_via": "libs/partners/README.md notes Google integrations were moved out to a separate repo for independent versioning"
+    },
+    {
+      "id": "langchain-ai-langchain-aws",
+      "kind": "git-managed",
+      "url": "https://github.com/langchain-ai/langchain-aws",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "eea5b3c9609d9f846a901c289f586b270740b3b7",
+        "proposed_url": null
+      },
+      "discovered_via": "libs/partners/README.md notes AWS integrations were moved out to a separate repo for independent versioning"
+    }
+  ]
+}

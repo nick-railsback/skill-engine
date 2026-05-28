@@ -1,6 +1,6 @@
 ---
 name: engine-bootstrap
-description: When the user is in an empty directory and wants to scaffold a new contextualizer from the bundled templates. Accepts one or more URLs or local paths to source roots; the engine auto-detects identity, kind, and topology — the user never types engine taxonomy.
+description: Scaffold a new contextualizer from one or more source URLs or local paths.
 ---
 
 # Engine bootstrap
@@ -239,6 +239,16 @@ The accepted name becomes the **`<contextualizer-slug>`** used in Step 3.
 
 ## Step 3 — Stamping
 
+**Bootstrap writes directly to the live tree.** Unlike DISCOVER and
+REFRESH, which stage their writes to `<slug>-context.proposed/` for
+explicit user review before promotion (see `discover/SKILL.md` §
+Staging directory), bootstrap stamps straight into
+`.claude/skills/<slug>-context/`. There is nothing to review yet — the
+user has explicitly invoked bootstrap to scaffold a fresh
+contextualizer from templates, and there is no pre-existing live tree
+to diff against. The staging-dir model exists to prevent silent
+overwrites of curated state; bootstrap's first-stamp is not that.
+
 Copy the following files from the plugin's `engine-bootstrap-templates/`
 directory into `.claude/skills/<contextualizer-slug>-context/` under the
 project working directory, preserving line endings as-is (LF-only in the
@@ -255,6 +265,15 @@ bundle).
 Create the parent directories (`.claude/skills/<contextualizer-slug>-context/`,
 `.claude/skills/<contextualizer-slug>-context/research/`) as part of the
 stamp.
+
+**If a stamp write is rejected** — a denied `cp` / `mkdir -p` / `chmod`,
+or a non-zero / `EPERM` exit under a restricted sandbox on a
+`.claude/skills/<contextualizer-slug>-context/` path — do not retry
+blindly or skip the file. Emit the sandbox-block diagnostic per
+[`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md)
+§ "When a `.claude/skills/**` write is blocked": name the exact path, the
+scoped `sandbox.filesystem.allowWrite` (or remove-`deny`) remedy, the
+literal failed command, and the retry (`/skill-engine:engine-bootstrap`).
 
 All `research/...` references below resolve under the contextualizer
 root (`.claude/skills/<contextualizer-slug>-context/`). The user does not

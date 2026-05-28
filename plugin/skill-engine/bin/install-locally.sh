@@ -57,13 +57,16 @@ if [ "$found_any" -eq 0 ]; then
   exit 1
 fi
 
-# 3. Template-bundle files (five of them; engine-bootstrap stamps these).
+# 3. Template-bundle files (six of them; engine-bootstrap stamps the first
+#    five at scaffold time, and DISCOVER/REFRESH stamp REVIEW.md.template
+#    into <slug>-context.proposed/.review/ at the end of every run).
 template_bundle=(
   "engine-bootstrap-templates/verify.sh"
   "engine-bootstrap-templates/navigator.md.template"
   "engine-bootstrap-templates/navigator-multi-domain.md.template"
   "engine-bootstrap-templates/source-paths.json.template"
   "engine-bootstrap-templates/research-state.json.template"
+  "engine-bootstrap-templates/REVIEW.md.template"
 )
 for tmpl in "${template_bundle[@]}"; do
   if [ ! -f "$tmpl" ]; then

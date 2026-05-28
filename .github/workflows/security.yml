@@ -1,0 +1,142 @@
+name: Security
+
+# Additive security scan: gitleaks, shellcheck, bandit, semgrep. Findings for
+# bandit + semgrep land in the GitHub Security tab via SARIF. The gate fails
+# only on HIGH/CRITICAL (see "Severity gating" below); MEDIUM warns, LOW is
+# ignored. No PR-bot comments — standard check status only.
+#
+# This workflow is self-contained and does not touch lint.yml or
+# hooks-audit.yml. The README "Scans: bandit · semgrep · shellcheck" badge
+# links to this file.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, Mondays 12:00 UTC.
+    - cron: '0 12 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write  # authorizes the SARIF upload to the Security tab
+  pull-requests: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks scans every commit, not just the tip.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Pinned tool versions (Subtask 2.8: avoid 'latest' resolution for
+      # determinism + perf). These are pip installs, not action pins, so
+      # dependabot does not bump them while the repo has no Python manifest
+      # (see .github/dependabot.yml and Open Question Q1) — bump them here by
+      # hand, or add a requirements file later to let dependabot track them.
+      - name: Install scanners
+        run: pip install "bandit[sarif]==1.9.4" "semgrep==1.164.0"
+
+      # --- SARIF-producing passes (always exit 0) -----------------------------
+      # These never fail the job; the gate passes below decide pass/fail. Order
+      # matters: produce + upload SARIF before any gate can fail the job, so
+      # bandit/semgrep findings reach the Security tab even on a red gate.
+
+      # bandit: -ll floors at MEDIUM so MEDIUM+ findings surface as warnings in
+      # the Security tab. Scope is plugin/skill-engine/tests — the only tracked
+      # Python in a clean checkout (the other *.py trees are gitignored). bandit
+      # silently exits 0 on a missing/empty path, so the real risk is a quiet
+      # zero-findings run if these test .py files ever move — not a hard error.
+      - name: bandit (SARIF)
+        run: bandit -r plugin/skill-engine/tests -ll -f sarif -o bandit.sarif --exit-zero
+
+      # semgrep: three configs in one pass — the CI + secrets registry packs
+      # plus the repo's custom skill-content rules. `semgrep scan` exits 0 on
+      # findings by default (no --error), so this pass writes a complete SARIF
+      # (all severities) for the Security tab without failing the job; the gate
+      # pass below re-runs at ERROR only. Explicit --config args (no --config
+      # auto) keep the registry fetch bounded (AC9).
+      - name: semgrep (SARIF)
+        run: semgrep scan --config p/ci --config p/secrets --config .semgrep/skill-content.yml --sarif --output semgrep.sarif
+
+      # Distinct category per tool — two uploads without distinct categories
+      # overwrite each other. if: always() so findings post even when a gate
+      # step below fails the job.
+      - name: Upload bandit SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+
+      - name: Upload semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      # --- Gate passes --------------------------------------------------------
+      # Severity gating (AC8): HIGH/CRITICAL -> fail, MEDIUM -> warn, LOW ->
+      # ignore. Wired per tool, not as one global switch:
+      #   gitleaks  — any secret fails (secrets have no severity gradient).
+      #   shellcheck — any warning+ fails (mirrors lint.yml; intentional
+      #                redundancy so the security workflow stands alone).
+      #   bandit    — gate at HIGH only; MEDIUM already surfaced as a warning
+      #               in the SARIF pass above.
+      #   semgrep   — gate at ERROR only (ERROR ~= HIGH); WARNING (~MEDIUM) and
+      #               INFO (~LOW) surfaced above but do not fail.
+
+      # gitleaks via pinned CLI binary. The official gitleaks/gitleaks-action
+      # is excluded by this repo's `allowed_actions: "selected"` Actions policy
+      # (not GitHub-owned, not under the repo owner, and not Marketplace-
+      # verified), which previously caused this workflow to fail at startup
+      # validation. The CLI install carries equivalent gating with the same
+      # supply-chain discipline used for bandit/semgrep pip pins: version +
+      # SHA-256 pinned in lockstep. AC6 scopes the SARIF-to-Security-tab
+      # requirement to bandit + semgrep, so gitleaks does not upload SARIF.
+      # Bump by hand: check https://github.com/gitleaks/gitleaks/releases,
+      # update GITLEAKS_VERSION and GITLEAKS_SHA256 together.
+      - name: gitleaks (secret scan)
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          tar="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tar}"
+          curl -sSL "$url" -o "$tar"
+          echo "${GITLEAKS_SHA256}  ${tar}" | sha256sum -c -
+          tar -xzf "$tar" gitleaks
+          ./gitleaks git . --no-banner
+
+      # shellcheck on all *.sh — same glob + severity as lint.yml. ubuntu-latest
+      # ships shellcheck preinstalled, so no apt install here (keeps a flaky
+      # network step out of the security gate).
+      - name: shellcheck (all *.sh)
+        run: |
+          set -e
+          shopt -s globstar nullglob
+          files=( **/*.sh )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No .sh files found."
+            exit 0
+          fi
+          shellcheck --severity=warning "${files[@]}"
+
+      - name: bandit (gate — HIGH)
+        run: bandit -r plugin/skill-engine/tests --severity-level high -q
+
+      - name: semgrep (gate — ERROR)
+        run: semgrep scan --config p/ci --config p/secrets --config .semgrep/skill-content.yml --severity ERROR --error

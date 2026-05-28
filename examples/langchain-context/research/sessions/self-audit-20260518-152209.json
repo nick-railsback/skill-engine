@@ -1,0 +1,41 @@
+{
+  "session_id": "self-audit-20260518-152209",
+  "session_type": "SELF-AUDIT",
+  "ran_at": "2026-05-18",
+  "checks": {
+    "stale-as-of-date": {
+      "status": "finding",
+      "auto_fixable": true
+    },
+    "broken-url": {
+      "status": "ok",
+      "auto_fixable": false
+    },
+    "long-untouched-reference": {
+      "status": "ok",
+      "auto_fixable": false
+    },
+    "catalog-vs-frontmatter": {
+      "status": "ok",
+      "auto_fixable": true
+    },
+    "cross-reference-vs-content": {
+      "status": "ok",
+      "auto_fixable": false
+    }
+  },
+  "findings": [
+    {
+      "check": "stale-as-of-date",
+      "location": "SKILL.md:98",
+      "before": "the last DISCOVER run (2026-05-13)",
+      "after": "the last `/skill-engine:refresh` run (2026-05-18)",
+      "outcome": "APPROVED"
+    }
+  ],
+  "sandbox_path": "/var/folders/7b/yf90yzx54j94f8l2zmmyzh_r0000gn/T//skill-engine-validate-self-audit-20260518-152209",
+  "verify_result": {
+    "passed": 8,
+    "failed": 0
+  }
+}

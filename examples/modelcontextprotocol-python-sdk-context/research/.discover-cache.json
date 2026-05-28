@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "modelcontextprotocol-python-sdk": {
+      "last_sha": "3eb579948a4719d606d2adbd1f3f69371c9c0f48",
+      "last_run": "2026-05-26"
+    }
+  }
+}

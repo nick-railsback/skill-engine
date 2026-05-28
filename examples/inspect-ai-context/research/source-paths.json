@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "ukgovernmentbeis-inspect-ai",
+      "kind": "git-managed",
+      "url": "https://github.com/UKGovernmentBEIS/inspect_ai",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "6a78eff7a7bf99a58d1b9fe981cbbbdab978bb40",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "inspect-aisi-org-uk",
+      "kind": "web-doc",
+      "url": "https://inspect.aisi.org.uk/",
+      "crawl_mode": "sitemap",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": null,
+        "last_crawl_id": "2026-05-19",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    }
+  ]
+}

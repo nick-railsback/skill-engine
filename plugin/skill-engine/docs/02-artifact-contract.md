@@ -40,6 +40,10 @@ That's the whole filesystem surface. Three concepts:
 
 There is no `index.md` and no metadata file in `references/`. The structure stays one level deep: `references/` contains either a flat `.md` file or a directory-form reference (which is itself the reference, not a nested namespace). See `### Reference depth (one level)` below for the contract.
 
+### Staging directory shape (DISCOVER, REFRESH, and new-reference write here, not live)
+
+DISCOVER, REFRESH, and `new-reference` do not write into the live `<slug>-context/` directly. All three write to a sibling staging directory at `<install>/<slug>-context.proposed/` that mirrors the live skill's structure (`SKILL.md`, `verify.sh`, `research/...`, `references/...`) plus a `.review/` subdirectory carrying `manifest.json` (an `entries[]` list of `{path, status, sha_before, sha_after}` records — `status` is one of `added`, `modified`, `removed`, `unchanged`) and a filled-in `REVIEW.md` (the predict-then-compare audit trail stamped from `engine-bootstrap-templates/REVIEW.md.template`). The user reviews the proposal via `/skill-engine:review <name>`, promotes it via `/skill-engine:apply <name>`, or throws it away via `/skill-engine:discard <name>`. Bootstrap is exempt — `engine-bootstrap` stamps directly into the live tree because there is nothing to review at first-scaffold time. The four reference invariants and the named checks in `verify.sh` are evaluated — against an ephemeral merged view of the live tree plus this run's staged changes, since the proposed dir is a sparse copy-on-write — before its `manifest.json` is finalized; a `verify.sh` failure aborts the proposed-dir write and the user never sees a broken proposal. Two contract points worth pinning: `removed` manifest entries are detected **deterministically** (a live reference the proposed navigator's catalog no longer cites is recorded `removed`, not left to agent recall), and `/skill-engine:apply` verifies the review **actually ran** (Step 1 predictions filled and Step 2 disagreement set populated in `REVIEW.md`) before promoting — a ticked Step-3 box alone is not sufficient.
+
 ## The navigator (SKILL.md)
 
 ### Frontmatter - exactly two fields
@@ -192,7 +196,7 @@ Beyond the `kind` discriminator and the external-doc-specific provenance frontma
 
 **Citations resolve by path+content-hash.** No per-source sub-region granularity is enforced at the schema level; reference files cite their source by the `(source_id, path, sha)` triple. The chunked-source granularity layer that earlier engine versions carried has retired — DISCOVER now decides the partition it likes during a session, writes references that satisfy the four invariants, and the engine validates output via `verify.sh` rather than constraining the partition shape.
 
-**Required fields per entry post-DISCOVER-first-run.** `id`, `kind`, `url`-or-`path`, `status`, `lifecycle.state`. The contextualizer verify.sh's `source-entries` check (see [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](plugin/skill-engine/engine-bootstrap-templates/verify.sh)) enforces these required fields and the three enum constraints (`kind`, `status`, `lifecycle.state`) on every contextualizer invocation.
+**Required fields per entry post-DISCOVER-first-run.** `id`, `kind`, `url`-or-`path`, `status`, `lifecycle.state`. The contextualizer verify.sh's `source-entries` check (see [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/verify.sh)) enforces these required fields and the three enum constraints (`kind`, `status`, `lifecycle.state`) on every contextualizer invocation.
 
 **Two state-machine axes — load-bearing.** `status` (curation) and `lifecycle.state` (upstream) describe distinct things and must not be conflated. A `confirmed` source can become `removed` upstream without invalidating the curation; a `rejected` companion can still have its upstream reach `moved`. The engine surfaces both axes separately — directly in `source-paths.json` and in each workflow's post-run summary — so the two states are never collapsed into one. Conflating them would lose information at the moment the user most needs it.
 
@@ -291,6 +295,8 @@ The platform constraint motivating the rule is auto-compaction. When the orchest
 
 The navigator is a router, not a knowledge base. If your navigator's standing instructions are approaching the budget, you're probably putting reference content into the navigator instead of into reference files.
 
+**Engine-managed provisional preamble (single exception).** When `/skill-engine:apply` promotes a proposal with the `provisional` sign-off ticked in `REVIEW.md` Step 3, it stamps a delimiter-wrapped blockquote into the navigator immediately after the closing frontmatter `---` and immediately before the first `^# ` H1 line. The block is engine-managed (`<!-- BEGIN provisional-preamble (managed by skill-engine; do not hand-edit) -->` … `<!-- END provisional-preamble -->`); a subsequent `apply` with the `reviewed` tick removes it. This is the sole exception to "the navigator body starts with an H1": when the preamble is present, the H1 is no longer the first non-frontmatter line. The preamble is engine-managed runtime trust signal (not invariant, critical rule, or dispatch logic) and is **exempt from the 5K standing-instructions budget** by the same logic as the catalog-as-TOC carve-out. See `apply/SKILL.md` § Reconcile the provisional preamble for the delimiter format and the four reconciliation cases.
+
 ### Multi-domain navigators
 
 A navigator that routes across multiple domains — one `<area-domain>-context` skill cataloging more than one domain — is contractually equivalent to a single-domain navigator: same two-field frontmatter, same first-5K standing-instructions budget (with the catalog-as-TOC carve-out, which lets a sectioned catalog grow as needed), same six prescribed reference sections, same bijection invariant extended to per-section bijection across the sectioned catalog.
@@ -356,29 +362,21 @@ The two non-draft catalog entries (`billing-refunds`, `billing-disputes`) partic
 
 ## Reference files
 
-### Frontmatter is optional; description-only when present
+### No YAML frontmatter on references
 
-A reference file MAY carry a minimal frontmatter block containing only a `description:` field, or it MAY omit frontmatter entirely. When present, the block carries exactly the two delimiter lines and the `description:` line — no `name:`, no `version:`, no other fields.
+Reference files are **pure Markdown with no YAML frontmatter**. The first line of every reference file is the `# Reference Title` H1. This matches Anthropic's canonical Agent Skills practice — the Agent Skills [spec](https://agentskills.io/specification) scopes the `name:` and `description:` frontmatter contract to `SKILL.md` only; supporting markdown files under `references/` (e.g., `REFERENCE.md`, `FORMS.md`) are described as plain documentation that agents read on demand, and Anthropic's own shipped skills (e.g., [`pdf/reference.md`](https://github.com/anthropics/skills/blob/main/skills/pdf/reference.md), [`pdf/forms.md`](https://github.com/anthropics/skills/blob/main/skills/pdf/forms.md)) carry no frontmatter at all.
 
-```yaml
----
-description: <one-line purpose statement — what this reference covers and when to read it>
----
-```
+The rule is enforced by Invariant 3 in [`05-invariants.md`](05-invariants.md) and by the `reference-frontmatter` named check in the contextualizer-stamped `verify.sh` (which fails any `references/*.md` whose first non-blank, non-BOM line is `---`).
 
-The `description:` field is the **canonical, model-readable statement of the reference's purpose** and is the diff target for SELF-AUDIT's Check 4 (catalog-vs-content; see [`03-engine.md`](03-engine.md)). Recommended length: under ~200 characters so a reviewer scanning the catalog can read it inline. Style: noun-phrase or imperative — `"<Topic> patterns, gotchas, and recipes for <use-case>."` — same WHEN-not-WHAT discipline as the navigator's own description.
+**Why no frontmatter.** The navigator's loading model expects raw Markdown content from the first line. On platforms that do not parse YAML in supporting files, a stray frontmatter block surfaces as visible content; on platforms that do parse it, the `name:` and `description:` keys collide with the SKILL.md-level metadata schema. Anthropic's spec sidesteps both failure modes by scoping frontmatter to `SKILL.md`. The engine inherits the same discipline.
 
-When frontmatter is absent, Check 4 falls back to a body-section heuristic — the first paragraph under the H1, or the bullets under a `## When to Use This Reference` section if one is present. Pre-existing references that ship without frontmatter remain compliant; the optional block is a sharpening, not a forcing function.
-
-**Why optional, not required.** The navigator's loading model originally expected raw Markdown content from the first line and a stray YAML block could be treated as content by some platforms. The two-line `description:` block is small enough to render cleanly on the platforms that don't parse it; the platforms that do parse it get the canonical purpose statement. References that emit no frontmatter remain valid — the bijection invariant and the four reference invariants do not depend on this field.
-
-The first line of the reference body remains `# Reference Title` (the H1). This is enforced by an automated test ([05-invariants.md](05-invariants.md)) whether or not a frontmatter block precedes it.
+**SELF-AUDIT Check 4 (catalog-vs-content)** uses a body-section heuristic to extract each reference's purpose for diffing against the navigator's catalog row: the first paragraph under the H1, or the bullets under a `## When to Use This Reference` section if one is present. The body-section heuristic is the contract; the navigator's catalog-row description is the diff target.
 
 ### A common reference shape
 
 Under goal-given DISCOVER, the model varies a reference's body shape by what the source domain rewards — the engine validates output via the four reference invariants and `verify.sh` rather than constraining body section structure. A reference satisfies the contract as long as the invariants hold; the section names below are one acceptable shape, not a contract requirement.
 
-The six-section shape below tends to render well across a wide range of domains and is the shape the example contextualizer at [`examples/library-context/`](examples/library-context/) uses. A reference may add, remove, rename, or reorder sections when the source's natural structure calls for it.
+The six-section shape below tends to render well across a wide range of domains and is the shape the example contextualizer at [`examples/modelcontextprotocol-python-sdk-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/modelcontextprotocol-python-sdk-context) uses. A reference may add, remove, rename, or reorder sections when the source's natural structure calls for it.
 
 ```markdown
 # Reference Title
@@ -573,7 +571,7 @@ A contextualizer approaching `N ≈ 1000` source roots should plan ahead — wel
 * The provenance tag the harvest pipeline writes into the frontmatter of every harvested artifact, so an artifact's source of origin survives the journey from crawl to emission.
 * The discriminator the emission stage uses to keep per-source artifacts under distinct `source_id` records when two source roots produce disagreeing material on the same topic, so the reviewer sees both side-by-side rather than having one silently shadow the other at consumption time.
 
-**Frontmatter contract.** Every harvested artifact — a file the pipeline writes into the references corpus as the result of a source-root crawl — carries `source_id` in its frontmatter. This is a harvested-artifact rule, not a reference rule: hand-authored references at `references/<area-domain>-*.md` follow the [optional-description-only convention](#frontmatter-is-optional-description-only-when-present) (frontmatter present carries only a `description:` field, or is omitted entirely); harvested artifacts carry the richer `source_id` block. Harvested artifacts are discriminated from hand-authored references by a dedicated sub-directory (`references/_harvest/`) so the description-only-or-omitted scan and the SHA-pin scan continue to apply only to the top-level `references/*.md` shape, without false positives on pipeline output.
+**Frontmatter contract.** Every harvested artifact — a file the pipeline writes into the references corpus as the result of a source-root crawl — carries `source_id` in its frontmatter. This is a harvested-artifact rule, not a reference rule: hand-authored references at `references/<area-domain>-*.md` carry [no YAML frontmatter](#no-yaml-frontmatter-on-references) at all; harvested artifacts carry the `source_id` provenance block. Harvested artifacts are discriminated from hand-authored references by a dedicated sub-directory (`references/_harvest/`) so the no-frontmatter scan and the SHA-pin scan continue to apply only to the top-level `references/*.md` shape, without false positives on pipeline output.
 
 ### Never-remove list
 
@@ -653,7 +651,7 @@ Pulling this together: every convention in this chapter exists to make either th
 | Convention | What would break without it |
 |---|---|
 | **Two-field frontmatter** | Cross-platform navigator loading (some platforms drop unknown fields, others reject them) |
-| **No frontmatter on references** | Navigator loading model breaks on at least one platform |
+| **No YAML frontmatter on references** | Navigator loading model breaks on at least one platform when supporting markdown files carry frontmatter the SKILL.md-level metadata schema doesn't recognize |
 | **Six prescribed reference sections** | AI can't predict where to find a gotcha vs. a pattern; loads inefficiently |
 | **Catalog bijection** | Orphaned files invisible; phantom rows cause runtime read failures |
 | **Bare-named companion files** | AI can't distinguish primary from deep-dive; loads inefficiently |

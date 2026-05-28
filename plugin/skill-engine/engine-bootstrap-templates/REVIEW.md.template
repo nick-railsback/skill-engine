@@ -1,0 +1,31 @@
+# Review — `<name>-context.proposed/`
+
+This file lives at `<install>/<name>-context.proposed/.review/REVIEW.md`. It is the audit trail for a single DISCOVER or REFRESH proposal. The live contextualizer at `<install>/<name>-context/` is untouched until you run `/skill-engine:apply <name>`.
+
+The review is in three steps. Fill Step 1 first, save, then re-run `/skill-engine:review <name>` to populate Step 2. Tick exactly one box in Step 3 and save again before `apply` or `discard`.
+
+## Step 1 — Predictions (fill these before reading the diff)
+
+Write your predictions before scrolling. The point is to surface your model of what this contextualizer should be, then let the disagreement set in Step 2 show you where the engine's draft diverges from your intent. If you read the diff first, Step 2 has nothing to teach.
+
+- *"This skill is for ___"*
+- *"This skill should NOT ___"*
+- *"The reference I'd cut: [ ] ..."*
+
+<!-- Do not scroll past this line until the three blanks above are filled. -->
+
+## Step 2 — Disagreement set
+
+(Run `/skill-engine:review <name>` again after filling Step 1 to populate this section.)
+
+## Step 3 — Sign-off
+
+Tick exactly one. `apply` refuses to promote until one box is ticked, and refuses to promote at all when `reject` is the ticked state — use `discard` for that path.
+
+- [ ] reviewed
+- [ ] provisional
+- [ ] reject
+
+---
+
+Audit trail: after `/skill-engine:apply <name>`, this file is preserved at `<install>/<name>-context/.review/REVIEW.md`. Commit it or `.gitignore` it at your discretion — the engine does not decide.

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "ukgovernmentbeis-inspect-ai": {
+      "last_sha": "6a78eff7a7bf99a58d1b9fe981cbbbdab978bb40",
+      "last_discover": "2026-05-27"
+    },
+    "inspect-aisi-org-uk": {
+      "last_crawl_id": "2026-05-19",
+      "last_discover": "2026-05-27"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "_note": "Finding 5 regression: every prompt opened a reference and THEN errored (turn-cap / timeout / api-error) — a network/timeout outage mid-run. The all-errored runner-failure gate must return exit 2. The pre-fix gate also required `not references_opened`, so this outage was mis-reported as a content FAIL (exit 1). Markers match ERR_TURN_CAP / ERR_TIMEOUT in grounded_rate.py.",
+  "records": [
+    {
+      "references_opened": ["alpha.md"],
+      "turns_used": 5,
+      "final_response_text": "Opened a reference, then exhausted the tool-turn budget.",
+      "input_tokens": 4000,
+      "output_tokens": 200,
+      "error": "tool-turn cap exceeded"
+    },
+    {
+      "references_opened": ["beta.md"],
+      "turns_used": 2,
+      "final_response_text": "Opened a reference, then the per-prompt deadline passed.",
+      "input_tokens": 1500,
+      "output_tokens": 50,
+      "error": "per-prompt timeout"
+    },
+    {
+      "references_opened": ["gamma.md"],
+      "turns_used": 1,
+      "final_response_text": "Opened a reference, then the API returned an error.",
+      "input_tokens": 800,
+      "output_tokens": 30,
+      "error": "APIConnectionError: connection reset"
+    }
+  ]
+}

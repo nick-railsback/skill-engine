@@ -26,12 +26,12 @@ run_one() {
   # Populate fixture tree (current kind-partitioned layout + one flat-legacy entry).
   mkdir -p \
     "$tmphome/skill-engine/git-managed/vitejs-vite-aaaa1111" \
-    "$tmphome/skill-engine/git-managed/flask-flask-cccc3333" \
+    "$tmphome/skill-engine/git-managed/django-django-cccc3333" \
     "$tmphome/skill-engine/web-doc/anthropic-docs-bbbb2222" \
     "$tmphome/skill-engine/legacy-flat-dddd4444"
   # Leaf files so du reports >0.
   for d in "$tmphome/skill-engine/git-managed/vitejs-vite-aaaa1111" \
-           "$tmphome/skill-engine/git-managed/flask-flask-cccc3333" \
+           "$tmphome/skill-engine/git-managed/django-django-cccc3333" \
            "$tmphome/skill-engine/web-doc/anthropic-docs-bbbb2222" \
            "$tmphome/skill-engine/legacy-flat-dddd4444"; do
     printf 'x' > "$d/.touch"
@@ -63,14 +63,14 @@ run_one() {
 # Test cases: filled in by Task 1.2 once the [kind] arg is implemented.
 
 expected_all="$(printf '%s\n' \
-  'git-managed/flask-flask-cccc3333' \
+  'git-managed/django-django-cccc3333' \
   'git-managed/vitejs-vite-aaaa1111' \
   'legacy-flat-dddd4444' \
   'web-doc/anthropic-docs-bbbb2222' | sort)"
 run_one "" "$expected_all" "kind=<omitted>"
 
 expected_gm="$(printf '%s\n' \
-  'git-managed/flask-flask-cccc3333' \
+  'git-managed/django-django-cccc3333' \
   'git-managed/vitejs-vite-aaaa1111' | sort)"
 run_one "git-managed" "$expected_gm" "kind=git-managed"
 

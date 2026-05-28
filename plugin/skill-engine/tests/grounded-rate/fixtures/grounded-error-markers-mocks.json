@@ -1,0 +1,29 @@
+{
+  "_note": "Mock responses exercising the three error-marker code paths in grade_record: tool-turn-cap-exceeded, per-prompt-timeout, and api-error. Three records, all non-grounded → FAIL exit 1; each surfaces a distinct marker. The producer-side error strings match the module-level ERR_TIMEOUT and ERR_TURN_CAP constants in grounded_rate.py — a rewording in either site without updating the other would break this fixture.",
+  "records": [
+    {
+      "references_opened": [],
+      "turns_used": 5,
+      "final_response_text": "I attempted to load several references but kept needing more turns.",
+      "input_tokens": 4000,
+      "output_tokens": 200,
+      "error": "tool-turn cap exceeded"
+    },
+    {
+      "references_opened": [],
+      "turns_used": 1,
+      "final_response_text": "",
+      "input_tokens": 1100,
+      "output_tokens": 0,
+      "error": "per-prompt timeout"
+    },
+    {
+      "references_opened": [],
+      "turns_used": 0,
+      "final_response_text": "",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "error": "APIStatusError: 529 overloaded"
+    }
+  ]
+}

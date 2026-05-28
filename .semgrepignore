@@ -1,0 +1,6 @@
+# Build artifacts produced by the Security workflow's SARIF passes
+# (.github/workflows/security.yml). The semgrep gate pass re-scans the working
+# tree; without this, it would scan its own just-written SARIF output and match
+# the p/secrets rule patterns embedded inside it (e.g. detected-facebook-oauth),
+# failing the gate on a false positive.
+*.sarif

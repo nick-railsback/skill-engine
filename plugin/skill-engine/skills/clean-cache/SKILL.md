@@ -1,6 +1,6 @@
 ---
 name: clean-cache
-description: When the user wants to free disk space by deleting the skill-engine local clone cache (~/.cache/skill-engine/), with a dry-run preview before destructive action.
+description: Delete the skill-engine clone cache (`~/.cache/skill-engine/`), with a dry-run preview first.
 ---
 
 # Clean cache
@@ -103,7 +103,7 @@ Cache root: /Users/me/.cache/skill-engine
 Total size: 135M
 
 Directory                                                         Size  Last accessed
-git-managed/flask-flask-cccc3333                                  31M   2026-04-28
+git-managed/django-django-cccc3333                                31M   2026-04-28
 git-managed/vitejs-vite-aaaa1111                                  52M   2026-05-11
 git-managed/vitejs-vite-bbbb2222                                  52M   2026-05-12
 web-doc/anthropic-docs-eeee5555                                   42M   2026-05-15

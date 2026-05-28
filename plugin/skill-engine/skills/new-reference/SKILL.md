@@ -1,6 +1,6 @@
 ---
 name: new-reference
-description: When the user wants to add a single new reference file to an existing contextualizer without running the full discover pipeline.
+description: Register one new reference in an existing contextualizer without a full discover pass.
 ---
 
 # New reference
@@ -9,16 +9,21 @@ Create a new primary reference file from scratch and wire it into the
 navigator's catalog. Use this when a single topic has been identified ahead of
 time and a full discover pass would be overkill.
 
-The proposal writes:
+The proposal stages (into `$CTX_PROPOSED/`, never the live tree):
 
-- A new file under `references/<source-slug>-<topic>.md` (the reference itself).
+- A new file under `references/<source-slug>-<topic>.md` (the reference itself)
+  — manifest status `added`.
 - A new row in the navigator's catalog table at `SKILL.md` pointing at that
-  reference.
+  reference — manifest status `modified` (the live `SKILL.md` is copied into
+  `$CTX_PROPOSED/` copy-on-write, then the row is added there).
 
 It does NOT write to `research/.research-state.json` — that file is a binary
-setup marker only. If the new reference
-covers a topic from an as-yet-unregistered source, the source is added to
-`research/source-paths.json` as part of the same proposal.
+setup marker only. If the new reference covers a topic from an
+as-yet-unregistered source, the source is added to
+`research/source-paths.json` (status `modified`, same copy-on-write seed) as
+part of the same proposal. Every other file in the contextualizer is recorded
+`unchanged`. The whole proposal lands live only when the user runs
+`/skill-engine:apply <name>`.
 
 For `kind: git-managed` sources, the proposed entry follows the same
 omit-on-default convention as `engine-bootstrap` Step 2.4: `branch` is
@@ -38,30 +43,54 @@ and comparing `content_hash`.
 ## Contextualizer root
 
 Engine workflows operate inside a contextualizer installed as a project
-skill at `.claude/skills/<slug>-context/`. Every path below —
-`research/...`, `references/...`, `verify.sh` — resolves relative to that
-directory.
+skill at one of three install levels:
 
-Before reading or writing anything, locate the root from the project
-working directory:
+- **User-level:** `~/.claude/skills/<slug>-context/`
+- **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
+- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+
+Every path below — `research/...`, `references/...`, `verify.sh` —
+resolves relative to whichever directory matches. Before reading or
+writing anything, locate the root by searching all three install levels
+in order:
 
 ```bash
-ctx_roots=$(find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null)
+ctx_roots=$(
+  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+  done
+)
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
 if [ "$n" -eq 0 ]; then
-  echo "No contextualizer found under .claude/skills/*-context/. Run /skill-engine:engine-bootstrap first."
+  echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers under .claude/skills/; specify one:"
+  echo "Multiple contextualizers found; specify one:"
   printf '%s\n' "$ctx_roots"
   exit 1
 fi
 CTX_ROOT="$ctx_roots"
+CTX_PROPOSED="${CTX_ROOT}.proposed"
 ```
 
-Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
-every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
-`$CTX_ROOT/verify.sh`.
+`$CTX_PROPOSED` is the **staging directory** that mirrors the live
+contextualizer. Like DISCOVER and REFRESH, NEW writes its proposal there
+instead of to `$CTX_ROOT`; the live skill is untouched until the user runs
+`/skill-engine:apply <name>`. Read every subsequent `research/foo` path as
+`$CTX_ROOT/research/foo` **for reads** and `$CTX_PROPOSED/research/foo`
+**for writes**; the same asymmetry holds for `references/foo`, `SKILL.md`,
+and `verify.sh`. (The full staging contract — copy-on-write population,
+`.review/manifest.json`, the `REVIEW.md` scaffold, and the
+review/apply/discard gate — is documented once in `discover/SKILL.md`
+§ Staging directory; NEW follows it verbatim.)
+
+**Guard against an unapplied proposal.** If `$CTX_PROPOSED` already exists,
+a prior proposal is staged and not yet applied. Halt with `A proposal is
+already staged at <name>-context.proposed/. Apply it (/skill-engine:apply
+<name>), discard it (/skill-engine:discard <name>), or inspect it
+(/skill-engine:review <name>) before running new-reference again.` and exit
+cleanly, so this run never layers onto a stale proposed tree.
 
 ## Doctrine surface
 
@@ -80,20 +109,32 @@ Ad-hoc, whenever the domain grows a new topic the catalog does not yet cover.
 
 ## Invariants
 
-Pre-approval validation runs before any write: catalog bijection,
-no-frontmatter, `./verify.sh`. See chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
+Pre-stage validation runs before the proposal is finalized: catalog
+bijection, no-frontmatter, `verify.sh`. See chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
 `## Pre-approval validation (the load-bearing contract)`. (Byte-equality
 fixture refresh and the full test-suite harness are pre-fixture-harness aspirational —
 the pre-fixture-harness three-check gate ends with `verify.sh`.)
 
+Because `$CTX_PROPOSED/` is a sparse copy-on-write tree, run `verify.sh`
+against an **ephemeral merged view** of live + this proposal's changes, not
+against `$CTX_PROPOSED/` directly — exactly as `discover/SKILL.md`
+§ Post-run summary documents. Then write `$CTX_PROPOSED/.review/manifest.json`
+(one entry per file, per the schema in `discover/SKILL.md` § Staging
+directory) and stamp `$CTX_PROPOSED/.review/REVIEW.md` from
+`$CLAUDE_PLUGIN_ROOT/engine-bootstrap-templates/REVIEW.md.template` (the
+`<name>` substitution as in DISCOVER). NEW MUST NOT write directly to
+`$CTX_ROOT` — the new reference, the catalog row, and any
+`source-paths.json` entry all flow through the staging gate.
+
 The catalog row, the reference file, and (if applicable) the new entry in
-`research/source-paths.json` are all part of the same proposal — surface
-them together for human approval.
+`research/source-paths.json` are all part of the same proposal — they are
+surfaced together for human review via `/skill-engine:review <name>` and
+promoted together by `/skill-engine:apply <name>`.
 
 ## Markdown style for the emitted reference
 
 Soft wrap reference prose: one paragraph per line, no hard line breaks at
 fixed column widths. The example contextualizer at
-[`examples/library-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/library-context) shows the intended style; the
+[`examples/modelcontextprotocol-python-sdk-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/modelcontextprotocol-python-sdk-context) shows the intended style; the
 `discover/SKILL.md` "Markdown style for emitted references" section
 documents the convention in full.
