@@ -46,6 +46,48 @@ Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
 every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 `$CTX_ROOT/verify.sh`.
 
+## Pending proposals
+
+A staged-but-unapplied proposal sits as a sibling of the live tree at
+`${CTX_ROOT}.proposed/`. STATUS surfaces it (and how far its review has
+progressed) so a pending review does not silently rot — this is the
+"notes pending proposals waiting on human review" the intro promises.
+Read-only: STATUS reports the proposal's state but never advances it.
+
+```bash
+slug=$(basename "$CTX_ROOT"); slug="${slug%-context}"
+proposed="${CTX_ROOT}.proposed"
+if [ ! -d "$proposed" ]; then
+  printf 'No pending proposal (nothing staged).\n'
+else
+  manifest="$proposed/.review/manifest.json"
+  review="$proposed/.review/REVIEW.md"
+  if [ -f "$manifest" ]; then
+    added=$(jq '[.entries[]|select(.status=="added")]|length'    "$manifest" 2>/dev/null); added=${added:-0}
+    modified=$(jq '[.entries[]|select(.status=="modified")]|length' "$manifest" 2>/dev/null); modified=${modified:-0}
+    removed=$(jq '[.entries[]|select(.status=="removed")]|length'  "$manifest" 2>/dev/null); removed=${removed:-0}
+    printf 'Pending proposal: %s.proposed/  (%s added, %s modified, %s removed)\n' \
+      "$slug" "$added" "$modified" "$removed"
+  else
+    printf 'Pending proposal: %s.proposed/  (incomplete — no manifest; DISCOVER/REFRESH did not finish)\n' "$slug"
+  fi
+  # Review progress, mirroring apply's pre-promotion gates (read-only here).
+  if [ -f "$review" ]; then
+    ticks=$(grep -ciE '^- \[x\] (reviewed|provisional|reject)' "$review" 2>/dev/null); ticks=${ticks:-0}
+    if grep -q '___' "$review" 2>/dev/null; then
+      printf '  Review: awaiting Step 1 predictions (run /skill-engine:review %s).\n' "$slug"
+    elif grep -qF '(Run /skill-engine:review' "$review" 2>/dev/null; then
+      printf '  Review: Step 1 filled; Step 2 not yet generated (re-run /skill-engine:review %s).\n' "$slug"
+    elif [ "$ticks" -eq 1 ]; then
+      state=$(grep -iE '^- \[x\] (reviewed|provisional|reject)' "$review" | head -1 | sed -E 's/^- \[[xX]\] +//')
+      printf '  Review: signed off as %s — ready for /skill-engine:apply %s.\n' "$state" "$slug"
+    else
+      printf '  Review: not yet signed off (tick one Step 3 box, then /skill-engine:apply %s).\n' "$slug"
+    fi
+  fi
+fi
+```
+
 ## Doctrine surface
 
 The STATUS workflow — what it renders, how it sorts, when it pre-renders vs.

@@ -37,9 +37,18 @@ TAG_PERMALINK_RE = re.compile(
 NEAR_WINDOW = 5
 PREFIX_WIDTH = 60
 
+# Single source of truth for the coverage bar. grounded_rate.py (Check 8)
+# imports this so Checks 7 and 8 share one threshold; retune it here, not in
+# the scattered call sites (SKILL.md invocations inherit it by omitting
+# --threshold; the docs reference this value).
+DEFAULT_COVERAGE_THRESHOLD = 0.80
+
 # Paragraph-detection regexes.
 HEADING_RE = re.compile(r"^#{1,6} ")
-FENCE_RE = re.compile(r"^(```|~~~)")
+# CommonMark allows a code fence to be indented up to 3 spaces; the leading-
+# whitespace tolerance also lets a fence be detected after an inline HTML
+# comment is stripped (the strip leaves the fence preceded by a space).
+FENCE_RE = re.compile(r"^[ \t]{0,3}(```|~~~)")
 TABLE_ROW_RE = re.compile(r"^\s*\|")
 TABLE_SEP_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
 BULLET_RE = re.compile(r"^(\s*)([-*+])\s+")
@@ -51,6 +60,9 @@ def classify_lines(lines: list[str]) -> list[str]:
     """Return a per-line category tag. Categories:
         'prose'    — eligible for paragraph aggregation
         'blank'    — empty / whitespace-only (paragraph separator)
+        'link'     — a line that is only a bare permalink (a citation, not
+                     prose: excluded from paragraph counts, but still scanned
+                     by find_permalink_lines so it covers nearby prose)
         'skip'     — heading / code-fence / table / list / blockquote /
                      html-comment / frontmatter (not part of a prose paragraph)
     """
@@ -86,28 +98,34 @@ def classify_lines(lines: list[str]) -> list[str]:
                 frontmatter_done = True
             continue
 
-        # HTML comments (single- or multi-line). Detect <!-- and --> on
-        # the same line first, otherwise toggle state.
+        # HTML comments (single- or multi-line). Remove complete <!-- ... -->
+        # spans on this line, then handle an opener or closer that straddles
+        # the line boundary.
         if not in_html_comment:
-            if "<!--" in line and "-->" in line and line.index("<!--") < line.rindex("-->"):
-                # Single-line comment; treat as skip if comment dominates,
-                # otherwise leave classification to other rules below.
-                # Strip the comment span and re-evaluate the rest.
+            if "<!--" in line:
                 line_no_comment = re.sub(r"<!--.*?-->", "", line)
+                # A '<!--' that survives complete-span removal opens a comment
+                # not closed on this line; everything from it onward belongs to
+                # the (now multi-line) comment. Keep any real text before it.
+                if "<!--" in line_no_comment:
+                    in_html_comment = True
+                    line_no_comment = line_no_comment[: line_no_comment.index("<!--")]
                 if not line_no_comment.strip():
                     cats[i] = "skip"
                     continue
-                # Fall through with stripped re-evaluated.
+                # Re-evaluate the surviving text against the rules below.
                 stripped = line_no_comment.strip()
                 line = line_no_comment
-            elif "<!--" in line:
-                in_html_comment = True
-                cats[i] = "skip"
-                continue
         else:
             cats[i] = "skip"
             if "-->" in line:
                 in_html_comment = False
+                # The closing '-->' may be followed by a new '<!--' that
+                # re-opens a comment on the same line (e.g. "done --> x <!-- y").
+                # If that re-opener is itself unclosed, stay in comment state.
+                tail = line[line.rindex("-->") + 3:]
+                if "<!--" in tail and "-->" not in tail[tail.index("<!--"):]:
+                    in_html_comment = True
             continue
 
         # Code fences. Fence lines and contents are skipped.
@@ -157,6 +175,15 @@ def classify_lines(lines: list[str]) -> list[str]:
         # List continuation: indented non-blank line while in_list.
         if in_list and line.startswith((" ", "\t")):
             cats[i] = "skip"
+            continue
+
+        # A line that is *only* a bare permalink is a citation, not prose:
+        # don't let it become its own self-covering paragraph or pad the
+        # denominator (which would inflate corpus coverage). find_permalink_lines
+        # still scans it, so it continues to cover nearby real prose.
+        if SHA_PERMALINK_RE.fullmatch(stripped) or TAG_PERMALINK_RE.fullmatch(stripped):
+            in_list = False
+            cats[i] = "link"
             continue
 
         # Otherwise: prose. Reset list state if we were tracking one.
@@ -222,8 +249,8 @@ def main(argv: list[str]) -> int:
         description="Paragraph -> permalink density lint (SELF-AUDIT Check 7)."
     )
     parser.add_argument("references_dir", type=Path)
-    parser.add_argument("--threshold", type=float, default=0.80,
-                        help="Coverage threshold in [0,1]. Default 0.80.")
+    parser.add_argument("--threshold", type=float, default=DEFAULT_COVERAGE_THRESHOLD,
+                        help=f"Coverage threshold in [0,1]. Default {DEFAULT_COVERAGE_THRESHOLD}.")
     parser.add_argument("--min-paragraphs", type=int, default=5,
                         help="Skip with N/A when corpus has fewer than this "
                         "many in-scope paragraphs. Default 5.")

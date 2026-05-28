@@ -104,7 +104,7 @@ Two ways in, depending on what you want.
 
 ## Where this is in its life
 
-This is v0.2.1. There are three worked examples, one maintainer who built it because
+This is v0.3.0. There are three worked examples, one maintainer who built it because
 he needed it and it did not yet exist.
 
 If you've ever stood in front of a codebase that outlived its authors, or

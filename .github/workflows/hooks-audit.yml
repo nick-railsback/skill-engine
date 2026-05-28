@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      # ubuntu-latest already ships jq, so no apt install is needed (the
+      # sibling security.yml avoids apt for the same reason — it keeps a flaky
+      # network step out of CI).
       - name: Run hooks audit
         run: bash plugin/skill-engine/tests/hooks-audit.sh

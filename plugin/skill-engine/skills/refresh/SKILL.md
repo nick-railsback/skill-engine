@@ -96,6 +96,18 @@ quality.
 
 When `/skill-engine:refresh` is invoked:
 
+0. **Guard against an unapplied proposal.** If `$CTX_PROPOSED` already exists,
+   a prior DISCOVER/REFRESH proposal is staged and not yet applied. Do not
+   layer this run onto it — halt with:
+
+   ```
+   A proposal is already staged at <slug>-context.proposed/. Apply it (/skill-engine:apply <slug>), discard it (/skill-engine:discard <slug>), or inspect it (/skill-engine:review <slug>) before running refresh again.
+   ```
+
+   Exit cleanly. This run's copy-on-write staging tree is built fresh from the
+   live baseline once the guard passes. (Same guard as `discover/SKILL.md`
+   § Pre-flight step 0 — neither route may build on a stale proposed tree.)
+
 1. **Locate state.** Read `research/source-paths.json`. If the file is
    missing, unparseable, or `sources[]` is empty, render:
 
@@ -431,11 +443,14 @@ style for emitted references" for the full convention.
 
 ## Post-run summary
 
-Before rendering the summary, finalize the staging directory: run
-`$CTX_PROPOSED/verify.sh` and confirm it exits 0, then write
-`$CTX_PROPOSED/.review/manifest.json` per the schema and stamping
-convention documented in `discover/SKILL.md` § Staging directory. A
-non-zero `verify.sh` exit aborts the proposed-dir write with a
+Before rendering the summary, finalize the staging directory. The proposed
+tree is a sparse copy-on-write, so verify against an **ephemeral merged tree**
+(live overlaid with this run's changes and the manifest's removals applied),
+not against `$CTX_PROPOSED/` directly — the exact procedure and bash are in
+`discover/SKILL.md` § Post-run summary. Confirm `verify.sh` exits 0 against
+that merged tree, then write `$CTX_PROPOSED/.review/manifest.json` per the
+schema and stamping convention documented in `discover/SKILL.md` § Staging
+directory. A non-zero `verify.sh` exit aborts the proposed-dir write with a
 diagnostic; the user never sees a `REVIEW.md` for a broken proposal.
 
 At end-of-run, produce a paragraph-form summary for the author with

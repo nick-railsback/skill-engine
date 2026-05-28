@@ -21,8 +21,9 @@
 #   4. Catalog rows ↔ references/ files bijection — strict 1:1 (catalog
 #      duplicates surface as failures); HTML-comment example links in
 #      stamped templates are filtered before regex extraction
-#   5. Each references/*.md has required frontmatter (both delimiters;
-#      BOM-tolerant)
+#   5. Each references/*.md carries NO YAML frontmatter — name:/description:
+#      are scoped to the navigator SKILL.md only; a reference whose first
+#      non-blank line is `---` fails the check (BOM-tolerant)
 #
 # Skip-with-pass cases (mark [N/A], not [FAIL]):
 #
@@ -103,6 +104,15 @@ extract_frontmatter() {
 # Extract scheme + host + port from a URL. POSIX-portable.
 url_origin() {
   printf '%s' "$1" | sed -E 's#^(https?://[^/]+).*#\1#'
+}
+
+# Escape ERE metacharacters in a literal string so it can be interpolated
+# into a grep -E pattern as a fixed substring. Source ids / member names /
+# component ids come from source-paths.json and may carry metacharacters
+# (e.g. 'my.pkg', 'c++'); unescaped, '.' or '+' would match arbitrarily and
+# wrongly suppress an uncited-* warning.
+ere_escape() {
+  printf '%s' "$1" | sed 's/[][(){}.*+?^$|\\]/\\&/g'
 }
 
 # ────────────────────────────────────────────────────────────────────────
@@ -754,11 +764,19 @@ else
     # Anthropic's canonical Agent Skills practice — the spec scopes
     # name:/description: to SKILL.md only). Strip an optional UTF-8 BOM
     # before checking so files authored with a BOM don't false-positive.
+    #
+    # The first non-blank line is matched exactly against a frontmatter
+    # opener (`---`, optional trailing space) rather than a loose 3-char
+    # prefix: this catches both closed and opened-but-never-closed
+    # frontmatter (both start with this line) without false-flagging a
+    # `--- some heading` or a `----` thematic break. The opened-but-never-
+    # closed / missing-name detection for SKILL.md lives in Check 3
+    # (extract_frontmatter), which references intentionally do not need.
     first_line=$(awk 'BEGIN{FS=""} /[^[:space:]]/ {
       sub(/^\xef\xbb\xbf/, "")
       print; exit
     }' "$f" 2>/dev/null)
-    if [ "${first_line:0:3}" = "---" ]; then
+    if printf '%s' "$first_line" | grep -qE '^---[[:space:]]*$'; then
       fail "$rel starts with YAML frontmatter — references carry no frontmatter (02-artifact-contract.md § No YAML frontmatter on references)"
       fm_ok=0
     fi
@@ -934,7 +952,7 @@ else
         member_name=$(basename "$member")
         cited=0
         if [ -d "$CTX_ROOT/references" ]; then
-          if grep -rqE "(packages|apps|libs|crates)/${member_name}\b" "$CTX_ROOT/references" 2>/dev/null; then
+          if grep -rqE "(packages|apps|libs|crates)/$(ere_escape "$member_name")\b" "$CTX_ROOT/references" 2>/dev/null; then
             cited=1
           fi
         fi
@@ -975,7 +993,7 @@ else
     [ -n "$comp_id" ] || continue
     cited=0
     if [ -d "$CTX_ROOT/references" ]; then
-      if grep -rqE "\b${comp_id}\b" "$CTX_ROOT/references" 2>/dev/null; then
+      if grep -rqE "\b$(ere_escape "$comp_id")\b" "$CTX_ROOT/references" 2>/dev/null; then
         cited=1
       fi
     fi
@@ -1023,7 +1041,13 @@ else
     # reference filename is prefixed with its source id (`<src_id>-*.md`).
     # A navigator-wide count silently passed a large source with zero
     # dedicated references whenever another source contributed ≥3 rows.
-    catalog_rows=$(grep -cE "\(references/${src_id}-[^)]*\.md\)" "$nav_skill" 2>/dev/null || echo 0)
+    # grep -c prints '0' AND exits 1 on no match, so a trailing `|| echo 0`
+    # would append a second line -> "0\n0" -> the integer test below errors
+    # and the zero-rows worst case silently passes. Capture the count (always
+    # a lone integer when the file is readable) and default only the
+    # file-missing/error case.
+    catalog_rows=$(grep -cE "\(references/$(ere_escape "$src_id")-[^)]*\.md\)" "$nav_skill" 2>/dev/null)
+    catalog_rows=${catalog_rows:-0}
     if [ "$catalog_rows" -lt 3 ]; then
       density_concerns=$((density_concerns + 1))
       printf '  [WARN] source %s has %d files but the catalog carries only %d row(s) (<3); verify post-run summary for a minimal-essence justification\n' "$src_id" "$file_count" "$catalog_rows"

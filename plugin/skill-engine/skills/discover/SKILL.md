@@ -87,7 +87,7 @@ Two cases for how `$CTX_PROPOSED` is populated:
 
 - **REFRESH-against-existing** or **incremental DISCOVER**: `$CTX_PROPOSED/` is a shallow copy-on-write. Files this run regenerates are written under `$CTX_PROPOSED/`; files left untouched are not copied — the manifest (see below) records them as `unchanged`, and `/skill-engine:apply <name>` leaves the corresponding live files alone.
 
-At the end of every DISCOVER or REFRESH run, after `verify.sh` passes against `$CTX_PROPOSED/`, write `$CTX_PROPOSED/.review/manifest.json` with `schema_version: 1` and one entry per file in the contextualizer:
+At the end of every DISCOVER or REFRESH run, after `verify.sh` passes against the merged post-apply view (see § Post-run summary — the proposed tree is sparse, so verify runs against an ephemeral merge of live + this run's changes, not against `$CTX_PROPOSED/` directly), write `$CTX_PROPOSED/.review/manifest.json` with `schema_version: 1` and one entry per file in the contextualizer:
 
 ```json
 {
@@ -102,6 +102,8 @@ At the end of every DISCOVER or REFRESH run, after `verify.sh` passes against `$
 ```
 
 Null-field convention is pinned: `status: "added"` ⇒ `sha_before: null`; `status: "removed"` ⇒ `sha_after: null`; `status: "unchanged"` ⇒ both shas populated and equal.
+
+**Removed-detection is deterministic, not agent-recall.** When finalizing the manifest, enumerate the live `$CTX_ROOT/references/` baseline rather than relying on the agent to remember what it dropped. Any live reference the proposed navigator's catalog no longer cites — its catalog row was removed or rewritten away this run — is recorded as a `removed` entry (`sha_before` = the live file's content-hash, `sha_after: null`), even when this run never wrote to the proposed tree for that path. A live reference the proposed catalog still cites is `unchanged`; one it no longer cites is `removed`. Without this diff, a regeneration that simply stops emitting a reference would leave the live file (and its orphaned catalog absence) in place indefinitely, surfacing only later as a Check 4 (catalog↔references bijection) failure.
 
 Also stamp the `REVIEW.md.template` into `$CTX_PROPOSED/.review/REVIEW.md` so the user has the predict-then-compare scaffold to fill. The template ships in the plugin's `engine-bootstrap-templates/` directory; resolve it at runtime as `$CLAUDE_PLUGIN_ROOT/engine-bootstrap-templates/REVIEW.md.template` (the same convention `engine-bootstrap` uses for the navigator templates). Stamp it with one substitution: the literal token `<name>` in the template body becomes the contextualizer slug without the `-context` suffix (e.g., for `$CTX_ROOT = ~/.claude/skills/vitejs-vite-context/`, `<name>` ⇒ `vitejs-vite`).
 
@@ -131,6 +133,14 @@ bind quality.
 ## Pre-flight
 
 When `/skill-engine:discover` is invoked:
+
+0. **Guard against an unapplied proposal.** If `$CTX_PROPOSED` already exists, a prior DISCOVER/REFRESH proposal is staged and not yet applied. Do not layer this run onto it — halt with:
+
+   ```
+   A proposal is already staged at <slug>-context.proposed/. Apply it (/skill-engine:apply <slug>), discard it (/skill-engine:discard <slug>), or inspect it (/skill-engine:review <slug>) before running discover again.
+   ```
+
+   Exit cleanly. The `using-skill-engine` router carries this guard for routed invocations; this step ensures the direct `/skill-engine:discover` path enforces it too, so a second run never builds on a stale proposed tree. Once the guard passes, this run's copy-on-write staging tree is built fresh from the live baseline.
 
 1. **Locate state.** Read `research/source-paths.json`. If the file is
    missing, unparseable, or `sources[]` is empty, render:
@@ -483,12 +493,33 @@ pointer per paragraph; the alternative is unverifiable curation.
 
 ## Post-run summary
 
-Before rendering the summary, finalize the staging directory: run
-`$CTX_PROPOSED/verify.sh` and confirm it exits 0, then write
+Before rendering the summary, finalize the staging directory. The proposed
+tree is a sparse copy-on-write — it omits `unchanged` files — so running
+`verify.sh` directly against `$CTX_PROPOSED/` would fail presence checks
+(Check 1/Check 3 on `source-paths.json` / `SKILL.md`) or N/A-skip the
+catalog↔references bijection (Check 4), gating on a partial tree instead of
+the real post-apply state. Instead, verify against an **ephemeral merged tree**
+that reflects exactly what `apply` would produce:
+
+```bash
+merged=$(mktemp -d)
+cp -R "$CTX_ROOT"/.      "$merged"/   # live baseline
+cp -R "$CTX_PROPOSED"/.  "$merged"/   # overlay this run's added/modified (incl. any verify.sh re-stamp)
+# Apply the manifest's removals to the merged view so the bijection reflects them:
+#   for each entry with status == "removed": rm -f "$merged/<path>"
+rm -rf "$merged/.review"              # the audit trail is not part of the audited tree
+CTX_ROOT="$merged" "$merged/verify.sh"; rc=$?
+rm -rf "$merged"
+```
+
+Confirm `verify.sh` exits 0 against the merged tree, then write
 `$CTX_PROPOSED/.review/manifest.json` per the schema and stamping
 convention documented in § Staging directory. A non-zero `verify.sh`
 exit aborts the proposed-dir write with a diagnostic; the user never
-sees a `REVIEW.md` for a broken proposal.
+sees a `REVIEW.md` for a broken proposal. The merged tree is ephemeral —
+`$CTX_PROPOSED/` stays sparse, so `apply`'s "`unchanged` is a no-op" model
+and its empty-proposed-tree cleanup (apply § Promotion Step 4) are
+unaffected.
 
 At end-of-run, produce a paragraph-form summary for the author with
 four components (no multi-column tables, no interactive menus):

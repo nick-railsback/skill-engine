@@ -67,11 +67,30 @@ documentation are `WARNING`.
   syntax to avoid matching the words "evaluation" and "evals", which are common
   here.
 
+  **Documented carve-out (inline `nosemgrep`).** `examples/inspect-ai-context/SKILL.md`
+  carries `<!-- nosemgrep: skill-content-eval -->` on a catalog row that
+  describes inspect-ai's Python `eval()` kwarg in the CLI config-precedence
+  chain — a reference to the library's API, not a shell `eval`. The call-like
+  scoping can't tell an API mention from an injection, so the false positive is
+  suppressed at the line.
+
 - **`skill-content-unpinned-pip-install`** (`WARNING`) — a `pip install` with
   no version constraint. Unpinned installs are a reproducibility and
   supply-chain footgun, but they are a soft signal, so this warns. The
   `pattern-not-regex` carve-out skips lines that already pin a version
   (`==`, `>=`, etc.) or install editable/local/requirements targets.
+
+  **Documented floats (inline `nosemgrep`).** Two skill-authored lines float
+  deliberately and carry an inline `<!-- nosemgrep: skill-content-unpinned-pip-install -->`
+  — the rule message's own "or document why it floats" escape, applied
+  surgically rather than excluding whole files:
+  - `skills/self-audit/SKILL.md` — `pip install anthropic`. The `anthropic`
+    SDK is the *user's* dependency for the opt-in Check 8 eval; the engine
+    ships no Python manifest and should not pin the user's SDK in install
+    guidance, so the install line tracks whatever current version they have.
+  - `docs/examples/astro-langchain-conversation.md` — `pip install langchain`.
+    Narrative prose describing a dependency's transitive behavior, not an
+    install instruction to pin.
 
 ## Path carve-outs
 

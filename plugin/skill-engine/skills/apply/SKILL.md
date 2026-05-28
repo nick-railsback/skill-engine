@@ -21,15 +21,28 @@ Run these in order. Any failure halts the apply and exits non-zero without mutat
 
 1. **Manifest exists and parses.** `<install>/<name>-context.proposed/.review/manifest.json` must exist and parse as JSON with the schema documented in `discover/SKILL.md` § Output contract. If absent or unparseable, surface a one-line diagnostic and exit.
 
-2. **`REVIEW.md` exists and parses.** `<install>/<name>-context.proposed/.review/REVIEW.md` must exist. Read the Step 3 section.
+2. **`REVIEW.md` exists and parses.** `<install>/<name>-context.proposed/.review/REVIEW.md` must exist. Read it in full (Step 1, Step 2, and Step 3).
 
-3. **Exactly one Step 3 box is ticked.** Count occurrences of `- [x]` and `- [X]` (case-insensitive) on the three Step 3 lines (`reviewed`, `provisional`, `reject`). Zero or two-plus ticks halts the apply with:
+3. **The review actually ran.** A ticked Step-3 box on its own does not prove the predict-then-compare pass happened — a user can tick `reviewed` on an otherwise-untouched template. Apply must confirm the review loop ran before treating the tick as sign-off. Two literal-content checks, both required:
+
+   - **Step 1 predictions are filled.** Search the three Step-1 prediction lines for the literal substring `___` (the same heuristic `review/SKILL.md` § Second pass uses to decide Step 1 is filled). If any still contains `___`, the user never filled their predictions.
+   - **Step 2 was populated.** The unpopulated template carries the literal line `(Run /skill-engine:review <name> again after filling Step 1 to populate this section.)` (the `<name>` is substituted at stamp time). If that placeholder is still present, `review`'s second pass never generated the disagreement set.
+
+   If either check fails, halt without mutating either tree:
+
+   ```
+   REVIEW.md is signed off but the review never ran (<reason>). Run /skill-engine:review <name> to fill Step 1 and generate the Step 2 disagreement set, then re-run /skill-engine:apply <name>.
+   ```
+
+   where `<reason>` is `Step 1 predictions still contain the ___ blanks` or `Step 2 still holds the unpopulated placeholder`.
+
+4. **Exactly one Step 3 box is ticked.** Count occurrences of `- [x]` and `- [X]` (case-insensitive) on the three Step 3 lines (`reviewed`, `provisional`, `reject`). Zero or two-plus ticks halts the apply with:
 
    ```
    Sign-off state is ambiguous (<K> boxes ticked in Step 3). Edit REVIEW.md so exactly one box is ticked, then re-run /skill-engine:apply <name>.
    ```
 
-4. **The ticked box is not `reject`.** When the single ticked box is `reject`, halt with:
+5. **The ticked box is not `reject`.** When the single ticked box is `reject`, halt with:
 
    ```
    Sign-off state is 'reject'. Run /skill-engine:discard <name> to throw away the proposed dir, or edit REVIEW.md and tick 'reviewed' or 'provisional' to promote.
@@ -43,16 +56,20 @@ When the gates pass, promote the proposed tree to the live tree file by file. Th
 
 1. **Create the live root if missing.** First-run apply (the live `<name>-context/` does not exist yet) creates `<install>/<name>-context/` and any subdirectories the manifest entries imply (`research/`, `references/`, `.review/`).
 
-2. **For each manifest entry**, dispatch by `status`:
+2. **For each manifest entry**, dispatch by `status`. Each `added`/`modified`/`removed` entry is processed **resume-safely** (see the idempotency note below) so a retry after a partial failure does not error on work already done:
 
    | Status | Action |
    |---|---|
-   | `added` | `mv <proposed>/<path> <live>/<path>` (create parent directories as needed). |
-   | `modified` | `mv <proposed>/<path> <live>/<path>` (overwrites the live file). |
-   | `removed` | `rm -f <live>/<path>` (the proposed tree does not contain this file; the manifest is the only record). |
+   | `added` | If `<proposed>/<path>` is gone but `<live>/<path>` already exists with sha == `sha_after`, this entry was promoted on a prior pass — skip it. Otherwise `mv <proposed>/<path> <live>/<path>` (create parent directories as needed). |
+   | `modified` | Same resume check as `added` (already-promoted → skip). Otherwise `mv <proposed>/<path> <live>/<path>` (overwrites the live file). |
+   | `removed` | `rm -f <live>/<path>` (already idempotent — a missing target is a no-op; the proposed tree does not contain this file, so the manifest is the only record). |
    | `unchanged` | No-op. The file was not copied into the proposed tree (copy-on-write); the live file stays as-is. |
 
-   Each `mv` is atomic on a single filesystem. The overall apply is not transactional across files — a failure mid-promotion leaves both trees in a mixed state. This is intentional and acceptable: the manifest is the audit trail, and a partial failure can be diagnosed by comparing what landed against what the manifest declared. Do not attempt to roll back. When the failing path is under `.claude/skills/**` and the cause is a rejected write — a permission `deny` or a non-zero / `EPERM` exit under a restricted sandbox — surface the sandbox-block diagnostic per [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md) § "When a `.claude/skills/**` write is blocked" rather than a bare path-and-exit: name the exact path, the scoped `sandbox.filesystem.allowWrite` (or remove-`deny`) remedy, the literal failed command (the `mv`/`rm -f`/`mkdir -p` that errored), and the retry (`/skill-engine:apply <name>`). For any other failure, surface the path that errored and exit.
+   Each `mv` is atomic on a single filesystem. The overall apply is not transactional across files — a failure mid-promotion leaves both trees in a mixed state. This is intentional and acceptable: the manifest is the audit trail, and a partial failure can be diagnosed by comparing what landed against what the manifest declared. Do not attempt to roll back.
+
+   **Idempotent retry.** Because each entry begins with the resume check above, re-running `/skill-engine:apply <name>` after a partial failure is safe: entries whose source already moved into a matching live file are skipped, and the apply resumes at the first entry not yet promoted. The retry is a resume, not a fresh replay — it does not error on the already-moved files. (The audit-trail move and proposed-dir removal in Steps 3–4 only run once every entry is resolved, so they are reached only on the pass that completes the promotion.)
+
+   When the failing path is under `.claude/skills/**` and the cause is a rejected write — a permission `deny` or a non-zero / `EPERM` exit under a restricted sandbox — surface the sandbox-block diagnostic per [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md) § "When a `.claude/skills/**` write is blocked" rather than a bare path-and-exit: name the exact path, the scoped `sandbox.filesystem.allowWrite` (or remove-`deny`) remedy, the literal failed command (the `mv`/`rm -f`/`mkdir -p` that errored), and the retry (`/skill-engine:apply <name>`). For any other failure, surface the path that errored and exit.
 
 3. **Move `REVIEW.md` to the live `.review/` directory.** After all manifest entries are processed:
 
@@ -64,7 +81,17 @@ When the gates pass, promote the proposed tree to the live tree file by file. Th
 
    The audit trail (the full filled-in `REVIEW.md` plus the manifest that drove this promotion) is preserved in the live tree.
 
-4. **Remove the empty proposed directory.** After the audit trail moves, the proposed tree should contain no remaining files — every `added`/`modified` was moved out, `removed` files were never staged, `unchanged` files were never copied in, and `.review/` is now empty. Run `rmdir`-style removal that errors on non-empty (do not `rm -rf` the proposed tree blindly — a non-empty proposed dir after promotion signals a manifest/filesystem disagreement the maintainer should see). On failure, surface the leftover paths and exit non-zero.
+4. **Remove the empty proposed directory.** After the audit trail moves, the proposed tree should contain no remaining files — every `added`/`modified` was moved out, `removed` files were never staged, and `unchanged` files were never copied in. The audit-trail move in Step 3 emptied `<proposed>/.review/` but left the now-empty directory behind, so remove it first, then the proposed root:
+
+   ```bash
+   # Remove every now-empty directory bottom-up (the emptied .review/, plus
+   # any references/ or research/ left empty after the mv's), then the root.
+   # -delete implies -depth, so children are removed before parents.
+   find "$proposed" -mindepth 1 -depth -type d -empty -delete
+   rmdir "$proposed"
+   ```
+
+   Use `rmdir`-style removal that errors on non-empty (do not `rm -rf` the proposed tree blindly — a non-empty proposed dir after promotion signals a manifest/filesystem disagreement the maintainer should see). The `find … -empty` pass only removes empty directories, so a leftover *file* keeps its parent non-empty and the final `rmdir "$proposed"` then fails — surface the leftover paths and exit non-zero rather than forcing the removal.
 
 ## Write review-state.json
 
@@ -84,7 +111,7 @@ After the manifest-driven promotion completes (Step 2 of § Promotion) and **bef
 - `review_state` — one of `"reviewed"`, `"provisional"`, `"stale"`. (`reject` does not appear: a rejected proposal never reaches the live tree.) `schema_version: 1` does not pin the enum closed; future engine versions may add states, and current-version readers treat unknown values as if the ledger were absent.
 - `reviewed_at` — ISO-8601 UTC timestamp pinned to regex `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` (T-separator required, literal `Z` suffix, no fractional seconds).
 
-**Write.** Compute `review_state` from the single Step-3 box ticked in `REVIEW.md` (already parsed by Pre-promotion gate 3 — either `"reviewed"` or `"provisional"`). Compute `reviewed_at` from `date -u +"%Y-%m-%dT%H:%M:%SZ"`. Write the file as a fresh overwrite, not a merge. Let `$live` denote the live contextualizer root resolved earlier in this flow, and `$review_state` denote the single ticked Step-3 value:
+**Write.** Compute `review_state` from the single Step-3 box ticked in `REVIEW.md` (already parsed by Pre-promotion gate 4 — either `"reviewed"` or `"provisional"`). Compute `reviewed_at` from `date -u +"%Y-%m-%dT%H:%M:%SZ"`. Write the file as a fresh overwrite, not a merge. Let `$live` denote the live contextualizer root resolved earlier in this flow, and `$review_state` denote the single ticked Step-3 value:
 
 ```bash
 mkdir -p "$live/research"

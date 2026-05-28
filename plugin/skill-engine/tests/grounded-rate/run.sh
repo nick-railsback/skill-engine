@@ -209,6 +209,13 @@ run_case "error fixture surfaces api-error marker" 2 \
   "[api-error]" fx_mock_run \
   --mock-responses "$FIXTURES/grounded-error-markers-mocks.json"
 
+# (k2) Finding 5 regression: every prompt opened a reference and THEN errored.
+# The all-errored gate must still return exit 2 (runner failure); the pre-fix
+# `not references_opened` conjunct demoted this outage to a content FAIL (1).
+run_case "all-errored WITH refs opened → exit 2" 2 \
+  "all prompts errored" fx_mock_run \
+  --mock-responses "$FIXTURES/grounded-error-refs-opened-mocks.json"
+
 # (l) References dir present but empty → N/A (matches Check 7 convention).
 fx_empty_refs() {
   local dir="$1"

@@ -85,6 +85,10 @@ fi
 # narration like "the engine does not `git add`" does not trip the lint.
 git_readonly_scan() {
   local f rel
+  local -a scan_files=()
+  # Collect (and exclude) first, then hand the whole set to a single awk
+  # invocation. The previous form forked one awk per file — dozens of process
+  # spawns per CI run across skills/ + agents/ + bin/ + tests/ + templates/.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     [ "$f" = "$SCRIPT_DIR/doctrine.sh" ] && continue
@@ -93,23 +97,29 @@ git_readonly_scan() {
       engine-bootstrap-templates/release-command.md.template) continue ;;
       engine-bootstrap-templates/pre-commit.sh.template) continue ;;
     esac
-    awk -v file="$rel" '
-      {
-        line = $0
-        # Strip single-line HTML comments.
-        gsub(/<!--[^>]*-->/, "", line)
-        # Strip Markdown code spans (paired backticks on the same line).
-        gsub(/`[^`]*`/, "", line)
-        # Extract executable git verbs. \<git\> + whitespace + lowercase verb.
-        while (match(line, /(^|[[:space:]]|[(;&|])git[[:space:]]+[a-z][a-z-]*/)) {
-          token = substr(line, RSTART, RLENGTH)
-          sub(/.*git[[:space:]]+/, "", token)
-          print file ":" NR ":" token
-          line = substr(line, RSTART + RLENGTH)
-        }
-      }
-    ' "$f"
+    scan_files+=("$f")
   done
+  [ "${#scan_files[@]}" -eq 0 ] && return 0
+  # FNR (per-file line number) and FILENAME give the same file:line prefix the
+  # per-file form produced; rel is derived by stripping the literal PLUGIN_ROOT
+  # prefix via substr (length-based, so a metachar in the path can't matter).
+  awk -v root="$PLUGIN_ROOT/" '
+    FNR == 1 { rel = substr(FILENAME, length(root) + 1) }
+    {
+      line = $0
+      # Strip single-line HTML comments.
+      gsub(/<!--[^>]*-->/, "", line)
+      # Strip Markdown code spans (paired backticks on the same line).
+      gsub(/`[^`]*`/, "", line)
+      # Extract executable git verbs. \<git\> + whitespace + lowercase verb.
+      while (match(line, /(^|[[:space:]]|[(;&|])git[[:space:]]+[a-z][a-z-]*/)) {
+        token = substr(line, RSTART, RLENGTH)
+        sub(/.*git[[:space:]]+/, "", token)
+        print rel ":" FNR ":" token
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' "${scan_files[@]}"
 }
 
 # Known git verbs filter: the candidate-match `git <token>` is only a real
@@ -182,30 +192,31 @@ fi
 #
 # Pattern set (case-insensitive): disable…sandbox, turn off…sandbox,
 # without…sandbox, sandbox…:…false, sandbox off.
-sandbox_guidance_violations=$(
-  {
-    find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
-    find "$PLUGIN_ROOT/docs" -type f -name '*.md' 2>/dev/null
-  } | while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    rel="${f#"$PLUGIN_ROOT/"}"
-    awk -v file="$rel" '
-      /<!-- doctrine:sandbox-prose-exempt:start -->/ { exempt=1; next }
-      /<!-- doctrine:sandbox-prose-exempt:end -->/   { exempt=0; next }
-      exempt { next }
-      {
-        line = tolower($0)
-        if (line ~ /disable.*sandbox/ ||
-            line ~ /turn[[:space:]]+off.*sandbox/ ||
-            line ~ /without.*sandbox/ ||
-            line ~ /sandbox.*:.*false/ ||
-            line ~ /sandbox[[:space:]]+off/) {
-          print file ":" NR ":" $0
-        }
-      }
-    ' "$f"
-  done
+sandbox_files=()
+while IFS= read -r f; do [ -n "$f" ] && sandbox_files+=("$f"); done < <(
+  find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
+  find "$PLUGIN_ROOT/docs" -type f -name '*.md' 2>/dev/null
 )
+# Single awk over all files; `exempt` resets at each file boundary (FNR==1).
+sandbox_guidance_violations=""
+if [ "${#sandbox_files[@]}" -gt 0 ]; then
+  sandbox_guidance_violations=$(awk -v root="$PLUGIN_ROOT/" '
+    FNR == 1 { rel = substr(FILENAME, length(root) + 1); exempt = 0 }
+    /<!-- doctrine:sandbox-prose-exempt:start -->/ { exempt=1; next }
+    /<!-- doctrine:sandbox-prose-exempt:end -->/   { exempt=0; next }
+    exempt { next }
+    {
+      line = tolower($0)
+      if (line ~ /disable.*sandbox/ ||
+          line ~ /turn[[:space:]]+off.*sandbox/ ||
+          line ~ /without.*sandbox/ ||
+          line ~ /sandbox.*:.*false/ ||
+          line ~ /sandbox[[:space:]]+off/) {
+        print rel ":" FNR ":" $0
+      }
+    }
+  ' "${sandbox_files[@]}")
+fi
 
 if [ -n "$sandbox_guidance_violations" ]; then
   echo "FAIL: 'disable the sandbox'-class guidance found in engine skills/docs."
@@ -220,20 +231,18 @@ fi
 # subsequent line from check 5 — i.e. a real "disable sandbox" recommendation
 # added below an orphaned :start would pass undetected. Fail if any scanned
 # file has mismatched start/end sentinel counts.
-sentinel_imbalance=$(
-  {
-    find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
-    find "$PLUGIN_ROOT/docs" -type f -name '*.md' 2>/dev/null
-  } | while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    rel="${f#"$PLUGIN_ROOT/"}"
-    awk -v file="$rel" '
-      /<!-- doctrine:sandbox-prose-exempt:start -->/ { s++ }
-      /<!-- doctrine:sandbox-prose-exempt:end -->/   { e++ }
-      END { if (s != e) printf "%s: %d start / %d end\n", file, s, e }
-    ' "$f"
-  done
-)
+# Single awk over all files; per-file counts are flushed at each file
+# boundary (and the last file at END) since one awk now spans every file.
+sentinel_imbalance=""
+if [ "${#sandbox_files[@]}" -gt 0 ]; then
+  sentinel_imbalance=$(awk -v root="$PLUGIN_ROOT/" '
+    function flush() { if (prev != "" && s != e) printf "%s: %d start / %d end\n", prev, s, e }
+    FNR == 1 { flush(); prev = substr(FILENAME, length(root) + 1); s = 0; e = 0 }
+    /<!-- doctrine:sandbox-prose-exempt:start -->/ { s++ }
+    /<!-- doctrine:sandbox-prose-exempt:end -->/   { e++ }
+    END { flush() }
+  ' "${sandbox_files[@]}")
+fi
 
 if [ -n "$sentinel_imbalance" ]; then
   echo "FAIL: unbalanced doctrine:sandbox-prose-exempt sentinels (would blind check 5)."
@@ -263,7 +272,12 @@ fi
 REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 readme_matches=$(grep -oiE 'there (are|is) [a-z]+ worked examples?' \
   "$REPO_ROOT/README.md" 2>/dev/null)
-readme_match_count=$(printf '%s\n' "$readme_matches" | grep -c . 2>/dev/null || echo 0)
+# grep -c prints '0' AND exits 1 on no match; a trailing `|| echo 0` would
+# append a second line -> "0\n0" -> the `-gt 1` integer test below errors on
+# stderr. Capture the count (already a lone integer) and default only the
+# empty-output case.
+readme_match_count=$(printf '%s\n' "$readme_matches" | grep -c . 2>/dev/null)
+readme_match_count=${readme_match_count:-0}
 readme_cardinal=$(printf '%s\n' "$readme_matches" | head -1 | awk '{ print tolower($3) }')
 actual_count=$(find "$REPO_ROOT/examples" -maxdepth 2 -name SKILL.md -not -path '*/.*' 2>/dev/null | wc -l | tr -d ' ')
 case "$readme_cardinal" in
@@ -287,6 +301,43 @@ elif [ "$claimed" = "-1" ]; then
   fail=1
 elif [ "$claimed" != "$actual_count" ]; then
   echo "FAIL: README example-count claim ($readme_cardinal = $claimed) does not match actual ($actual_count) examples/*/SKILL.md."
+  fail=1
+fi
+
+# 7. Example verify.sh copies stay byte-identical to the template.
+# Doctrine: each examples/<slug>/verify.sh is a verbatim copy of
+# engine-bootstrap-templates/verify.sh. The example-COUNT check above does
+# not inspect verify.sh content, so without this a template edit that misses
+# the copies would silently leave 4 diverging ~1,100-line scripts.
+tmpl="$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh"
+if [ ! -f "$tmpl" ]; then
+  echo "FAIL: engine-bootstrap-templates/verify.sh missing — cannot check example copies."
+  fail=1
+else
+  while IFS= read -r ex; do
+    [ -n "$ex" ] || continue
+    if ! cmp -s "$tmpl" "$ex"; then
+      echo "FAIL: ${ex#"$REPO_ROOT/"} diverges from engine-bootstrap-templates/verify.sh — re-sync the copy."
+      fail=1
+    fi
+  done < <(find "$REPO_ROOT/examples" -mindepth 2 -maxdepth 2 -name verify.sh 2>/dev/null)
+fi
+
+# 8. Version parity across the release surfaces.
+# Doctrine: plugin.json, marketplace.json, and the README (version badge +
+# prose) all state one version. docs/10-version-evolution.md mandates this;
+# no other mechanical gate enforced it, so a mid-flight split (plugin 0.3.0 /
+# marketplace 0.2.1) could ship unnoticed. Brittle to README rewording by
+# design — a missed capture fails loud rather than passing vacuously.
+plugin_ver=$(jq -r '.version // empty' "$PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null)
+market_ver=$(jq -r '.plugins[0].version // empty' "$REPO_ROOT/.claude-plugin/marketplace.json" 2>/dev/null)
+readme_badge_ver=$(grep -oE 'badge/version-v[0-9]+\.[0-9]+\.[0-9]+' "$REPO_ROOT/README.md" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+readme_prose_ver=$(grep -oE 'This is v[0-9]+\.[0-9]+\.[0-9]+' "$REPO_ROOT/README.md" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+if [ -z "$plugin_ver" ] || [ -z "$market_ver" ] || [ -z "$readme_badge_ver" ] || [ -z "$readme_prose_ver" ]; then
+  echo "FAIL: version-parity check could not read a version (plugin='$plugin_ver' marketplace='$market_ver' README-badge='$readme_badge_ver' README-prose='$readme_prose_ver')."
+  fail=1
+elif [ "$plugin_ver" != "$market_ver" ] || [ "$plugin_ver" != "$readme_badge_ver" ] || [ "$plugin_ver" != "$readme_prose_ver" ]; then
+  echo "FAIL: version mismatch — plugin.json=$plugin_ver, marketplace.json=$market_ver, README badge=$readme_badge_ver, README prose=$readme_prose_ver. Reconcile to a single version."
   fail=1
 fi
 

@@ -264,6 +264,97 @@ EOF
 }
 run_case "recursive walk under references/ PASS" 0 "[PASS] permalink-density" fx_recursive
 
+# A line that is ONLY a bare permalink is a citation, not prose. It must not
+# count as its own self-covering paragraph nor pad the denominator. Here 5
+# link-less prose paragraphs plus 1 isolated bare-permalink line (>5 lines
+# from any prose): true coverage is 0/5. The pre-fix code reported 1/6 (the
+# link line self-covering). Assert the corrected 0/5.
+fx_bare_permalink_not_prose() {
+  local dir="$1"
+  cat > "$dir/bare.md" <<EOF
+Narrative paragraph one with no link.
+
+Narrative paragraph two with no link.
+
+Narrative paragraph three with no link.
+
+Narrative paragraph four with no link.
+
+Narrative paragraph five with no link.
+
+
+
+
+
+
+
+${PERMALINK}
+EOF
+}
+run_case "bare-permalink line is not a covered paragraph" 1 "(0/5 paragraphs)" fx_bare_permalink_not_prose
+
+# A code fence whose opener is preceded by an inline HTML comment on the same
+# line ("<!-- note --> \`\`\`python"). After the comment is stripped the fence
+# is left indented by one space; the pre-fix ^-anchored FENCE_RE missed it and
+# counted the code body as uncovered prose (FAIL). With leading-whitespace
+# tolerance the fence is detected, the body is skipped, and the 5 covered prose
+# paragraphs PASS.
+fx_inline_comment_then_fence() {
+  local dir="$1"
+  cat > "$dir/fence.md" <<EOF
+Real prose paragraph one.
+${PERMALINK}
+
+Real prose paragraph two.
+${PERMALINK}
+
+Real prose paragraph three.
+${PERMALINK}
+
+Real prose paragraph four.
+${PERMALINK}
+
+Real prose paragraph five.
+${PERMALINK}
+
+<!-- example --> \`\`\`python
+this_is_code = "not prose"
+more_code()
+\`\`\`
+EOF
+}
+run_case "inline-comment-then-fence is skipped" 0 "[PASS] permalink-density" fx_inline_comment_then_fence
+
+# A comment that closes and re-opens on one line ("end --> <!-- start"). The
+# re-opened comment body must stay skipped; the pre-fix code dropped comment
+# state at the first --> and scanned the rest as prose (uncovered → FAIL).
+fx_close_then_reopen_comment() {
+  local dir="$1"
+  cat > "$dir/reopen.md" <<EOF
+Real prose paragraph one.
+${PERMALINK}
+
+Real prose paragraph two.
+${PERMALINK}
+
+Real prose paragraph three.
+${PERMALINK}
+
+Real prose paragraph four.
+${PERMALINK}
+
+Real prose paragraph five.
+${PERMALINK}
+
+<!--
+commented line A
+end first --> <!-- start second
+commented line B that must stay skipped
+-->
+EOF
+}
+run_case "close-then-reopen comment stays skipped" 0 "[PASS] permalink-density" fx_close_then_reopen_comment
+
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

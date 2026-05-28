@@ -87,7 +87,7 @@ A maintainer running Check 8 against their own contextualizer supplies an Anthro
 ```bash
 SKILL_ENGINE_RUN_EVAL=1 \
   python3 plugin/skill-engine/tests/grounded_rate.py "<CTX_ROOT>" \
-    --threshold 0.80 --api-key-source keychain
+    --api-key-source keychain
 ```
 
 Or, on Linux / Windows (env-var form):
@@ -95,8 +95,12 @@ Or, on Linux / Windows (env-var form):
 ```bash
 SKILL_ENGINE_RUN_EVAL=1 ANTHROPIC_API_KEY="$YOUR_KEY" \
   python3 plugin/skill-engine/tests/grounded_rate.py "<CTX_ROOT>" \
-    --threshold 0.80 --api-key-source env
+    --api-key-source env
 ```
+
+These examples omit `--threshold`; both Check 7 and Check 8 default to the same
+bar (`DEFAULT_COVERAGE_THRESHOLD` in `plugin/skill-engine/tests/permalink_density.py`,
+currently `0.80`). Pass `--threshold <ratio>` only to override it for a one-off run.
 
 A `--dry-run` flag validates the prompts file and exits without calling the API. A `--results-json <path>` flag writes full per-prompt records (including each turn's tool calls and the final response text) for downstream analysis.
 

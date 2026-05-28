@@ -11,3 +11,6 @@
 # Python bytecode (from invoking tests/grounded_rate.py + tests/permalink_density.py)
 __pycache__/
 *.pyc
+
+# CI scanner artifacts (bandit/semgrep SARIF, generated in .github/workflows/security.yml)
+*.sarif

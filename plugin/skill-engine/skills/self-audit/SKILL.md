@@ -137,9 +137,23 @@ one-line reason: `[N/A] review-state-stale: no in-scope git-managed source has b
 
 **Auto-fix class.** Check 6 is auto-fixable in the Check-1/Check-4 sense:
 there is a single deterministic mutation — rewrite
-`research/review-state.json` so `review_state: "stale"` (other fields
-unchanged). Wire it into the auto-fix opt-in prompt alongside Checks 1
-and 4.
+`research/review-state.json` so `review_state: "stale"`, leaving
+`reviewed_at` and `schema_version` unchanged. Wire it into the auto-fix
+opt-in prompt alongside Checks 1 and 4.
+
+**Idempotency (load-bearing).** The flip is one-way and self-limiting:
+the "Ledger present and outdated" condition above fires *only while*
+`review_state ∈ {"reviewed", "provisional"}`, so once the auto-fix writes
+`"stale"` that condition no longer holds — Check 6 neither re-flags nor
+re-emits the `[WARN]` on subsequent runs. `review_state == "stale"` is
+itself the idempotency marker; no separate "already flagged" field is
+needed. `reviewed_at` is deliberately **not** advanced by the auto-fix:
+bumping it would erase the original attestation timestamp and falsely
+imply a fresh review. The flag clears only when the maintainer re-attests
+— a full REFRESH + `apply` (which writes a new `reviewed_at`), or a
+deliberate hand-edit of `reviewed_at` — never by repeated audits. Do not
+"fix" the preserved `reviewed_at` into a bump: that would re-introduce a
+re-firing loop the instant `review_state` were ever reset to `reviewed`.
 
 **Bypass of the staging gate.** The Check-6 mutation is NOT routed through
 the `<slug>-context.proposed/` staging gate. SELF-AUDIT's existing
@@ -218,11 +232,14 @@ line and a 60-character prefix of its first line:
     L47:  Refunds follow a state machine — initiated, pending, settled
 ```
 
-**How it runs.** Check 7 invokes the bundled Python lint:
+**How it runs.** Check 7 invokes the bundled Python lint. `--threshold` is
+omitted so the bar comes from the single source of truth
+(`DEFAULT_COVERAGE_THRESHOLD` in `permalink_density.py`); pass it explicitly
+only to override:
 
 ```bash
 python3 "$CLAUDE_PLUGIN_ROOT/tests/permalink_density.py" \
-  "$CTX_ROOT/references" --threshold 0.80
+  "$CTX_ROOT/references"
 ```
 
 The lint writes its findings to stdout in the format above and exits 0
@@ -285,10 +302,15 @@ missing `prompts` key, missing required prompt fields), Check 8 emits
 otherwise look identical to "no corpus."
 
 **Dependency.** Check 8 requires the `anthropic` Python SDK
-(and `httpx`, which `anthropic` pulls in). The engine does not ship a
-Python dependency manifest; install with `pip install anthropic` once
-per workstation. On `ImportError`, Check 8 exits 3 (distinct from FAIL
-exit 1 and runner-failure exit 2) and prints an install hint.
+(and `httpx`, which `anthropic` pulls in). The engine ships no Python
+dependency manifest and intentionally does not pin the SDK: Check 8 is
+opt-in dev tooling that runs against whatever current `anthropic` the
+user already has, so the install line floats by design (the version-pin
+lint's documented carve-out — see `.semgrep/README.md`
+§ `skill-content-unpinned-pip-install`). Install once per workstation:
+`pip install anthropic` <!-- nosemgrep: skill-content-unpinned-pip-install -->
+On `ImportError`, Check 8 exits 3 (distinct from FAIL exit 1 and
+runner-failure exit 2) and prints an install hint.
 
 **Tool-surface caveat.** Check 8 uses a custom `read_reference` tool
 (the AI-4 harness shape), not the generic `Read` tool real Claude Code
@@ -331,7 +353,9 @@ invokes the bundled Python runner:
 
 ```bash
 if [ -n "${SKILL_ENGINE_RUN_EVAL:-}" ]; then
-  python3 "$CLAUDE_PLUGIN_ROOT/tests/grounded_rate.py" "$CTX_ROOT" --threshold 0.80
+  # --threshold omitted: inherits DEFAULT_THRESHOLD (sourced from
+  # permalink_density.DEFAULT_COVERAGE_THRESHOLD — one bar for Checks 7 and 8).
+  python3 "$CLAUDE_PLUGIN_ROOT/tests/grounded_rate.py" "$CTX_ROOT"
 else
   echo "[N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~\$0.01–\$0.05 per run)"
 fi

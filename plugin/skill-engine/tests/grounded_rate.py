@@ -33,13 +33,19 @@ from typing import Any
 # Import the canonical permalink regexes from Check 7 (single source of truth).
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
-from permalink_density import SHA_PERMALINK_RE, TAG_PERMALINK_RE  # noqa: E402
+from permalink_density import (  # noqa: E402
+    SHA_PERMALINK_RE,
+    TAG_PERMALINK_RE,
+    DEFAULT_COVERAGE_THRESHOLD,
+)
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_MAX_TOKENS = 1024
 DEFAULT_MAX_TOOL_TURNS = 5
 DEFAULT_PER_PROMPT_TIMEOUT_S = 60.0
-DEFAULT_THRESHOLD = 0.80
+# Shared with Check 7 (permalink_density) so the two coverage gates retune in
+# lockstep from one constant rather than 8 scattered literals.
+DEFAULT_THRESHOLD = DEFAULT_COVERAGE_THRESHOLD
 
 # Haiku 4.5 pricing as of 2026-01 (per AI-4 prototype).
 PRICE_INPUT_PER_MTOK = 1.0
@@ -110,7 +116,12 @@ def load_and_validate_prompts(prompts_path: Path) -> tuple[list[dict] | None, st
 def list_allowed_references(refs_dir: Path) -> list[str]:
     if not refs_dir.is_dir():
         return []
-    return sorted(p.name for p in refs_dir.rglob("*.md"))
+    # Identify references by their refs_dir-relative path, not bare basename:
+    # two files with the same basename in different subdirs (references/a.md
+    # and references/sub/a.md) would otherwise both surface as "a.md" in the
+    # tool enum, and read_reference's first-match-wins lookup would return one
+    # of them regardless of which the model intended.
+    return sorted(p.relative_to(refs_dir).as_posix() for p in refs_dir.rglob("*.md"))
 
 
 def build_tool_def(allowed: list[str]) -> dict[str, Any]:
@@ -119,7 +130,7 @@ def build_tool_def(allowed: list[str]) -> dict[str, Any]:
         "description": (
             "Read one of the on-demand reference files for this contextualizer. "
             "Use this when SKILL.md alone is insufficient. "
-            "Pass only the basename (no path components)."
+            "Pass the references/-relative path exactly as listed in the enum."
         ),
         "input_schema": {
             "type": "object",
@@ -127,7 +138,7 @@ def build_tool_def(allowed: list[str]) -> dict[str, Any]:
                 "filename": {
                     "type": "string",
                     "enum": allowed,
-                    "description": "Basename of a file in references/.",
+                    "description": "A references/-relative path (e.g. 'foo.md' or 'sub/bar.md').",
                 }
             },
             "required": ["filename"],
@@ -136,21 +147,25 @@ def build_tool_def(allowed: list[str]) -> dict[str, Any]:
 
 
 def read_reference(refs_dir: Path, filename: str) -> str:
-    """Tool implementation. Restricts to basenames within refs_dir and
-    rejects symlinks pointing outside the references tree."""
-    if "/" in filename or "\\" in filename or filename.startswith("."):
+    """Tool implementation. `filename` is a references/-relative path (POSIX
+    separators, as emitted by list_allowed_references). Rejects absolute paths,
+    Windows separators, and parent-traversal, and rejects symlinks that resolve
+    outside the references tree. Resolves the path directly (no rglob), so a
+    duplicate basename in another subdir can no longer shadow the intended file."""
+    if not filename or filename.startswith("/") or "\\" in filename:
+        return f"ERROR: invalid filename: {filename!r}"
+    if any(seg in ("", ".", "..") for seg in filename.split("/")):
         return f"ERROR: invalid filename: {filename!r}"
     refs_resolved = refs_dir.resolve()
-    for candidate in refs_dir.rglob(filename):
-        if not candidate.is_file():
-            continue
-        try:
-            resolved = candidate.resolve()
-            resolved.relative_to(refs_resolved)
-        except (OSError, ValueError):
-            return f"ERROR: symlink escapes references tree: {filename!r}"
-        return resolved.read_text(encoding="utf-8", errors="replace")
-    return f"ERROR: not a reference file: {filename!r}"
+    candidate = refs_dir / filename
+    if not candidate.is_file():
+        return f"ERROR: not a reference file: {filename!r}"
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(refs_resolved)
+    except (OSError, ValueError):
+        return f"ERROR: symlink escapes references tree: {filename!r}"
+    return resolved.read_text(encoding="utf-8", errors="replace")
 
 
 def build_system_prompt(library: str, skill_md: str) -> str:
@@ -178,6 +193,10 @@ def run_prompt(
     max_tool_turns: int,
     per_prompt_timeout_s: float,
 ) -> dict:
+    # Lazy import (not module-level): keeps the SDK off the --dry-run /
+    # --mock-responses paths and preserves the exit-3 "SDK missing" contract.
+    # The live path in main() already imported these, so this is a cached bind.
+    import anthropic
     import httpx
 
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt["text"]}]
@@ -188,19 +207,29 @@ def run_prompt(
     final_text = ""
     error: str | None = None
     start = time.monotonic()
+    # Single per-prompt deadline. Both the in-flight SDK timeout and the retry
+    # sleep are clamped to the remaining budget so a hung call plus one retry
+    # can no longer overrun per_prompt_timeout_s by ~2×+1s.
+    deadline = start + per_prompt_timeout_s
 
-    import anthropic
-
+    # Retry only transient failures. anthropic.APIStatusError (the prior entry)
+    # is the base of every 4xx, so a bad key / malformed request (401/403/422)
+    # was being retried once with an identical, never-succeeding request — a
+    # wasted billable call. APIConnectionError already covers APITimeoutError.
     retriable = (
         httpx.NetworkError,
         httpx.TimeoutException,
-        anthropic.APIStatusError,
         anthropic.APIConnectionError,
+        anthropic.RateLimitError,
+        anthropic.InternalServerError,
     )
 
     def call_api():
         attempts = 0
         while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise httpx.TimeoutException("per-prompt deadline exceeded")
             try:
                 return client.messages.create(
                     model=model,
@@ -208,17 +237,18 @@ def run_prompt(
                     system=system_prompt,
                     tools=[tool_def],
                     messages=messages,
-                    timeout=per_prompt_timeout_s,
+                    timeout=remaining,
                 )
             except retriable:
                 attempts += 1
-                if attempts >= 2:
+                # Stop if attempts are exhausted or the budget is spent.
+                if attempts >= 2 or (deadline - time.monotonic()) <= 0:
                     raise
-                time.sleep(1.0)
+                time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
 
     try:
         while True:
-            if time.monotonic() - start > per_prompt_timeout_s:
+            if time.monotonic() >= deadline:
                 error = ERR_TIMEOUT
                 break
             response = call_api()
@@ -227,15 +257,16 @@ def run_prompt(
 
             text_parts = [b.text for b in response.content if b.type == "text"]
             tool_uses = [b for b in response.content if b.type == "tool_use"]
+            current_text = "\n".join(text_parts).strip()
 
             if response.stop_reason == "end_turn" or not tool_uses:
-                final_text = "\n".join(text_parts).strip()
+                final_text = current_text
                 break
 
             turns += 1
             if turns > max_tool_turns:
                 error = ERR_TURN_CAP
-                final_text = "\n".join(text_parts).strip()
+                final_text = current_text
                 break
 
             messages.append({"role": "assistant", "content": response.content})
@@ -356,7 +387,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--max-tool-turns", type=int, default=DEFAULT_MAX_TOOL_TURNS)
     parser.add_argument("--per-prompt-timeout-s", type=float, default=DEFAULT_PER_PROMPT_TIMEOUT_S)
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
-                        help="grounded_rate ≥ threshold = PASS. Default 0.80.")
+                        help=f"grounded_rate ≥ threshold = PASS. Default {DEFAULT_THRESHOLD}.")
     parser.add_argument("--api-key-source", choices=("keychain", "env"), default="keychain")
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate prompts file and exit; do not call the API.")
@@ -452,9 +483,12 @@ def main(argv: list[str]) -> int:
             records.append(rec)
 
     # All-errored runner-failure path. Spec AC2.9 wording is "no prompts
-    # gradable" — implement as: every record carries an `error` AND no
-    # record opened a reference. Token counts don't gate this.
-    if records and all("error" in r and not r.get("references_opened") for r in records):
+    # gradable" — implement as: every record carries an `error`. An outage
+    # where each prompt opens a reference and *then* errors (timeout / turn-cap
+    # / APIError) is still a runner failure; the prior `not references_opened`
+    # conjunct mis-reported it as a content FAIL (exit 1). Token counts don't
+    # gate this.
+    if records and all("error" in r for r in records):
         print("[FAIL] grounded-rate: all prompts errored — runner failure")
         for r in records:
             _, marker = grade_record(r)
