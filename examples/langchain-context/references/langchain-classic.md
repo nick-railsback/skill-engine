@@ -1,8 +1,3 @@
----
-name: langchain-classic
-description: The legacy `langchain-classic` package (built from libs/langchain/) — chains, AgentExecutor, memory, and the surface deprecated in v1. Read this when investigating old code, debugging deprecation warnings, or deciding whether to migrate.
----
-
 # langchain-classic: the legacy surface
 
 [`libs/langchain/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/langchain) publishes to PyPI as `langchain-classic` (v1.0.7). The Python module name is `langchain_classic`. This is the home of the entire pre-v1 surface that LangChain accumulated: chains, the AgentExecutor pattern, the memory abstractions, dozens of vectorstore / retriever / document-loader / embedding integrations, and the indexing API.

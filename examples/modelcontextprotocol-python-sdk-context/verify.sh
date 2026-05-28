@@ -750,19 +750,16 @@ else
     [ -n "$f" ] || continue
     ref_count=$((ref_count + 1))
     rel="${f#"$CTX_ROOT/"}"
-    fm=$(extract_frontmatter "$f")
-    rc=$?
-    if [ "$rc" -eq 1 ]; then
-      fail "$rel missing frontmatter (no --- delimited block at top)"
-      fm_ok=0
-      continue
-    elif [ "$rc" -eq 2 ]; then
-      fail "$rel frontmatter opened with --- but never closed (no matching second ---)"
-      fm_ok=0
-      continue
-    fi
-    if ! printf '%s\n' "$fm" | grep -qE '^name:[[:space:]]+'; then
-      fail "$rel frontmatter missing required key: name"
+    # Reference files are pure Markdown with no YAML frontmatter (matches
+    # Anthropic's canonical Agent Skills practice — the spec scopes
+    # name:/description: to SKILL.md only). Strip an optional UTF-8 BOM
+    # before checking so files authored with a BOM don't false-positive.
+    first_line=$(awk 'BEGIN{FS=""} /[^[:space:]]/ {
+      sub(/^\xef\xbb\xbf/, "")
+      print; exit
+    }' "$f" 2>/dev/null)
+    if [ "${first_line:0:3}" = "---" ]; then
+      fail "$rel starts with YAML frontmatter — references carry no frontmatter (02-artifact-contract.md § No YAML frontmatter on references)"
       fm_ok=0
     fi
   done < <(find -L "$CTX_ROOT/references" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null)
@@ -772,7 +769,7 @@ else
   elif [ "$fm_ok" -eq 1 ]; then
     noun="references"
     [ "$ref_count" -eq 1 ] && noun="reference"
-    pass "$ref_count $noun with valid frontmatter"
+    pass "$ref_count $noun start with a Markdown body (no YAML frontmatter)"
   fi
 fi
 
@@ -1022,7 +1019,11 @@ else
     [ -d "$src_path" ] || continue
     file_count=$(find "$src_path" -maxdepth 6 -type f 2>/dev/null | wc -l | tr -d ' ')
     [ "$file_count" -ge 20 ] || continue
-    catalog_rows=$(grep -cE "\(references/[^)]*\.md\)" "$nav_skill" 2>/dev/null || echo 0)
+    # Per-source row count keyed off the contract invariant that every
+    # reference filename is prefixed with its source id (`<src_id>-*.md`).
+    # A navigator-wide count silently passed a large source with zero
+    # dedicated references whenever another source contributed ≥3 rows.
+    catalog_rows=$(grep -cE "\(references/${src_id}-[^)]*\.md\)" "$nav_skill" 2>/dev/null || echo 0)
     if [ "$catalog_rows" -lt 3 ]; then
       density_concerns=$((density_concerns + 1))
       printf '  [WARN] source %s has %d files but the catalog carries only %d row(s) (<3); verify post-run summary for a minimal-essence justification\n' "$src_id" "$file_count" "$catalog_rows"

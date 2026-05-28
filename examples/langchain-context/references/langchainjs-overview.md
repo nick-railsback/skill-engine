@@ -1,8 +1,3 @@
----
-name: langchainjs-overview
-description: Companion repo langchain-ai/langchainjs — the JavaScript/TypeScript port of LangChain. The rest of this contextualizer is Python-first; this reference is intentionally a thin pointer for orienting JS questions, not deep coverage.
----
-
 # LangChain.js (companion repo, thin coverage)
 
 LangChain.js at [langchain-ai/langchainjs](https://github.com/langchain-ai/langchainjs/tree/dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d) is the TypeScript counterpart of the Python `langchain` framework. The two stay roughly aligned in concepts (Runnables/LCEL, models, tools, retrievers, agents — the shared abstractions live in [`libs/langchain-core/`](https://github.com/langchain-ai/langchainjs/tree/dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d/libs/langchain-core)) but are independently developed: separate release cadence, separate API surface details, and per-language gotchas.

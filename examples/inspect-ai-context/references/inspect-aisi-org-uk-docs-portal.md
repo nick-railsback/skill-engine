@@ -1,8 +1,3 @@
----
-name: inspect-aisi-org-uk-docs-portal
-description: "Orientation to the rendered docs portal at inspect.aisi.org.uk — what is unique to the portal (auto-generated Python API reference, CLI reference, and evals catalog) versus the backing repo, and the top-level navigation across User Guide, Reference, Extensions, and Evals sections."
----
-
 # What lives at inspect.aisi.org.uk
 
 This is the Quarto-rendered companion to the `docs/` directory in the `UKGovernmentBEIS/inspect_ai` repository. **Most user-guide pages are 1:1 renders of `docs/*.qmd` files** (concepts, tutorial, examples) — for those, the `ukgovernmentbeis-inspect-ai-*` references in this contextualizer are the source-of-truth read. The portal carries two categories of content that **only exist here**, and that is the reason this reference (and its two siblings) exist:

@@ -68,3 +68,7 @@ jobs:
         run: bash plugin/skill-engine/tests/clean-cache/run.sh
       - name: Run migration tests
         run: bash plugin/skill-engine/tests/migration/run.sh
+      - name: Run permalink-density tests
+        run: bash plugin/skill-engine/tests/permalink-density/run.sh
+      - name: Run grounded-rate tests
+        run: bash plugin/skill-engine/tests/grounded-rate/run.sh

@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-tools
-description: "Covers every layer of Inspect's tool system: the `@tool` decorator and factory pattern, standard built-in tools (bash, python, web_search, text_editor, computer, web_browser, agentic helpers, and intervention tools ask_user/notify_user), MCP server integration via stdio/HTTP/sandbox transports, custom tool authoring (signatures, `ToolError`, `ToolResult`, `ToolDef`, `tool_with()`), parallel execution opt-in, stateful tools with `store_as()`, tool-choice control, and the default vs. explicit error-handling contract."
----
-
 # Tools
 
 A tool is a Python async function exposed to the model via the `@tool` decorator. Inspect handles JSON-schema generation from the function signature and docstring, dispatches tool calls the model emits, returns results, and orchestrates multi-turn tool loops.

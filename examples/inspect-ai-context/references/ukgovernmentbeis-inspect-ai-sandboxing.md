@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-sandboxing
-description: "Covers sandbox runtimes (local, docker, k8s, and pip-installable extensions), compose patterns for multi-service CTF-style evals, the sandbox() callable and its full method surface, file seeding, resource limits, and the tool-approval policy system (human/auto approvers, custom approvers via @approver, ToolCallViewer) that gates tool execution before it reaches any sandbox."
----
-
 # Sandboxing
 
 By default, model tool calls execute in the same process as the evaluation. That is fine for read-only tools but dangerous when a tool runs arbitrary code (`bash()`, `python()`, `text_editor()`, `web_browser()`) or when you need per-sample filesystem state or a network topology (e.g., a CTF target host). Sandboxes provision dedicated environments — containers or VMs — that the `sandbox()` callable inside a tool routes its `exec`, `read_file`, `write_file`, and `connection` calls into. Built-in support exists for `local` (no isolation) and `docker`; everything else is a pip-installable extension.

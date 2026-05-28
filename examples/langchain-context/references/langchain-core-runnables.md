@@ -1,8 +1,3 @@
----
-name: langchain-core-runnables
-description: The Runnable protocol and LCEL — the composition language at the center of every LangChain pipeline. Read this for any question about the `|` pipe operator, .bind, .with_config, RunnableSequence, RunnableParallel, RunnableLambda, RunnableBranch, or how `invoke / batch / stream` dispatch works.
----
-
 # langchain-core: Runnables and LCEL
 
 Almost everything in LangChain is a `Runnable`. Prompts, chat models, output parsers, retrievers, tools — they all implement the same four-method protocol and compose with the same operators. This is **LCEL**, the LangChain Expression Language. Understanding the Runnable abstraction is the single biggest leverage point in the codebase: most "how do I…" questions resolve to "compose these Runnables."

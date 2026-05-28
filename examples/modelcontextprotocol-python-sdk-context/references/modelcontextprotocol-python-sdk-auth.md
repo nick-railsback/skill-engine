@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-auth
-description: "OAuth 2.1 authentication in the MCP Python SDK. Server-side: `TokenVerifier` protocol, `OAuthAuthorizationServerProvider`, `AuthSettings`, bearer-token middleware, and the resource-server vs. authorization-server modes. Client-side: `OAuthClientProvider` with PKCE, `TokenStorage` interface, callback flow."
----
-
 # MCP Python SDK — OAuth authentication
 
 MCP servers and clients use OAuth 2.1 with PKCE for HTTP-based transports. This SDK supplies both halves:

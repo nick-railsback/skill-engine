@@ -1,14 +1,14 @@
-# 11-Walkthrough: library-context
+# 11-Walkthrough: modelcontextprotocol-python-sdk-context
 
-This chapter walks through the engine producing an artifact called `library-context` end-to-end. The team is the maintainers of an open-source library — they have an API surface, a plugin system, configuration knobs, and deployment patterns to document. The references draw from real Flask source code, generalized as `library-context` to highlight the engine's shape rather than Flask itself. The artifact they ship to AI assistants is `library-context`; the engine they run alongside it is what keeps that artifact's references in sync with the upstream library code.
+This chapter walks through the engine producing an artifact called `modelcontextprotocol-python-sdk-context` end-to-end. The team is adopting the MCP Python SDK for an internal AI product — they need to teach Claude (or any other AI assistant) how to write MCP servers and clients in the v2 syntax, work through the v1→v2 migration when they hit legacy code, and answer questions about transports, auth, and types without re-reading the spec each time. The references draw directly from the v2 pre-alpha branch of `modelcontextprotocol/python-sdk`; the contextualizer is what keeps those references in sync as the SDK evolves.
 
-The artifact lives in `examples/library-context/` (../../examples/library-context/) — that's the actual filesystem output. This chapter is the narrative around it: why these choices, why those rejections, and how the engine's patterns from this guide compose in practice.
+The artifact lives in [`examples/modelcontextprotocol-python-sdk-context/`](../../examples/modelcontextprotocol-python-sdk-context/) — that's the actual filesystem output. This chapter is the narrative around it: which questions earned a reference, which were rejected, and how the engine's patterns from this guide compose in practice.
 
-The example is deliberately small — one navigator, two references, no exotic mechanisms. Real artifacts grow past this in scope but not in shape.
+The example is **larger than the recommended starting point** — nine references, not two — and that's part of the lesson. The team didn't start with nine; they started with three (overview, server, client) and grew the catalog as the v2 migration surfaced clean partitions. This chapter shows that growth path.
 
 ## The decision flow
 
-The team starts with a problem: every new contributor opens a Slack thread asking "where's the entry point?" or "how does the plugin lifecycle work?" The maintainer answers in their own words, ships some links, moves on. A week later, someone else asks the same question.
+The team starts with a problem: every contributor writing MCP servers asks the same five questions on their first day. "Do I use `FastMCP` or `MCPServer`? Wait, those are the same thing? Or are they?" "Why is the constructor taking `on_*` keyword arguments instead of decorators?" "What changed from v1?" The maintainer answers in their own words, ships some links, moves on. A week later, someone else asks the same five questions.
 
 They decide to build a contextualizer.
 
@@ -16,124 +16,131 @@ They decide to build a contextualizer.
 
 The maintainer makes a list of every "where is X / how does Y work" question they've answered in the last quarter:
 
-* "What's the public API surface for query operations?"
-* "How do I write a plugin?"
-* "What config knobs exist for cache behavior?"
-* "How does the build/release pipeline actually run?"
-* "What does the test harness expect from a fixture?"
+* "How do I build an MCP server in v2?"
+* "How does the new `on_*` handler kwarg pattern work in the lowlevel `Server` class?"
+* "What's the right transport for a remote MCP client — `stdio`, `sse`, `streamable_http`, websocket?"
+* "How does OAuth 2.1 auth work end-to-end (`TokenVerifier`, `OAuthClientProvider`, PKCE)?"
+* "I have working v1 code — what's the migration path to v2?"
+* "Why is `RootModel.root` gone?" / "Why is `AnyUrl` now `str`?"
+* "What's the experimental tasks feature for?"
 
-Five rough domain clusters. Could be five references. But they pause — this guide warns against premature reference proliferation (see [02-artifact-contract.md](02-artifact-contract.md)).
+Seven rough domain clusters. Could be seven references. The team pauses — this guide warns against premature reference proliferation (see [02-artifact-contract.md](02-artifact-contract.md)).
 
-### Step 2 - Pick the minimum viable catalog
+### Step 2 - Pick the minimum viable catalog (and let it grow)
 
-The team applies the "3-5 references at the start" heuristic. They consolidate:
+The team applies the "3-5 references at the start" heuristic. They start with three:
 
-* "Public API for query operations" -> reference 1
-* "Plugin lifecycle and authoring" -> reference 2
-* "Config knobs" -> folded into reference 1 (config affects API behavior)
-* "Build/release pipeline" -> out of scope; that's a different audience (release engineers, not library users)
-* "Test harness fixtures" -> folded into reference 2 (plugins ship their own tests)
+* `modelcontextprotocol-python-sdk-overview` — orientation, v1.x vs v2 split, package layout
+* `modelcontextprotocol-python-sdk-mcpserver` — high-level server (the happy path)
+* `modelcontextprotocol-python-sdk-client` — writing MCP clients
 
-Two references. They name them `library-api` and `library-plugins`.
+Three references. Three months later, the v2 pre-alpha lands breaking changes faster than the team can answer questions in-thread. They split out:
+
+* `modelcontextprotocol-python-sdk-migration-v1-to-v2` — concise port cheatsheet (the team accepts a larger reference here because v2 introduced a lot of surface)
+* `modelcontextprotocol-python-sdk-lowlevel-server` — when you must drop down from `MCPServer`
+* `modelcontextprotocol-python-sdk-transports` — stdio vs SSE vs streamable HTTP vs websocket
+* `modelcontextprotocol-python-sdk-auth` — OAuth 2.1 server + client patterns
+* `modelcontextprotocol-python-sdk-types` — the `mcp.types` Pydantic models
+* `modelcontextprotocol-python-sdk-experimental-tasks` — opt-in async-tasks feature
+
+Nine references at steady state. Each split came from a real signal (a contributor asking the same question twice; a v2 breaking change that broke an existing reference's narrative). None were preemptive.
 
 ### Step 3 - Pick the navigator name
 
-The contextualizer is `library-context`. The skill-engine convention is `<area-domain>-context`, where the area domain is your domain's short name (e.g., `identity`, `inventory`, `billing`). Here it's the library itself; call it `library`.
+The contextualizer is `modelcontextprotocol-python-sdk-context`. The skill-engine convention is `<area-domain>-context`, where the area domain is your domain's short name. Here the source-id slug already encodes the upstream identity (`modelcontextprotocol-python-sdk`), so the navigator inherits it as the area domain.
 
-The catalog rows will reference the two primary references with relative paths.
+The catalog rows reference each primary file with relative paths under `references/`.
 
 ### Step 4 - Decide what NOT to include
 
-This is the hardest step. The team rejects three tempting additions:
+This is the hardest step. The team rejects four tempting additions:
 
-* **A "getting started" reference.** That's onboarding content; the library's website handles it. The contextualizer is for deep questions, not first-touch.
-* **A "deployment" reference.** Out of scope as decided in Step 2. Folding it back in would dilute the navigator.
-* **A "FAQ" reference.** FAQs degrade fast — the questions change, the answers don't. Better to update the two real references when patterns change than maintain a separate FAQ.
+* **An `mcp-protocol-spec` reference.** That's the wire-format MCP spec — out of scope. This contextualizer documents the *Python SDK's expression* of the spec, not the spec itself. A reader who needs the wire format should follow the source URL pointers to the spec repo directly.
+* **An `mcp-typescript-sdk` reference.** A different SDK with its own idioms; would dilute the navigator's domain. Worth a sibling contextualizer (`modelcontextprotocol-typescript-sdk-context`), not a reference here.
+* **An `mcp-anthropic-platform` reference.** Anthropic-specific integration patterns (Claude Desktop, Claude API): that's downstream consumer guidance, not SDK guidance. The team decided their internal product's integration patterns live in a separate internal contextualizer.
+* **A "getting started" reference.** That's onboarding content; the SDK's `README.md` and `examples/` directory handle it. The contextualizer is for deep questions, not first-touch.
 
 The team writes these rejections into a "deliberately not included" note in the repo's contributing guide.
 
-## Catalog rationale: why two references
+## Catalog rationale: why nine references at steady state
 
-The catalog rows look like this:
-
-| Reference | Description |
+| Reference | What it covers |
 |---|---|
-| [library-api](references/library-api.md) | Public API surface, query operations, configuration knobs, return-value shapes |
-| [library-plugins](references/library-plugins.md) | Plugin lifecycle, authoring contract, registration patterns, test fixtures |
+| `overview` | Orientation: package layout, v1.x vs v2, recommended entry points |
+| `mcpserver` | High-level server via `MCPServer` (the default path for new code) |
+| `lowlevel-server` | When you must drop down — `on_*` kwarg handlers, no decorators |
+| `client` | Writing clients — `Client`, `ClientSession`, the four callbacks |
+| `transports` | stdio / SSE / streamable HTTP / websocket — when to use each |
+| `auth` | OAuth 2.1 server + client patterns, `TokenVerifier`, `OAuthClientProvider` |
+| `types` | The `mcp.types` Pydantic models, snake_case vs camelCase, `_adapter` |
+| `migration-v1-to-v2` | Port-your-code cheatsheet — search-and-replace strategy |
+| `experimental-tasks` | Opt-in async-tasks feature; tracks the draft MCP spec |
 
-**Why not three or four?** Because every reference adds:
-* A catalog row to maintain in the navigator
-* A bijection check that has to stay in sync
-* A reference's worth of content to keep fresh
-* Cross-reference pointers from the other references
+**Why not five? Or fifteen?** The split was driven by upstream pressure, not by intuition. v2's pre-alpha cleanly partitions the surface (server vs client, high-level vs lowlevel, transport vs auth, stable vs experimental). Each reference maps to one partition. Going below five would force the team to discuss server and client in the same reference, which breaks the "section per topic" reading model. Going above ten would mean splitting transports into "stdio reference" and "HTTP reference," which the SDK itself does not separate — a partition the engine would create artificially.
 
-For two references, the cross-reference map is one line. For five references, it's a small graph. Maintenance scales superlinearly with reference count; pre-empt it by starting small.
-
-**When would this contextualizer split?** [02-artifact-contract.md "When to split a reference"](02-artifact-contract.md#when-to-split-a-reference) covers the signals. For `library-context`, the most likely split is plugin authoring growing past the size budget — at which point the team would split `library-plugins` into `library-plugins` (lifecycle, registration) + `library-plugins-authoring` (the deeper authoring guide). That's a Phase-2 decision the contextualizer earns over time.
+Cross-reference map maintenance scales superlinearly with reference count. For nine references the cross-reference map is ten one-liners. That's a budget the team accepts; another reference would push it past the point where a reader can skim it in fifteen seconds.
 
 ## Sample queries: what hits each reference
 
 How a Claude Code user would hit each reference, end-to-end:
 
-### Query 1 - "What's the entry point for running a query?"
+### Query 1 - "How do I build an MCP server that takes a long time to respond?"
 
-1. User asks the question in Claude Code with `library-context` installed.
-2. Navigator's catalog has a row for `library-api` with the description "Public API surface, query operations, configuration knobs, return-value shapes."
-3. Navigator's cross-reference map has a one-line rule: "Query / API questions start at library-api."
-4. Claude reads `library-api.md`. Section "Critical Patterns" has the entry-point pattern with a code example.
+1. User asks. Navigator scans catalog; sees `mcpserver` is the default server reference.
+2. Cross-reference map adds: "My tool needs to take a long time → experimental-tasks."
+3. Claude reads `mcpserver.md` first (Context/progress patterns for in-flight reporting), then loads `experimental-tasks.md` to evaluate whether opt-in tasks are the right fit.
 
-**Token cost:** ~200 tokens for the catalog scan + ~3,500 tokens for `library-api.md`. The `library-plugins.md` reference is never loaded.
+**Token cost:** ~200 tokens for the catalog scan + ~3,800 tokens for `mcpserver.md` + ~3,400 tokens for `experimental-tasks.md` (only because the cross-reference map flagged the pairing). The other seven references stay unloaded.
 
-### Query 2 - "How do I write a plugin that runs before query parsing?"
+### Query 2 - "My v1 code is broken on `main` — what changed?"
 
-1. User asks. Navigator scans catalog, sees `library-plugins` is the right reference.
-2. Cross-reference map confirms: "Plugin authoring start at library-plugins."
-3. Claude reads `library-plugins.md`. Section "Architecture Overview" describes the lifecycle hooks; "Critical Patterns" shows the pre-parse hook signature.
-4. Section "Related References" points at `library-api` if the user needs query-shape details.
+1. User asks. Navigator catalog has a row for `migration-v1-to-v2` whose description is "concise port-your-code cheatsheet."
+2. Cross-reference map: "My v1 code is broken on `main` → migration-v1-to-v2."
+3. Claude reads `migration-v1-to-v2.md`. Search-and-replace strategy applies. If the migration introduces a v2-specific pattern (e.g., `streamable_http_client` signature), the migration ref links into `transports.md` for the depth.
 
-Cross-reference traversal adds 3,500 tokens only if needed. Most plugin questions don't need it.
+Cross-reference traversal adds 3,500 tokens only when the migration step references a v2-specific pattern. Most migrations don't need it.
 
-### Query 3 - "What's the cache TTL config?"
+### Query 3 - "How do I authenticate an MCP request?"
 
-1. User asks. Navigator catalog row for `library-api` mentions "configuration knobs."
-2. Claude reads `library-api.md`. Section "Architecture Overview" lists the config knobs with a TTL row.
-3. Query closes without loading `library-plugins.md`.
+1. User asks. Navigator catalog row for `auth` mentions "OAuth 2.1 authentication."
+2. Cross-reference map: "How do I authenticate? → auth; pairs with transports (streamable HTTP carries the bearer token)."
+3. Claude reads `auth.md`. The server-side `TokenVerifier` flow answers most of it. If the user is on streamable HTTP, the auth ref points at `transports.md` for the bearer-token middleware.
 
-This is the **on-demand load** pattern in action. `library-plugins.md` could be 200 lines of plugin-specific detail; the cache-TTL question never reads any of it.
+This is the **on-demand load** pattern in action. `mcpserver.md`, `client.md`, `types.md`, etc. are never loaded — the question maps cleanly to two references via the cross-reference map.
 
 ## A sample DISCOVER run
 
-For `library-context` after a year in production, here's what a run looks like under the goal-given posture documented in [08-discover-pipeline.md](08-discover-pipeline.md).
+For `modelcontextprotocol-python-sdk-context` after a year in production, here's what a run looks like under the goal-given posture documented in [08-discover-pipeline.md](08-discover-pipeline.md).
 
-> **Aside — web-doc upstreams.** If the upstream is a documentation site (e.g. MkDocs / Docusaurus / Sphinx), use `kind: web-doc` with `crawl_mode: sitemap`. The walkthrough below shows `git-managed` as the primary example; the `web-doc` flow differs only in step 3.6 (sitemap crawl) and step 5.5 (frontmatter check on the cache). See [recipes/web-doc-setup.md](recipes/web-doc-setup.md).
+> **Aside — web-doc upstreams.** This example uses `kind: git-managed` because the upstream is a GitHub repo with code, types, and inline docstrings — the engine reads the source directly. If the upstream were a documentation site (e.g., MkDocs / Docusaurus / Sphinx), the team would use `kind: web-doc` with `crawl_mode: sitemap`. The bundled [`inspect-ai-context`](../../examples/inspect-ai-context/) is the canonical example of `web-doc` source kind in action — it pulls both a git-managed source AND a sitemap-crawled docs portal.
 
-The contextualizer's `research/source-paths.json` carries three entries: `library` (the main repo), `library-cli` (a downstream CLI consumer), and `library-bench` (the benchmark suite that consumes both). All three are at `status: confirmed`, `lifecycle.state: reachable`. The team invokes `/skill-engine:discover`; the model reads each source via `gh repo view` / `git ls-tree` (preferring the CLI over WebFetch for `kind: git-managed`) and considers what to write.
+The contextualizer's `research/source-paths.json` carries one entry: `modelcontextprotocol-python-sdk` at `status: confirmed`, `lifecycle.state: reachable`, tracking the `main` branch (v2 pre-alpha) by omitting the `branch` field. The team invokes `/skill-engine:discover`; the model reads the repo via `gh repo view` / `git ls-tree` (preferring the CLI over WebFetch for `kind: git-managed`) and considers what to write.
 
-> **Sidebar — no local cache.** If no `~/.cache/skill-engine/library-*/` directory exists (the team declined the seed offer at bootstrap, or recently ran `/skill-engine:clean-cache`), DISCOVER's pre-flight step 6 prompts once per git-managed source before reading:
+> **Sidebar — no local cache.** If no `~/.cache/skill-engine/modelcontextprotocol-python-sdk-*/` directory exists (the team declined the seed offer at bootstrap, or recently ran `/skill-engine:clean-cache`), DISCOVER's pre-flight step 6 prompts once before reading:
 >
 > ```
-> No local cache for library. Pre-clone from
-> https://github.com/example/library into ~/.cache/skill-engine/?
-> This speeds up this DISCOVER run and future REFRESH cycles. Skip
-> if unsure. [y/N]
+> No local cache for modelcontextprotocol-python-sdk. Pre-clone from
+> https://github.com/modelcontextprotocol/python-sdk into
+> ~/.cache/skill-engine/? This speeds up this DISCOVER run and future
+> REFRESH cycles. Skip if unsure. [y/N]
 > ```
 >
 > On `y`, the skill clones via an atomic-rename idiom so a failed clone never leaves a half-written cache at the canonical path. On `N` (or anything not `y`/`yes`), DISCOVER proceeds via the `gh`/`git` CLI fallback documented in [08-discover-pipeline.md](08-discover-pipeline.md). The choice is sticky for the session; the prompt re-offers on the next DISCOVER if the cache is still missing.
 
 The model finds:
 
-* **Two existing references could grow.** `library-plugins.md` lacks coverage of two plugin variants (`library-plugins-redis`, `library-plugins-postgres`); `library-api.md` doesn't yet mention the CloudFront cache path (`library-cache-cloudfront`).
-* **No new top-level references are warranted yet.** The candidates the model surfaced cluster cleanly under the existing two references.
-* **Three candidates are excluded.** The model flags one archived prototype, one unclear-domain repo, and one old fork as deliberate skips.
+* **Two existing references could grow.** `mcpserver.md` lacks coverage of a new `elicitation` callback variant introduced last week; `transports.md` doesn't yet mention the WebSocket re-handshake quirk discovered in `tests/integration/transport_test.py`.
+* **No new top-level references are warranted yet.** A candidate for "mcp resources" was considered and rejected — the resource surface is small enough to fit inside `mcpserver.md` under the `@resource` decorator section.
+* **One candidate is excluded.** The model flags an in-progress draft PR (the `/feature/protocol-extensions` branch) as deliberately skipped — the PR's API surface is unstable and will likely be rewritten before merge.
 
 The model writes the proposed additions and presents the diff. The team reviews and approves. The session closes with a paragraph-form post-run summary:
 
-> I read N files across `library`, `library-cli`, and `library-bench`. The essence is X. I extended two references (`library-plugins.md` adds two plugin variants; `library-api.md` adds the CloudFront cache path) and emitted no new top-level references — the candidates clustered under the existing partition. I deliberately skipped one archived prototype, one repo whose domain was unclear, and one old fork. If you'd like me to revise, tell me a hint and rerun: `/skill-engine:discover --hint='<your hint>'` (e.g., `--hint='include the bench harness internals at high priority'`).
+> I read N files across `modelcontextprotocol-python-sdk`. The essence is X. I extended two references (`mcpserver.md` adds the new `elicitation` callback variant; `transports.md` adds the WebSocket re-handshake quirk) and emitted no new top-level references — the resource surface clustered cleanly under `mcpserver.md`. I deliberately skipped one in-progress draft PR. If you'd like me to revise, tell me a hint and rerun: `/skill-engine:discover --hint='<your hint>'` (e.g., `--hint='split out the resources section into its own reference'`).
 
-The total wall-clock is ~6 minutes including human review.
+The total wall-clock is ~5 minutes including human review.
 
 **What the team learns from this run:**
-* The plugin ecosystem is producing more candidates than the API ecosystem. Not surprising — plugins are the open-extension surface.
+* The transport edge cases produce more candidates than the type-system surface. Not surprising — transports cross network boundaries and surface heterogeneous bugs.
 * The summary's skip-reasoning makes the model's exclusion choices legible without a multi-screen review flow.
 * The `--hint` invitation keeps lateral revision one keystroke away when the team disagrees with the partition.
 
@@ -143,55 +150,68 @@ A handful of small judgment calls in building this example:
 
 ### Choosing reference filenames
 
-The convention is `<area-domain>-<topic>.md`. For this contextualizer the area domain is `library`, so:
-* `library-api.md`
-* `library-plugins.md`
+The convention is `<source-slug>-<topic>.md`. For this contextualizer the source-slug is `modelcontextprotocol-python-sdk`, so:
+* `modelcontextprotocol-python-sdk-overview.md`
+* `modelcontextprotocol-python-sdk-mcpserver.md`
+* (and so on)
 
-A common alternative would be `library-context-api.md` — putting the full contextualizer name in the filename. Don't do this. The contextualizer name (`library-context`) is the **navigator** skill's name; the references live **under** it in `skills/library-context/references/`. Including `context` in every reference filename adds clutter without disambiguation. The directory path already disambiguates.
+A common alternative would be `mcp-overview.md` — a shorter, abbreviated name. Don't do this. The contextualizer's `verify.sh` catalog-density check is keyed off the source-slug prefix; an abbreviated filename breaks the per-source row attribution the check needs. The verbose-but-correct prefix also disambiguates if the team grows a second contextualizer for the TypeScript SDK later.
 
 ### Should companion files be primary references?
 
-The example doesn't ship companion files. If the team grows a long code example for plugin authoring (say, 300 lines of TypeScript), they'd put it in `examples/library-context/references/plugin-authoring-example.ts` — or similar — as a **companion file** with a bare name (no `library-` prefix), linked to from `library-plugins.md`. Companion files don't appear in the catalog (see [02-artifact-contract.md](02-artifact-contract.md#companion-files)).
+The example doesn't ship companion files. If the team grew a long code example for a transport (say, 300 lines of streamable HTTP setup), they'd put it in `examples/modelcontextprotocol-python-sdk-context/references/streamable-http-fastapi-example.py` — or similar — as a **companion file** with a bare name (no `modelcontextprotocol-python-sdk-` prefix), linked to from `transports.md`. Companion files don't appear in the catalog (see [02-artifact-contract.md](02-artifact-contract.md#companion-files)).
 
 ### How much code to include
 
-The two references together contain maybe a dozen short code snippets — enough to show, not enough to teach. The reference is a navigator into the source code, not a replacement for it. When in doubt, link to the source repo and quote the function signature; don't paste the implementation.
+The nine references together contain several dozen short code snippets — enough to show, not enough to teach. The reference is a navigator into the source code, not a replacement for it. When in doubt, link to the source repo at a SHA-pinned permalink and quote the function signature; don't paste the implementation.
 
 ### Voice and length
 
-Each reference is ~170-200 lines, well under the 500-line ceiling. Could each be longer? Yes. Should they be? No. Past ~250 lines, the reference starts feeling like documentation; before that, it feels like a curated lookup. The example targets the latter.
+References range from ~95 lines (`overview`) to ~300 lines (`migration-v1-to-v2`), all under the 500-line ceiling. Could each be longer? Yes. Should they be? No. Past ~300 lines, the reference starts feeling like documentation; before that, it feels like a curated lookup. The example targets the latter.
+
+The `migration-v1-to-v2` reference is the exception — at ~300 lines, it's larger because v2 introduced enough breaking changes that a shorter ref would force the reader to bounce between this ref and the changelog. The team accepted the size because the bounce cost is real.
 
 ### Monitoring a non-default branch
 
-The example tracks the library repo's default branch — that's the common case. When the maintainer ran `/skill-engine:engine-bootstrap`, Step 2.4 prompted once per `kind: git-managed` source:
+The example tracks the SDK repo's `main` branch — that's the v2 pre-alpha, which is HEAD for the current `modelcontextprotocol/python-sdk` repo. When the maintainer ran `/skill-engine:engine-bootstrap`, Step 2.4 prompted:
 
-> For `<url>`:
+> For `https://github.com/modelcontextprotocol/python-sdk`:
 > Monitor the repo's default branch? Press Enter or `y` to track HEAD
 > (main/master/whatever the repo points at). Or type a branch name
 > (e.g. `dev`, `nonprod`, `release/v2`) to monitor that branch
 > instead. [Enter/y = default]
 
-Pressing Enter omitted the `branch` field — the schema is additive, and an absent field stays correct even if upstream later renames its default. If the team wanted to track a non-default branch (say, the integration branch a release train runs on), they would answer Step 2.4 with `release/v2` instead, and the entry would land as `{ "id": "library", "kind": "git-managed", "url": "...", "branch": "release/v2", ... }`. REFRESH's SHA comparison and DISCOVER's local clone then follow that branch, and SHA-pinned permalinks cite commits from it — never the default branch.
+Pressing Enter omitted the `branch` field — the schema is additive, and an absent field stays correct even if upstream later renames its default. If the team wanted to track the `v1.x` branch instead (e.g., to maintain a sibling contextualizer for v1 stable users), they would answer Step 2.4 with `v1.x`, and the entry would land as `{ "id": "modelcontextprotocol-python-sdk-v1", "kind": "git-managed", "url": "...", "branch": "v1.x", ... }`. REFRESH's SHA comparison and DISCOVER's local clone then follow that branch, and SHA-pinned permalinks cite commits from it — never `main`.
 
 ## Working with the example
 
 Look at the example as a unit:
 
 ```text
-examples/library-context/
-  SKILL.md                 # navigator (two-field frontmatter, 5 sections)
+examples/modelcontextprotocol-python-sdk-context/
+  SKILL.md                                             # navigator (two-field frontmatter, catalog + cross-ref map)
   references/
-    library-api.md         # six prescribed sections, well under size budget
-    library-plugins.md     # six prescribed sections, well under size budget
+    modelcontextprotocol-python-sdk-overview.md        # orientation
+    modelcontextprotocol-python-sdk-mcpserver.md       # high-level server
+    modelcontextprotocol-python-sdk-lowlevel-server.md # lowlevel server
+    modelcontextprotocol-python-sdk-client.md          # writing clients
+    modelcontextprotocol-python-sdk-transports.md      # stdio / SSE / streamable HTTP / websocket
+    modelcontextprotocol-python-sdk-auth.md            # OAuth 2.1
+    modelcontextprotocol-python-sdk-types.md           # mcp.types
+    modelcontextprotocol-python-sdk-migration-v1-to-v2.md  # port cheatsheet
+    modelcontextprotocol-python-sdk-experimental-tasks.md  # opt-in async tasks
     (no companion files in this example)
+  research/
+    source-paths.json   # one source: modelcontextprotocol/python-sdk on main
+  verify.sh             # stamped from the bootstrap template
 ```
 
 Running the same conventions this guide preaches:
-* **SKILL.md has two-field frontmatter:** name and description only.
-* **References have NO frontmatter:** first line is the H1.
+* **SKILL.md has two-field frontmatter:** `name:` and `description:` only.
+* **References have NO YAML frontmatter:** every reference file in this example starts with its `# Reference Title` H1. This matches Anthropic's canonical Agent Skills practice — frontmatter is scoped to `SKILL.md` only; supporting markdown files are pure Markdown.
 * **A common reference shape used in this example:** When to Use, Architecture Overview, Critical Patterns, Common Gotchas, Key Components, Related References. Under goal-given DISCOVER, the model varies body shape by what the source domain rewards; this six-section shape is one acceptable form, not a contract requirement.
 * **Catalog bijection:** every catalog row has a real file; every primary reference file has a catalog row.
-* **Size discipline:** both references are well under 500 lines / 18KB.
+* **Size discipline:** every reference is under 500 lines / 18KB. The `migration-v1-to-v2` reference at ~300 lines is the largest and intentionally so.
 
 If you fork this and start writing your own contextualizer, the example is a structural template, not a content template. Replace every word; keep the shape.
 

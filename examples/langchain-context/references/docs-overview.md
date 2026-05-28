@@ -1,8 +1,3 @@
----
-name: docs-overview
-description: Companion repo langchain-ai/docs — the source for docs.langchain.com (LangChain, LangGraph, LangSmith, Deep Agents, integrations). Mintlify-based MDX content tree, plus the central packages.yml registry of every LangChain package.
----
-
 # LangChain docs (companion repo)
 
 [langchain-ai/docs](https://github.com/langchain-ai/docs/tree/a623fd54dca3b37d00e004ea6feda5ec338eab67) is the source repository for **[docs.langchain.com](https://docs.langchain.com)** — the unified docs site for LangChain (Python and JS), LangGraph, LangSmith, and LangChain Labs (Deep Agents, Open SWE, Open Agent Platform). The `langchain-ai/langchain` monorepo carries no in-tree prose docs (only README and CLAUDE.md files); everything user-facing lives here.

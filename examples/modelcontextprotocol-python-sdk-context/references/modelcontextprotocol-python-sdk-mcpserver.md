@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-mcpserver
-description: "Building MCP servers with the high-level `MCPServer` class (formerly `FastMCP`): `@tool/@resource/@prompt` decorators, `Context` injection, structured output, `Image`/`Audio`/`Icon`, lifespan, elicitation, sampling, and `run()`/ASGI mounting. The recommended entry point for new server code."
----
-
 # MCP Python SDK — High-level server (`MCPServer`)
 
 `MCPServer` is the ergonomic, decorator-driven way to build an MCP server. It is the v2 rename of v1's `FastMCP` — the import is `from mcp.server.mcpserver import MCPServer, Context`. Underneath, `MCPServer` wraps the lowlevel `Server` and handles tool/resource/prompt registration, JSON Schema generation from type hints, content marshalling, context injection, and transport boilerplate. The class definition is at [`src/mcp/server/mcpserver/server.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/server.py) (≈1100 lines); the public package exports at [`src/mcp/server/mcpserver/__init__.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/__init__.py) are `MCPServer`, `Context`, `Image`, `Audio`, `Icon`.

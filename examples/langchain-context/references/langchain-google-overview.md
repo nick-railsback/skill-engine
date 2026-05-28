@@ -1,8 +1,3 @@
----
-name: langchain-google-overview
-description: Companion repo langchain-ai/langchain-google — out-of-tree partner monorepo for Google integrations. Hosts langchain-google-genai (Gemini API), langchain-google-vertexai (Vertex AI), and langchain-google-community (everything else Google).
----
-
 # langchain-google (companion repo)
 
 [langchain-ai/langchain-google](https://github.com/langchain-ai/langchain-google/tree/b86ee2fccd97b8afbea6850c8c23df45c8d44894) is a partner-integration monorepo that lives **outside** the main `langchain-ai/langchain` tree. It exists for the same reason `langchain-ai/langchain-aws` does: Google's surface area is wide enough — three independently versioned packages, four if you count the JS port — that bundling it in the main monorepo would force lockstep releases on integrations that move at different tempos. The in-tree [`libs/partners/README.md`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/partners/README.md) calls this out: Google integrations were moved out for independent versioning. The contextualizer's [`langchain-partners.md`](langchain-partners.md) covers the in-tree partner pattern; this reference covers the Google split.

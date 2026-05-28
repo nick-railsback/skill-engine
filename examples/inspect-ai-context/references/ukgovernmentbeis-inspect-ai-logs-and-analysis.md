@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-logs-and-analysis
-description: "Covers the `.eval` log format, the `EvalLog` Python object, all log-reading/writing/editing APIs, the `inspect view` log viewer (including live view, bundling, and publishing), the `inspect_ai.analysis` dataframe API (`evals_df`, `samples_df`, `messages_df`, `events_df`, column groups, `prepare()` operations), and the Inspect Scout transcript scanner. Authoritative source for working with evaluation artifacts after a run completes."
----
-
 # Eval logs
 
 Every `inspect eval` and `eval()` call writes one log per task. The log is the canonical artifact for reproducibility, debugging, and downstream analysis. Default location is `./logs/` — override via `--log-dir`, `INSPECT_LOG_DIR` (in shell or `.env`), or `eval(log_dir=...)`. Relative `INSPECT_LOG_DIR` paths in a `.env` resolve relative to the `.env` file, not the CWD.

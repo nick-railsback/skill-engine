@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-scorers
-description: "Comprehensive reference for Inspect AI's built-in and model-graded scorers, the Score/Value/Metric type hierarchy, epoch reducers (including pass_at and pass_k), custom @scorer and @metric decorators, multi-value and multi-scorer patterns, and the inspect score CLI workflow. Covers exact/heuristic matchers, statistical metrics (accuracy, stderr, grouped), and sandbox-aware scoring."
----
-
 # Scorers
 
 A scorer reads the final `TaskState` plus the `Target` from the sample, returns a `Score` (`value`, optional `answer`, `explanation`, `metadata`), and declares one or more `metrics` that aggregate per-sample scores into the eval-level summary. Built-in scoring shapes fall into four buckets:

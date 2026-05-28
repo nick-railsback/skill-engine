@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-cli-and-config
-description: "Complete reference for the `inspect` CLI: every subcommand registered in `_cli/main.py`, the full configuration-precedence chain (built-in default → Task arg → env var → .env file → --run-config → CLI flag → eval() kwarg), INSPECT_* environment variables, .env file loading semantics, and the -T/-M/-S task/model/solver argument shortcuts."
----
-
 # The `inspect` CLI
 
 Subcommands are registered in `_cli/main.py` via `inspect.add_command(...)` calls at lines 42–54. The Click group is invoked with `auto_envvar_prefix="INSPECT"` (line 60), so every option automatically gains an `INSPECT_*` environment-variable alias. Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/_cli/main.py#L42-L60

@@ -1,8 +1,3 @@
----
-name: langchain-v1-agents
-description: The new agent surface in the `langchain` package (v1) — create_agent, the middleware system, AgentState, init_chat_model, and the LangGraph backend. Read this for any question about building agents in modern LangChain, what middleware does, or why v1 dropped AgentExecutor.
----
-
 # LangChain v1: create_agent and middleware
 
 The package called `langchain` on PyPI today (built from [`libs/langchain_v1/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/langchain_v1)) is a near-total rewrite of the legacy agent system. Two things are radically smaller than 0.x:

@@ -1,8 +1,3 @@
----
-name: langsmith-sdk-overview
-description: Companion repo langchain-ai/langsmith-sdk — the Python and JS client SDKs for the LangSmith observability platform. Covers the @traceable decorator, framework wrappers, the Client API, evaluations, and how it relates to langchain-core callbacks.
----
-
 # LangSmith SDK (companion repo)
 
 LangSmith is LangChain's hosted observability and evaluation platform — traces, datasets, evaluations, prompt management. The SDK in [langchain-ai/langsmith-sdk](https://github.com/langchain-ai/langsmith-sdk/tree/b3f1b0af0618ead2160b7fde78c894acd1fe2bb2) is the Python and JS/TS client library that ships traces and runs evaluations against the platform. Both top-level READMEs in `langchain-ai/langchain` steer production users here, and `langchain-core`'s callback system has a native LangSmith tracer (`LangChainTracer`, see the contextualizer's [`langchain-core-callbacks.md`](langchain-core-callbacks.md)) — which means *if `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` are in the environment, any `langchain` / `langgraph` code already exports traces with no further code changes*.

@@ -362,23 +362,15 @@ The two non-draft catalog entries (`billing-refunds`, `billing-disputes`) partic
 
 ## Reference files
 
-### Frontmatter is optional; description-only when present
+### No YAML frontmatter on references
 
-A reference file MAY carry a minimal frontmatter block containing only a `description:` field, or it MAY omit frontmatter entirely. When present, the block carries exactly the two delimiter lines and the `description:` line — no `name:`, no `version:`, no other fields.
+Reference files are **pure Markdown with no YAML frontmatter**. The first line of every reference file is the `# Reference Title` H1. This matches Anthropic's canonical Agent Skills practice — the Agent Skills [spec](https://agentskills.io/specification) scopes the `name:` and `description:` frontmatter contract to `SKILL.md` only; supporting markdown files under `references/` (e.g., `REFERENCE.md`, `FORMS.md`) are described as plain documentation that agents read on demand, and Anthropic's own shipped skills (e.g., [`pdf/reference.md`](https://github.com/anthropics/skills/blob/main/skills/pdf/reference.md), [`pdf/forms.md`](https://github.com/anthropics/skills/blob/main/skills/pdf/forms.md)) carry no frontmatter at all.
 
-```yaml
----
-description: <one-line purpose statement — what this reference covers and when to read it>
----
-```
+The rule is enforced by Invariant 3 in [`05-invariants.md`](05-invariants.md) and by the `reference-frontmatter` named check in the contextualizer-stamped `verify.sh` (which fails any `references/*.md` whose first non-blank, non-BOM line is `---`).
 
-The `description:` field is the **canonical, model-readable statement of the reference's purpose** and is the diff target for SELF-AUDIT's Check 4 (catalog-vs-content; see [`03-engine.md`](03-engine.md)). Recommended length: under ~200 characters so a reviewer scanning the catalog can read it inline. Style: noun-phrase or imperative — `"<Topic> patterns, gotchas, and recipes for <use-case>."` — same WHEN-not-WHAT discipline as the navigator's own description.
+**Why no frontmatter.** The navigator's loading model expects raw Markdown content from the first line. On platforms that do not parse YAML in supporting files, a stray frontmatter block surfaces as visible content; on platforms that do parse it, the `name:` and `description:` keys collide with the SKILL.md-level metadata schema. Anthropic's spec sidesteps both failure modes by scoping frontmatter to `SKILL.md`. The engine inherits the same discipline.
 
-When frontmatter is absent, Check 4 falls back to a body-section heuristic — the first paragraph under the H1, or the bullets under a `## When to Use This Reference` section if one is present. Pre-existing references that ship without frontmatter remain compliant; the optional block is a sharpening, not a forcing function.
-
-**Why optional, not required.** The navigator's loading model originally expected raw Markdown content from the first line and a stray YAML block could be treated as content by some platforms. The two-line `description:` block is small enough to render cleanly on the platforms that don't parse it; the platforms that do parse it get the canonical purpose statement. References that emit no frontmatter remain valid — the bijection invariant and the four reference invariants do not depend on this field.
-
-The first line of the reference body remains `# Reference Title` (the H1). This is enforced by an automated test ([05-invariants.md](05-invariants.md)) whether or not a frontmatter block precedes it.
+**SELF-AUDIT Check 4 (catalog-vs-content)** uses a body-section heuristic to extract each reference's purpose for diffing against the navigator's catalog row: the first paragraph under the H1, or the bullets under a `## When to Use This Reference` section if one is present. The body-section heuristic is the contract; the navigator's catalog-row description is the diff target.
 
 ### A common reference shape
 
@@ -579,7 +571,7 @@ A contextualizer approaching `N ≈ 1000` source roots should plan ahead — wel
 * The provenance tag the harvest pipeline writes into the frontmatter of every harvested artifact, so an artifact's source of origin survives the journey from crawl to emission.
 * The discriminator the emission stage uses to keep per-source artifacts under distinct `source_id` records when two source roots produce disagreeing material on the same topic, so the reviewer sees both side-by-side rather than having one silently shadow the other at consumption time.
 
-**Frontmatter contract.** Every harvested artifact — a file the pipeline writes into the references corpus as the result of a source-root crawl — carries `source_id` in its frontmatter. This is a harvested-artifact rule, not a reference rule: hand-authored references at `references/<area-domain>-*.md` follow the [optional-description-only convention](#frontmatter-is-optional-description-only-when-present) (frontmatter present carries only a `description:` field, or is omitted entirely); harvested artifacts carry the richer `source_id` block. Harvested artifacts are discriminated from hand-authored references by a dedicated sub-directory (`references/_harvest/`) so the description-only-or-omitted scan and the SHA-pin scan continue to apply only to the top-level `references/*.md` shape, without false positives on pipeline output.
+**Frontmatter contract.** Every harvested artifact — a file the pipeline writes into the references corpus as the result of a source-root crawl — carries `source_id` in its frontmatter. This is a harvested-artifact rule, not a reference rule: hand-authored references at `references/<area-domain>-*.md` carry [no YAML frontmatter](#no-yaml-frontmatter-on-references) at all; harvested artifacts carry the `source_id` provenance block. Harvested artifacts are discriminated from hand-authored references by a dedicated sub-directory (`references/_harvest/`) so the no-frontmatter scan and the SHA-pin scan continue to apply only to the top-level `references/*.md` shape, without false positives on pipeline output.
 
 ### Never-remove list
 
@@ -659,7 +651,7 @@ Pulling this together: every convention in this chapter exists to make either th
 | Convention | What would break without it |
 |---|---|
 | **Two-field frontmatter** | Cross-platform navigator loading (some platforms drop unknown fields, others reject them) |
-| **No frontmatter on references** | Navigator loading model breaks on at least one platform |
+| **No YAML frontmatter on references** | Navigator loading model breaks on at least one platform when supporting markdown files carry frontmatter the SKILL.md-level metadata schema doesn't recognize |
 | **Six prescribed reference sections** | AI can't predict where to find a gotcha vs. a pattern; loads inefficiently |
 | **Catalog bijection** | Orphaned files invisible; phantom rows cause runtime read failures |
 | **Bare-named companion files** | AI can't distinguish primary from deep-dive; loads inefficiently |

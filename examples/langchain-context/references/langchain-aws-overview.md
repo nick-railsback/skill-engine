@@ -1,8 +1,3 @@
----
-name: langchain-aws-overview
-description: Companion repo langchain-ai/langchain-aws — out-of-tree partner monorepo for AWS integrations. Hosts langchain-aws (Bedrock + Kendra + Neptune + S3 Vectors etc.), langgraph-checkpoint-aws, and langchain-agentcore-codeinterpreter.
----
-
 # langchain-aws (companion repo)
 
 [langchain-ai/langchain-aws](https://github.com/langchain-ai/langchain-aws/tree/b175d5ab0c51412ecf4e4a18404bb03bd64764ab) is a partner-integration monorepo that lives **outside** the main `langchain-ai/langchain` tree. The in-tree [`libs/partners/README.md`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/partners/README.md) calls this out: AWS integrations were moved out for independent versioning. The repo is also the planned replacement for the legacy AWS components in `langchain-community` — the README states "this repository will replace all AWS integrations currently present in the `langchain-community` package. Users are encouraged to migrate to this repository as soon as possible." See [`langchain-partners.md`](langchain-partners.md) for the in-tree partner pattern this repo follows.

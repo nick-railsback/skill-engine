@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-experimental-tasks
-description: "The experimental tasks feature: async/long-running MCP operations that decouple request-issued from result-returned. Covers task lifecycle states, `enable_tasks()` setup, `ServerTaskContext`, client-side `call_tool_as_task` + `poll_task`, `TaskStore` interface, and the spec-status caveats."
----
-
 # MCP Python SDK — Experimental tasks
 
 Tasks are MCP's mechanism for **async request handling** — operations that don't return their result inline. The receiver creates a task, returns a `CreateTaskResult` immediately with a `task_id`, and the requestor polls for status and eventual result. The feature is **experimental and tracks the draft MCP specification** — APIs may change without notice. The implementation lives at [`src/mcp/server/experimental/`](https://github.com/modelcontextprotocol/python-sdk/tree/f4753440dac8b2b6fa6407808e06c51258b78322/src/mcp/server/experimental) and [`src/mcp/shared/experimental/tasks/`](https://github.com/modelcontextprotocol/python-sdk/tree/f4753440dac8b2b6fa6407808e06c51258b78322/src/mcp/shared/experimental/tasks). Authoritative docs: [`docs/experimental/tasks.md`](https://github.com/modelcontextprotocol/python-sdk/blob/f4753440dac8b2b6fa6407808e06c51258b78322/docs/experimental/tasks.md), [`tasks-server.md`](https://github.com/modelcontextprotocol/python-sdk/blob/f4753440dac8b2b6fa6407808e06c51258b78322/docs/experimental/tasks-server.md), [`tasks-client.md`](https://github.com/modelcontextprotocol/python-sdk/blob/f4753440dac8b2b6fa6407808e06c51258b78322/docs/experimental/tasks-client.md).

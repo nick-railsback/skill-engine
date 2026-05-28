@@ -1,8 +1,3 @@
----
-name: langgraph-overview
-description: Companion repo langchain-ai/langgraph — the low-level graph orchestration framework that powers langchain v1 agents. Covers StateGraph, checkpointers, prebuilt helpers, the SDK and CLI, and how it relates to langchain.create_agent.
----
-
 # LangGraph (companion repo)
 
 LangGraph is a low-level orchestration framework for stateful, long-running agents and workflows. It is published from [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph/tree/add269632bb32c57f3252b7a7006c8115b579fb4) — a separate repo from `langchain-ai/langchain`, but a hard dependency of the new `langchain` package: `langchain.create_agent` returns a LangGraph `StateGraph`, and agent execution is graph-node message passing under the hood. For deep questions about *how an agent actually runs* — durable execution, interrupts, checkpointing, streaming — the answer lives here, not in the `langchain` repo.

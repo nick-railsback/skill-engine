@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-models-and-providers
-description: "Uniform model API (`get_model`, `Model`, `ModelAPI`) that normalizes 20+ inference backends behind one interface, plus the full `GenerateConfig` knob surface, the provider catalog with per-provider quirks and model args, adaptive-connections concurrency, batch mode, and reasoning-model effort/history/summary controls."
----
-
 # The model API
 
 Inspect normalizes 20+ inference backends behind one `Model` interface. The user-facing entry points are:

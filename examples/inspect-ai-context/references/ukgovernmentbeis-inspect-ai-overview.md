@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-overview
-description: "Covers what Inspect is (an open-source Python framework for LLM evals by the UK AI Security Institute), how to install it, the canonical hello-world Task example, and the full sub-package surface area — read this first when orienting to the repo or helping users get started."
----
-
 # What Inspect is
 
 Inspect is an open-source Python framework for large-language-model evaluations, developed by the **UK AI Security Institute** and **Meridian Labs**. It targets frontier-model evals: coding, agentic tasks, reasoning, knowledge, behavior, and multimodal understanding. The framework's value proposition is composable primitives (`Dataset`, `Solver`, `Scorer`) wired together by a `Task`, plus rich infrastructure for tool calling, sandboxing, agent scaffolds, parallel execution, and log analysis. It ships with 200+ pre-built evaluations and a web log viewer ("Inspect View"), and supports running arbitrary external agents (Claude Code, Codex CLI, Gemini CLI) as well as MCP tools.

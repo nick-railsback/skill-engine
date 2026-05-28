@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-agents
-description: "Covers the Inspect `Agent` protocol and all built-in agents: ReAct loop, Deep Agent (subagent delegation, memory, planning), multi-agent composition via handoffs and `as_tool`, the Agent Bridge for external frameworks, the Human Agent for baselining, and Agent Intervention (ACP) for real-time bidirectional human-agent control including operator interrupt/redirect and agent-initiated questions and notifications. Includes implementation details, configuration options, limits, and gotchas drawn directly from source and docs."
----
-
 # Agents
 
 The `Agent` protocol is a narrower, more versatile sibling of `Solver`. An agent is an `async def execute(state: AgentState) -> AgentState` wrapped by `@agent`. The same agent instance can play four roles: (1) top-level `Solver` on a `Task`, (2) standalone callable via `run()`, (3) sub-agent in a multi-agent system, and (4) a `Tool` exposed to a model via `as_tool()`.

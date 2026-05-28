@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-solvers
-description: "Covers the Solver protocol and Generate callable that every Inspect evaluation is built on, the complete set of built-in solver components (generate, system_message, prompt_template, chain_of_thought, self_critique, multiple_choice, use_tools), the chain() compositor and @solver decorator for composite plans, and the TaskState data structure that every solver mutates. Includes concrete patterns for custom solvers, intermediate scoring, and the decision boundary between plain solvers and the Agent interface."
----
-
 # Solvers
 
 A solver is `async def solve(state: TaskState, generate: Generate) -> TaskState`. It mutates and returns a `TaskState` that carries `messages`, `output`, `tools`, `tool_choice`, `metadata`, `store`, `scores`, and a `completed` flag. Solvers wrap that callable in an `@solver` decorator so they get a registry entry, parameter recording for reproducibility, and the option to short-circuit a chain when `state.completed` is set.

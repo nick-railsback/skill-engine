@@ -1,8 +1,3 @@
----
-name: langchain-core-retrieval
-description: Documents, retrievers, vector stores, embeddings, and document loaders — the RAG building blocks. Read this for any question about Document, BaseRetriever, VectorStore, similarity search, MMR, Embeddings, BaseDocumentLoader, or how to wire a RAG pipeline.
----
-
 # langchain-core: retrieval and RAG primitives
 
 The retrieval surface in langchain-core is intentionally thin: a few base classes that any concrete vector DB, embedding model, or document loader implements. The interesting integrations (Chroma, Qdrant, FAISS, Postgres pgvector, Pinecone, etc.) live in partner packages or in `langchain_classic.vectorstores` for the legacy implementations. This reference covers the base abstractions and the patterns; for a specific provider, the entry point is "find its partner package and read its `vectorstores.py` or `embeddings.py`."

@@ -1,8 +1,3 @@
----
-name: inspect-aisi-org-uk-api-reference
-description: "Per-module summary of the 13 inspect_ai.* Python API pages at inspect.aisi.org.uk/reference/ — exact signatures, headline exports, and return types, with SHA-pinned source links; read this file to answer 'what does this function take' / 'what does this class hold' questions before fetching a full reference page."
----
-
 # The auto-generated Python API reference
 
 The portal's `/reference/inspect_ai.*.html` pages are the canonical lookup for exact signatures, class fields, and return types in the `inspect_ai` package. They are auto-generated from source and re-rendered on every release, so a flag/field that surfaces here but not in the `docs/*.qmd` prose is the public API speaking for itself. **Use these pages (or the per-module summaries below) to answer "what does this function take" / "what does this class hold" questions; use the `ukgovernmentbeis-inspect-ai-*` references for "how do I use it" / "what's idiomatic" questions.**

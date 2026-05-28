@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-extensions
-description: "The five Inspect extension points — model APIs, sandboxes, approvers, storage, and hooks — all wired through setuptools entry points so third-party packages register on equal terms with built-in providers. Covers decorator signatures, lifecycle rules, required class methods, and operational controls (INSPECT_REQUIRED_HOOKS, enabled(), API key override)."
----
-
 # Extensions
 
 Inspect exposes five extension surfaces. Four of them (model APIs, sandboxes, approvers, hooks) register through a **single** setuptools entry-point group named `inspect_ai`; the fifth (filesystems) piggybacks on the standard `fsspec.specs` group instead. The convention is to point the entry point at a `_registry.py` module inside your package — Inspect imports it at startup, which runs the `@modelapi` / `@sandboxenv` / `@approver` / `@hooks` decorators and populates the registry. No Inspect-side configuration is required to discover an installed extension.

@@ -1,8 +1,3 @@
----
-name: langchain-core-models
-description: Chat models, LLMs, messages, tools, prompts, and output parsers — the abstractions you compose into a typical prompt-model-parser pipeline. Read this for any question about BaseChatModel, BaseLLM, AIMessage, HumanMessage, ToolMessage, BaseTool, bind_tools, structured output, BaseOutputParser, ChatPromptTemplate, or PromptTemplate.
----
-
 # langchain-core: models, messages, tools, prompts, parsers
 
 The "model layer" in langchain-core is the set of abstractions a typical RAG-or-agent pipeline sits on: a prompt, a chat model, possibly a tool surface, and an output parser. They all live under [`libs/core/langchain_core/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core), they all implement the `Runnable` protocol (so `prompt | model | parser` just works — see `langchain-core-runnables.md`), and they're what every partner package implements concretely.

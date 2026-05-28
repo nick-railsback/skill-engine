@@ -1,8 +1,3 @@
----
-name: langchain-core-callbacks
-description: Callbacks, tracers, and the streaming events system — how to observe and instrument LangChain pipelines. Read this for any question about BaseCallbackHandler, CallbackManager, astream_events, run_id, tags, on_llm_start/on_chain_end/on_tool_call, or how LangSmith integrates.
----
-
 # langchain-core: callbacks, tracers, streaming events
 
 LangChain has a single uniform observability surface: every node in a `Runnable` pipeline fires lifecycle events that any registered handler can receive. This is the mechanism behind LangSmith tracing, the per-token streaming UI, structured event streams, retry/fallback logging, and custom telemetry. Understanding it once unlocks all four use cases.

@@ -38,21 +38,30 @@ and comparing `content_hash`.
 ## Contextualizer root
 
 Engine workflows operate inside a contextualizer installed as a project
-skill at `.claude/skills/<slug>-context/`. Every path below —
-`research/...`, `references/...`, `verify.sh` — resolves relative to that
-directory.
+skill at one of three install levels:
 
-Before reading or writing anything, locate the root from the project
-working directory:
+- **User-level:** `~/.claude/skills/<slug>-context/`
+- **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
+- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+
+Every path below — `research/...`, `references/...`, `verify.sh` —
+resolves relative to whichever directory matches. Before reading or
+writing anything, locate the root by searching all three install levels
+in order:
 
 ```bash
-ctx_roots=$(find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null)
+ctx_roots=$(
+  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
+    [ -d "$root" ] || continue
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+  done
+)
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
 if [ "$n" -eq 0 ]; then
-  echo "No contextualizer found under .claude/skills/*-context/. Run /skill-engine:engine-bootstrap first."
+  echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers under .claude/skills/; specify one:"
+  echo "Multiple contextualizers found; specify one:"
   printf '%s\n' "$ctx_roots"
   exit 1
 fi

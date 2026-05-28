@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-overview
-description: "Orientation for the MCP Python SDK at HEAD (v2 pre-alpha on main). Covers what the SDK is, the v1.x-vs-v2 split, top-level package layout, the recommended entry points (`mcp.server.mcpserver.MCPServer` vs `mcp.server.lowlevel.Server`), and the contributor ground rules in AGENTS.md (uv-only, anyio, 100% coverage)."
----
-
 # MCP Python SDK — Overview
 
 The Model Context Protocol (MCP) Python SDK is the official Python implementation of the [MCP specification](https://modelcontextprotocol.io/specification/latest) — a JSON-RPC protocol for connecting LLM applications to context-providing servers. The SDK lets you build both **servers** (which expose tools, resources, and prompts) and **clients** (which connect to any MCP server) without re-implementing the wire protocol. Source: [`README.v2.md` § Overview](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/README.v2.md#L93-L95).

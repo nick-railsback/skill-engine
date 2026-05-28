@@ -1,8 +1,3 @@
----
-name: inspect-aisi-org-uk-cli-reference
-description: "Per-subcommand summary of the 11 inspect <cmd> CLI pages — flag groups, defaults, sub-subcommands, with links to the canonical reference URLs and the backing _cli source files. Each subcommand maps to a Click command defined in src/inspect_ai/_cli/ at pinned SHA 033745ddbc."
----
-
 # The auto-generated CLI reference
 
 The portal's `/reference/inspect_*.html` pages are the canonical lookup for every flag on every `inspect` subcommand. There are 11 subcommands, several with their own sub-subcommands (`inspect log list/dump/convert/schema`, `inspect view start/bundle/embed`, `inspect cache clear/path/list`, `inspect sandbox cleanup`). **Use these pages (or the per-subcommand summaries below) to answer "what flag do I pass" / "what's the default" questions; use `ukgovernmentbeis-inspect-ai-cli-and-config.md` for "how does CLI configuration compose with env vars / .env / -T / -M" questions.**

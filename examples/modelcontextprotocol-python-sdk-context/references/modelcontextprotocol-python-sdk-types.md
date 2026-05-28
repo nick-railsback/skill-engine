@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-types
-description: "`mcp.types` — protocol type models. Covers snake_case Pydantic fields with camelCase wire aliases, the `_adapter` TypeAdapter instances that replaced `RootModel` union types, `ContentBlock` and its variants, the v2 `str`-vs-`AnyUrl` URI shift, jsonrpc-2.0 surface, error code constants, and the `_meta` extension field."
----
-
 # MCP Python SDK — `mcp.types`
 
 Every MCP protocol message is a Pydantic model in `mcp.types`. The module is the wire-format truth: every request, response, notification, content block, capability, and error code is here. It's also where the largest cluster of v2 breaking changes landed — the surface looks deceptively similar to v1 but the field-access patterns differ.

@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-transports
-description: "MCP transports in the Python SDK: stdio, SSE (legacy), streamable HTTP (recommended), and websocket. Covers `stdio_client` / `streamable_http_client` / `sse_client` signatures, server-side `stdio_server` and `MCPServer.streamable_http_app()`, mounting in Starlette/ASGI, the v2 `httpx.AsyncClient` injection pattern, DNS-rebinding protection, and the session-ID capture workaround."
----
-
 # MCP Python SDK — Transports
 
 MCP supports four transports in this SDK. Stdio is the canonical pipe-based transport for local subprocess servers (the Claude Desktop integration uses it). Streamable HTTP is the recommended transport for everything else and is what new servers should target — the [spec section](https://modelcontextprotocol.io/specification/latest/basic/transports) describes the bidirectional HTTP+SSE behavior. SSE (server-sent events as standalone, the older pattern) and websockets are still supported but less commonly used in new code. Source: [`src/mcp/client/stdio.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/stdio.py), [`src/mcp/client/streamable_http.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/streamable_http.py), [`src/mcp/client/sse.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/sse.py), [`src/mcp/client/websocket.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/websocket.py).

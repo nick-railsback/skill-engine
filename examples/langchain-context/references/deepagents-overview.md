@@ -1,8 +1,3 @@
----
-name: deepagents-overview
-description: Companion repo langchain-ai/deepagents — a higher-level "batteries-included" agent harness layered on langchain v1 with planning, filesystem, shell, and sub-agent tools. Inspired by Claude Code; returns a compiled LangGraph.
----
-
 # Deep Agents (companion repo)
 
 Deep Agents is an **opinionated agent harness** layered on top of `langchain` v1: instead of wiring up `create_agent` with the right tools, prompts, and middleware yourself, `create_deep_agent()` returns an agent that already has planning (`write_todos`), filesystem (`read_file`, `write_file`, `edit_file`, `ls`, `glob`, `grep`), shell (`execute`), and sub-agent (`task`) tools, plus prompts that teach the model to use them and middleware that auto-summarizes long conversations and spills large outputs to files. The [`README.md`](https://github.com/langchain-ai/deepagents/blob/e298206407e38a0d7bdb073d945b5ab19f401066/README.md) is explicit about provenance: "This project was primarily inspired by Claude Code, and initially was largely an attempt to see what made Claude Code general purpose, and make it even more so."

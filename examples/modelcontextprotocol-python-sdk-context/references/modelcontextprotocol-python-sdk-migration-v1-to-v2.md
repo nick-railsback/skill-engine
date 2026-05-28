@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-migration-v1-to-v2
-description: "Cheatsheet for porting v1 MCP Python SDK code to v2 (in development on `main`). Covers the FastMCP→MCPServer rename, McpError→MCPError, decorator handlers→constructor `on_*` kwargs, camelCase→snake_case, AnyUrl→str, streamablehttp_client→streamable_http_client signature changes, union types→TypeAdapter, removed helpers, and reachable replacements."
----
-
 # MCP Python SDK — Migration v1 → v2
 
 This is the dense version. If you have v1 code and want a checklist for porting it to v2 syntax on the `main` branch, read this. The authoritative upstream reference is [`docs/migration.md`](https://github.com/modelcontextprotocol/python-sdk/blob/f4753440dac8b2b6fa6407808e06c51258b78322/docs/migration.md) — this reference summarizes that file at SHA `f4753440` and pulls out the patterns that bite hardest.

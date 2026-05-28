@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-eval-sets
-description: "Covers `eval_set` / `inspect eval-set` for running multi-task, multi-model benchmark sweeps with automatic retry/resume mechanics, Inspect Scout scanner integration, per-sample and scoped limits (time, token, cost, message, working), early stopping, and error-handling discipline including crash recovery and cancelled-run scoring."
----
-
 # Eval sets
 
 `inspect eval-set` and `eval_set()` exist for the case `inspect eval` doesn't cover: running several tasks and/or models together, with automatic retries on partial failure, and the ability to re-run the same command later to pick up where work stopped. They are the right entry point for any benchmark sweep, hyperparameter explore, or long agentic run that you expect to nurse over hours or days.

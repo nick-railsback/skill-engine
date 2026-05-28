@@ -1,8 +1,3 @@
----
-name: langchain-partners
-description: Partner integration packages (langchain-anthropic, langchain-openai, etc.) and the contract test suite. Read this for how a provider integration is structured, how to install one, how chat models implement bind_tools / structured output, and how langchain-tests validates partner compliance.
----
-
 # LangChain partner packages
 
 A *partner package* is a thin adapter that wraps one provider's SDK into LangChain's abstractions: chat models, embeddings, tools. Each lives at [`libs/partners/<provider>/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/partners) and is published as its own PyPI package on its own release cadence. Fifteen partners are in-tree at this SHA: anthropic, chroma, deepseek, exa, fireworks, groq, huggingface, mistralai, nomic, ollama, openai, openrouter, perplexity, qdrant, xai. Two notable ones — Google and AWS — moved out to standalone repos (`langchain-ai/langchain-google`, `langchain-ai/langchain-aws`) for independent versioning; the [`libs/partners/README.md`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/partners/README.md) documents that split.

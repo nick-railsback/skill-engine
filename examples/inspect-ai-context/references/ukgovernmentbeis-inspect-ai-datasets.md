@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-datasets
-description: "Covers the full dataset contract in Inspect: the Sample Pydantic model and every field it carries (input, target, choices, id, metadata, sandbox, files, setup, checkpoint), the four built-in loaders (CSV, JSON/JSONL, Hugging Face, example), FieldSpec/record_to_sample field mapping, MemoryDataset for custom readers, filtering/shuffling/slicing knobs, and sandbox file-seeding patterns."
----
-
 # Datasets
 
 Inspect reads datasets from CSV, JSON, JSONL, and Hugging Face natively, and the `Dataset` protocol is open enough to wrap anything iterable that yields `Sample`s. Built-in loaders live in `src/inspect_ai/dataset/_sources/` (one module per format: `csv.py`, `json.py`, `hf.py`, `example.py`, `file.py`), and the core `Sample` / `MemoryDataset` types live in `_dataset.py`.

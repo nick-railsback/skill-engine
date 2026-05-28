@@ -1,8 +1,3 @@
----
-name: ukgovernmentbeis-inspect-ai-tasks
-description: "Covers the Task class and @task decorator as Inspect's fundamental evaluation unit — bundling dataset, solver, scorer, and all optional configuration (epochs, sandbox, approval, limits, checkpointing, early stopping). Read this when constructing or parameterizing tasks, applying task_with() overrides, understanding the four-layer configuration precedence, exposing solver parameters, or packaging tasks for distribution."
----
-
 # Tasks
 
 A `Task` is the fundamental unit of an Inspect evaluation. It bundles a dataset, a solver (or chain of solvers), and a scorer (or list of scorers), plus optional configuration for sandboxing, approval, retries, epochs, generation settings, and per-sample limits. Tasks are returned from a `@task`-decorated zero-or-more-argument function so they can be parameterized, registered, and re-instantiated cheaply.

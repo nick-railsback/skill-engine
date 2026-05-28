@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-client
-description: "Writing MCP clients: high-level `Client` (in-memory testing or remote), `ClientSession` for raw stream access, `ClientSessionGroup` for fan-out across multiple servers, calling tools/resources/prompts, paginated listing with `PaginatedRequestParams`, the `initialize_result` property, and the four callbacks (sampling, elicitation, list-roots, logging)."
----
-
 # MCP Python SDK — Client
 
 The SDK ships three client-side abstractions, ordered from highest- to lowest-level. Source: [`src/mcp/client/client.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/client.py#L37), [`src/mcp/client/session.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/session.py#L101), [`src/mcp/client/session_group.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/session_group.py#L85):

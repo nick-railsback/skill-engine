@@ -98,17 +98,28 @@ jobs:
       #   semgrep   — gate at ERROR only (ERROR ~= HIGH); WARNING (~MEDIUM) and
       #               INFO (~LOW) surfaced above but do not fail.
 
-      # gitleaks via the official action (Subtask 2.2 / Open Question Q2):
-      # chosen over the raw CLI because it is a `uses:` pin dependabot tracks
-      # (see .github/dependabot.yml), is free for personal repos (no
-      # GITLEAKS_LICENSE), and gates the job on any secret. AC6 scopes the
-      # SARIF-to-Security-tab requirement to bandit + semgrep, so gitleaks does
-      # not upload SARIF here. Swap to a pinned gitleaks container if the
-      # maintainer prefers CLI/SARIF uniformity (Q2).
+      # gitleaks via pinned CLI binary. The official gitleaks/gitleaks-action
+      # is excluded by this repo's `allowed_actions: "selected"` Actions policy
+      # (not GitHub-owned, not under the repo owner, and not Marketplace-
+      # verified), which previously caused this workflow to fail at startup
+      # validation. The CLI install carries equivalent gating with the same
+      # supply-chain discipline used for bandit/semgrep pip pins: version +
+      # SHA-256 pinned in lockstep. AC6 scopes the SARIF-to-Security-tab
+      # requirement to bandit + semgrep, so gitleaks does not upload SARIF.
+      # Bump by hand: check https://github.com/gitleaks/gitleaks/releases,
+      # update GITLEAKS_VERSION and GITLEAKS_SHA256 together.
       - name: gitleaks (secret scan)
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          tar="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tar}"
+          curl -sSL "$url" -o "$tar"
+          echo "${GITLEAKS_SHA256}  ${tar}" | sha256sum -c -
+          tar -xzf "$tar" gitleaks
+          ./gitleaks git . --no-banner
 
       # shellcheck on all *.sh — same glob + severity as lint.yml. ubuntu-latest
       # ships shellcheck preinstalled, so no apt install here (keeps a flaky

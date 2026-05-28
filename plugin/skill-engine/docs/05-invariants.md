@@ -263,7 +263,7 @@ The duplicate-detection step is non-obvious but valuable: a catalog row pasted t
 
 ## Invariant 3: No frontmatter on references
 
-Reference files start with a `# Title` Markdown heading. They never start with `---`.
+Reference files start with a `# Title` Markdown heading. They never start with `---`. This matches Anthropic's canonical Agent Skills practice — the Agent Skills [spec](https://agentskills.io/specification) scopes the `name:` and `description:` frontmatter contract to `SKILL.md` only, and Anthropic's shipped skills (e.g., [`pdf/reference.md`](https://github.com/anthropics/skills/blob/main/skills/pdf/reference.md)) ship their supporting markdown files without frontmatter.
 
 ```bash
 test_no_frontmatter_references() {
@@ -288,7 +288,7 @@ test_no_frontmatter_references() {
 }
 ```
 
-The BOM-stripping step is a defensive measure - some editors silently inject a UTF-8 byte-order mark on first save, which changes the first byte of the file and confuses naive line-reads.
+The BOM-stripping step is a defensive measure — some editors silently inject a UTF-8 byte-order mark on first save, which changes the first byte of the file and confuses naive line-reads.
 
 ## Invariant 4: Version consistency across 4 surfaces
 

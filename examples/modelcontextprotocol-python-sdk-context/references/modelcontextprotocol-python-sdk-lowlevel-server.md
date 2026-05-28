@@ -1,8 +1,3 @@
----
-name: modelcontextprotocol-python-sdk-lowlevel-server
-description: "Building MCP servers with the lowlevel `Server` class — constructor `on_*` keyword handlers (no decorators in v2), the full handler-name reference table, when to drop down from `MCPServer`, return-type construction (no automatic wrapping), and `streamable_http_app()` access."
----
-
 # MCP Python SDK — Lowlevel `Server`
 
 The lowlevel [`Server`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L101-L115) class is the minimal-magic alternative to `MCPServer`. Use it when you need direct protocol control — every request and notification handler registered explicitly, no automatic content marshalling, no JSON Schema inference from type hints, and full access to typed `params` and `ctx`. In v2 it is intentionally bare: it provides no convenience layer, and the migration guide is blunt — "If you want these conveniences, use `MCPServer` (previously `FastMCP`) instead."

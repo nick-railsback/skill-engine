@@ -1,8 +1,3 @@
----
-name: langchain-text-splitters
-description: The `langchain-text-splitters` package — chunking utilities for ingest pipelines. Read this for any question about TextSplitter, RecursiveCharacterTextSplitter, token-based splitting, language-aware code splitting, Markdown / HTML / JSON splitters, chunk overlap, or how to prepare documents for embedding.
----
-
 # langchain-text-splitters
 
 [`libs/text-splitters/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/text-splitters) publishes `langchain-text-splitters` — a small, focused package whose only job is turning long text or `Document` objects into chunk-sized pieces suitable for embedding, retrieval, or LLM context windows. It is a peer of `langchain-core` rather than a subset of it: depending on `langchain-text-splitters` is cheap (no provider SDKs), so it can be pulled into ingest jobs that don't need the rest of LangChain.

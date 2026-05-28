@@ -1,9 +1,12 @@
 version: 2
 updates:
   # Keeps the action pins current across every workflow in .github/workflows/
-  # — actions/checkout, actions/setup-python, github/codeql-action, and
-  # gitleaks/gitleaks-action. Grouping all three workflows under one ecosystem
-  # entry means a single coherent bump set.
+  # — actions/checkout, actions/setup-python, github/codeql-action. Gitleaks
+  # is CLI-installed in security.yml (the gitleaks/gitleaks-action is
+  # excluded by this repo's allowed_actions: "selected" policy), so its
+  # version is hand-bumped in that workflow rather than tracked here.
+  # Grouping all three workflows under one ecosystem entry means a single
+  # coherent bump set.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
