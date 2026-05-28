@@ -5,7 +5,7 @@ description: Companion repo langchain-ai/langchainjs — the JavaScript/TypeScri
 
 # LangChain.js (companion repo, thin coverage)
 
-LangChain.js at [langchain-ai/langchainjs](https://github.com/langchain-ai/langchainjs/tree/dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d) is the TypeScript counterpart of the Python `langchain` framework. The two stay roughly aligned in concepts (Runnables/LCEL, models, tools, retrievers, agents) but are independently developed: separate release cadence, separate API surface details, and per-language gotchas.
+LangChain.js at [langchain-ai/langchainjs](https://github.com/langchain-ai/langchainjs/tree/dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d) is the TypeScript counterpart of the Python `langchain` framework. The two stay roughly aligned in concepts (Runnables/LCEL, models, tools, retrievers, agents — the shared abstractions live in [`libs/langchain-core/`](https://github.com/langchain-ai/langchainjs/tree/dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d/libs/langchain-core)) but are independently developed: separate release cadence, separate API surface details, and per-language gotchas.
 
 > **Coverage note.** The rest of this contextualizer covers Python (`langchain-ai/langchain` and its companion repos). This reference is intentionally a thin orientation pointer rather than a full per-package walkthrough. Why: the navigator's `description` field is what drives skill invocation, and a polyglot navigator has no clean way to route a JS-only question to JS-only references and a Python-only question to Python-only references — the engine recommended rejecting this companion at proposal time for that reason. The user accepted it anyway, so a reference exists; but for any non-trivial JS question, follow the source links below into the JS repo and docs rather than expecting depth here.
 
@@ -31,7 +31,7 @@ There is no separate `libs/langchain_v1/` directory in JS — the JS `langchain`
 
 ## Python ↔ JS package mapping
 
-For the most common packages, the rough correspondence is:
+For the most common packages, the rough correspondence is (the authoritative cross-language map is the `js:` field in [`packages.yml`](https://github.com/langchain-ai/docs/blob/a623fd54dca3b37d00e004ea6feda5ec338eab67/packages.yml)):
 
 | Python | JS / npm |
 | --- | --- |

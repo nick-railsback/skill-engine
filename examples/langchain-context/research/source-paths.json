@@ -9,8 +9,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
-        "last_checked_sha": "7bb4130c7d460f14ec6391805cb47bf01637b5c5",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "84e3c795ec292cd32156f65c37c1445abb94b576",
         "proposed_url": null
       },
       "discovered_via": null
@@ -23,8 +23,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
-        "last_checked_sha": "add269632bb32c57f3252b7a7006c8115b579fb4",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "8cb0f3a96da422837177ca3a80a3124b6e471184",
         "proposed_url": null
       },
       "discovered_via": "langchain v1 declares langgraph>=1.2.0 as a core dependency; create_agent returns a LangGraph StateGraph"
@@ -37,8 +37,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
-        "last_checked_sha": "b3f1b0af0618ead2160b7fde78c894acd1fe2bb2",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "df9735d0badd2b07f557e8ecf1f4765e1c03e1ab",
         "proposed_url": null
       },
       "discovered_via": "Both the root README and the v1 README direct users to LangSmith for production tracing, eval, and debugging"
@@ -51,8 +51,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
-        "last_checked_sha": "82c31947f9dc938ffc71e1cea96d162a39aec3a1",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "390551d61d57ce68c2a80ed78c07eaa8e985908b",
         "proposed_url": null
       },
       "discovered_via": "Root README TIP block: 'higher-level package built on LangChain for agents that have built-in capabilities for common usage patterns'"
@@ -65,8 +65,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
-        "last_checked_sha": "a623fd54dca3b37d00e004ea6feda5ec338eab67",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "099a34b4c2f7b06f9dde0f1433f5c5d0ef979c49",
         "proposed_url": null
       },
       "discovered_via": "Repo carries no in-tree docs/; CLAUDE.md and READMEs point all prose docs at docs.langchain.com, whose source lives in langchain-ai/docs"
@@ -79,7 +79,7 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
+        "last_checked": "2026-05-27",
         "last_checked_sha": "dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d",
         "proposed_url": null
       },
@@ -93,8 +93,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
-        "last_checked_sha": "b86ee2fccd97b8afbea6850c8c23df45c8d44894",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "6b7d88dbd3dd703223b27458903937df02fdf242",
         "proposed_url": null
       },
       "discovered_via": "libs/partners/README.md notes Google integrations were moved out to a separate repo for independent versioning"
@@ -107,8 +107,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-05-26",
-        "last_checked_sha": "b175d5ab0c51412ecf4e4a18404bb03bd64764ab",
+        "last_checked": "2026-05-27",
+        "last_checked_sha": "eea5b3c9609d9f846a901c289f586b270740b3b7",
         "proposed_url": null
       },
       "discovered_via": "libs/partners/README.md notes AWS integrations were moved out to a separate repo for independent versioning"

@@ -5,9 +5,9 @@ description: "Orientation for the MCP Python SDK at HEAD (v2 pre-alpha on main).
 
 # MCP Python SDK — Overview
 
-The Model Context Protocol (MCP) Python SDK is the official Python implementation of the [MCP specification](https://modelcontextprotocol.io/specification/latest) — a JSON-RPC protocol for connecting LLM applications to context-providing servers. The SDK lets you build both **servers** (which expose tools, resources, and prompts) and **clients** (which connect to any MCP server) without re-implementing the wire protocol.
+The Model Context Protocol (MCP) Python SDK is the official Python implementation of the [MCP specification](https://modelcontextprotocol.io/specification/latest) — a JSON-RPC protocol for connecting LLM applications to context-providing servers. The SDK lets you build both **servers** (which expose tools, resources, and prompts) and **clients** (which connect to any MCP server) without re-implementing the wire protocol. Source: [`README.v2.md` § Overview](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/README.v2.md#L93-L95).
 
-The contextualizer tracks the `main` branch. **Read this first** — there is a non-obvious version split:
+The contextualizer tracks the `main` branch. **Read this first** — there is a non-obvious version split. Source: [`README.v2.md` § version notice](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/README.v2.md#L18-L22):
 
 - **v1.x is the current stable release** and lives on the [`v1.x` branch](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x). It is what `pip install mcp` ships today and what most users on the internet are writing about.
 - **v2 is in development on `main`** and is pre-alpha (anticipated stable Q1 2026). HEAD of `main` is what every reference in this contextualizer cites. The high-level server class is **renamed from `FastMCP` to `MCPServer`**, Pydantic model fields are **snake_case** (not camelCase), `McpError` is **`MCPError`**, and the lowlevel `Server` uses **constructor `on_*` kwargs** instead of decorator handlers. See the migration reference for the full delta.
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     mcp.run(transport="stdio")
 ```
 
-The lowlevel `Server` is for callers who need direct protocol access — handler-level control of every request type, custom validation, or features `MCPServer` doesn't yet expose (e.g., `subscribe_resource` registration in pure v2). Picking `MCPServer` does not lock you out of the lowlevel — `MCPServer._lowlevel_server` is reachable as an escape hatch (marked private; subject to change).
+The [lowlevel `Server`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/README.v2.md#L1628-L1630) is for callers who need direct protocol access — handler-level control of every request type, custom validation, or features `MCPServer` doesn't yet expose (e.g., `subscribe_resource` registration in pure v2). Picking `MCPServer` does not lock you out of the lowlevel — `MCPServer._lowlevel_server` is reachable as an escape hatch (marked private; subject to change).
 
 For clients, `Client` is the friendliest API — it can take a `Server`/`MCPServer` instance directly for in-memory testing or a streamable HTTP/stdio transport for production. `ClientSession` is the lower-level alternative used inside `streamable_http_client` / `stdio_client` context managers when you need raw stream access.
 

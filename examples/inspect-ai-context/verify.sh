@@ -189,7 +189,7 @@ else
       # Line-separated records via 0x1f field separator. Field values
       # (id, kind, status, lifecycle.state) are short kebab-case / URL /
       # path strings without embedded newlines.
-      while IFS=$'\x1f' read -r idx id kind status state url path branch crawl_mode; do
+      while IFS=$'\x1f' read -r idx id kind src_status state url src_path branch crawl_mode; do
         [ -n "${idx:-}" ] || continue
         if [ -z "$id" ]; then
           fail "sources[$idx] missing required field: id"
@@ -204,19 +204,53 @@ else
           reachable|moved|removed|unknown) ;;
           *) fail "sources[$idx] ($id): lifecycle.state '$state' not in {reachable, moved, removed, unknown}"; entries_ok=0 ;;
         esac
-        if [ -z "$status" ]; then
+        if [ -z "$src_status" ]; then
           fail "sources[$idx] ($id) missing required field: status"
           entries_ok=0
         else
-          case "$status" in
+          case "$src_status" in
             intake|proposed|confirmed|rejected) ;;
-            *) fail "sources[$idx] ($id): status '$status' not in {intake, proposed, confirmed, rejected}"; entries_ok=0 ;;
+            *) fail "sources[$idx] ($id): status '$src_status' not in {intake, proposed, confirmed, rejected}"; entries_ok=0 ;;
           esac
         fi
-        if [ -z "$url" ] && [ -z "$path" ]; then
-          fail "sources[$idx] ($id): neither url nor path is set — at least one is required"
-          entries_ok=0
-        fi
+        case "$kind" in
+          git-managed)
+            if [ -z "$url" ]; then
+              fail "sources[$idx] ($id): url is required when kind is git-managed"
+              entries_ok=0
+            fi
+            ;;
+          web-doc)
+            if [ -z "$url" ]; then
+              fail "sources[$idx] ($id): url is required when kind is web-doc"
+              entries_ok=0
+            fi
+            if [ -n "$src_path" ]; then
+              fail "sources[$idx] ($id): path '$src_path' set on kind 'web-doc' — web-doc sources are URL-addressed, not path-addressed"
+              entries_ok=0
+            fi
+            ;;
+          external-doc)
+            if [ -z "$src_path" ]; then
+              fail "sources[$idx] ($id): path is required when kind is external-doc"
+              entries_ok=0
+            fi
+            if [ -n "$url" ]; then
+              fail "sources[$idx] ($id): url '$url' set on kind 'external-doc' — external-doc sources are path-addressed (pre-curated local markdown), not URL-addressed"
+              entries_ok=0
+            fi
+            ;;
+          local-path)
+            if [ -z "$src_path" ]; then
+              fail "sources[$idx] ($id): path is required when kind is local-path"
+              entries_ok=0
+            fi
+            if [ -n "$url" ]; then
+              fail "sources[$idx] ($id): url '$url' set on kind 'local-path' — local-path sources are filesystem-addressed, not URL-addressed"
+              entries_ok=0
+            fi
+            ;;
+        esac
         if [ -n "$branch" ]; then
           if [ "$kind" != "git-managed" ]; then
             fail "sources[$idx] ($id): branch '$branch' set on kind '$kind' — branch is git-managed only"
@@ -766,10 +800,7 @@ if [ ! -f "$sp_file" ] || ! jq -e '(.sources | type) == "array"' "$sp_file" >/de
 else
   fm_ok=1
   fm_count=0
-  walk_roots="$(mktemp)"
-  # Clean up the walk-roots tempfile on script exit. No other EXIT trap is
-  # set in this script, so a fresh trap is safe.
-  trap 'rm -f "$walk_roots"' EXIT
+  walk_roots=()
 
   # external-doc roots
   while IFS=$'\x1f' read -r ext_kind ext_path; do
@@ -777,7 +808,7 @@ else
     [ -n "$ext_path" ] || continue
     abs="$CTX_ROOT/$ext_path"
     [ -e "$abs" ] || continue
-    printf '%s\n' "$abs" >> "$walk_roots"
+    walk_roots+=("$abs")
   done < <(jq -r '.sources[] | [(.kind // ""), (.path // "")] | join("")' "$sp_file" 2>/dev/null)
 
   # web-doc cache roots (only when last_crawl_id is set and status confirmed)
@@ -788,10 +819,13 @@ else
     [ -n "$wd_crawl_id" ] || continue
     cache_dir="$cache_root/web-doc/$wd_sid-$wd_crawl_id"
     [ -d "$cache_dir" ] || continue
-    printf '%s\n' "$cache_dir" >> "$walk_roots"
+    walk_roots+=("$cache_dir")
   done < <(jq -r '.sources[] | [(.kind // ""), (.status // ""), (.id // ""), (.lifecycle.last_crawl_id // "")] | join("")' "$sp_file" 2>/dev/null)
 
-  while IFS= read -r root; do
+  # Empty-array iteration under `set -u` errors on bash < 4.4; the
+  # `${walk_roots[@]+…}` guard sidesteps that without changing non-empty
+  # semantics. The `fm_count == 0` skip path downstream still fires.
+  for root in ${walk_roots[@]+"${walk_roots[@]}"}; do
     while IFS= read -r -d '' f; do
       # Realpath containment guard: skip any file whose canonical path
       # is not inside the walk root. Defends against symlinked escapes
@@ -825,7 +859,7 @@ else
         fm_ok=0
       fi
     done < <(find -L "$root" -type f -name '*.md' -print0 2>/dev/null)
-  done < "$walk_roots"
+  done
 
   if [ "$fm_count" -eq 0 ]; then
     skip "No external-doc paths or web-doc cache directories present to validate"

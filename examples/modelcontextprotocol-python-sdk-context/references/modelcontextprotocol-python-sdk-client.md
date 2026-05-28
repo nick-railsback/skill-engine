@@ -5,7 +5,7 @@ description: "Writing MCP clients: high-level `Client` (in-memory testing or rem
 
 # MCP Python SDK — Client
 
-The SDK ships three client-side abstractions, ordered from highest- to lowest-level:
+The SDK ships three client-side abstractions, ordered from highest- to lowest-level. Source: [`src/mcp/client/client.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/client.py#L37), [`src/mcp/client/session.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/session.py#L101), [`src/mcp/client/session_group.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/session_group.py#L85):
 
 1. **`Client`** (`mcp.client.Client`, also `from mcp import Client`) — a dataclass that owns transport setup and exposes the same protocol methods as `ClientSession`. Accepts a `Server`/`MCPServer` instance (in-memory), a URL string (streamable HTTP), or a custom `Transport`. The canonical end-to-end test shape.
 2. **`ClientSession`** (`mcp.ClientSession`) — wraps a `(read_stream, write_stream)` pair. Used inside `stdio_client(...)`, `streamable_http_client(...)`, `sse_client(...)` context managers when you need raw stream control or you're already in a transport-specific code path.
@@ -31,20 +31,20 @@ async def main():
         print(result.structured_content)  # {"result": 3}
 ```
 
-`Client(server)` accepts:
+[`Client(server)`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/client.py#L62-L66) accepts:
 
 - A `Server` or `MCPServer` instance → wrapped in `InMemoryTransport`. No network, no subprocess. The canonical shape for tests.
 - A URL `str` → `streamable_http_client(url)` is used.
 - A `Transport` instance → used directly.
 
-Constructor kwargs (all keyword-only after `server`):
+Constructor kwargs (all keyword-only after `server`) — see [`src/mcp/client/client.py` L73-L95](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/client.py#L73-L95):
 
 - `raise_exceptions: bool = False` — surface server-side errors as Python exceptions instead of `is_error=True` results.
 - `read_timeout_seconds: float | None`.
 - `sampling_callback`, `elicitation_callback`, `list_roots_callback`, `logging_callback`, `message_handler` — see "Callbacks" below.
 - `client_info: Implementation | None` — `(name, version)` advertised in initialize.
 
-**Migration note:** in v1, the in-memory test helper was `create_connected_server_and_client_session(server)`. That helper was removed in v2 — `Client(server)` is the replacement. If you need raw streams for transport-level testing, `mcp.shared.memory.create_client_server_memory_streams()` is still available.
+**Migration note:** in v1, the in-memory test helper was `create_connected_server_and_client_session(server)`. That helper was removed in v2 — [`Client(server)`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/client.py#L37) is the replacement. If you need raw streams for transport-level testing, [`mcp.shared.memory.create_client_server_memory_streams()`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/shared/memory.py#L15) is still available.
 
 `Client.initialize_result` is non-nullable inside the `async with` block — initialization is guaranteed, so no `None` check is needed. Use `client.initialize_result.capabilities`, `.server_info`, `.instructions`, `.protocol_version`.
 
@@ -68,7 +68,7 @@ Constructor kwargs (all keyword-only after `server`):
 - `call_tool(name: str, arguments: dict | None = None, ...) -> CallToolResult`
 - `send_roots_list_changed()`
 
-After `initialize()`, `session.initialize_result` holds the full `InitializeResult` (this property replaces v1's `session.get_server_capabilities()`). It's nullable on `ClientSession` because you can theoretically use the session without calling `initialize()` first — though in practice you always should.
+After `initialize()`, [`session.initialize_result`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/session.py#L195-L200) holds the full `InitializeResult` (this property replaces v1's `session.get_server_capabilities()`). It's nullable on `ClientSession` because you can theoretically use the session without calling `initialize()` first — though in practice you always should.
 
 ```python
 from mcp import ClientSession
@@ -133,7 +133,7 @@ For multi-server scenarios (a single agent connected to several MCP servers conc
 
 ## Callbacks
 
-Four callback-shaped extension points are passed to `Client(...)` or `ClientSession(...)`:
+Four callback-shaped extension points are passed to `Client(...)` or [`ClientSession(...)`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/session.py#L115-L131) — see also the default stubs at L63-L96:
 
 - **`sampling_callback: SamplingFnT`** — server requested `sampling/createMessage`. Your callback receives `(ctx: ClientRequestContext, params: CreateMessageRequestParams)` and must return `CreateMessageResult`. Typically wired to an actual LLM call on your end.
 - **`elicitation_callback: ElicitationFnT`** — server requested user input via `elicitation/create`. Receives `(ctx, params)`; return `ElicitResult` or `ElicitURLResult`.
@@ -148,7 +148,7 @@ Stdio client with sampling callback: see the example above ([`examples/snippets/
 
 ## Connection errors
 
-`MCPError` (from `mcp` or `mcp.shared.exceptions`) is the unified protocol error class. v2 simplified the constructor: `MCPError(code, message, data=None)` instead of v1's `McpError(ErrorData(code=..., message=...))`. Use `MCPError.from_error_data(error_data)` when you already have an `ErrorData` instance.
+[`MCPError`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/shared/exceptions.py#L8-L42) (from `mcp` or `mcp.shared.exceptions`) is the unified protocol error class. v2 simplified the constructor: `MCPError(code, message, data=None)` instead of v1's `McpError(ErrorData(code=..., message=...))`. Use `MCPError.from_error_data(error_data)` when you already have an `ErrorData` instance.
 
 ```python
 from mcp import MCPError

@@ -1,0 +1,8 @@
+{
+  "session_id": "selfaudit-20260528T001740Z",
+  "session_type": "SELF-AUDIT",
+  "at": "2026-05-28T00:19:23Z",
+  "finding": "catalog-vs-frontmatter (Check 4)",
+  "action": "synced 16 catalog rows to frontmatter description",
+  "approved": true
+}

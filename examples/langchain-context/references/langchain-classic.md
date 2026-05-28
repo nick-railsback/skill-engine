@@ -40,7 +40,7 @@ Everything below lives under [`libs/langchain/langchain_classic/`](https://githu
 
 ## Why AgentExecutor was deprecated
 
-The 0.x agent stack had two big issues: (1) the agent loop was hard-coded with limited extension points (subclassing `BaseAgent` or providing callbacks), so customizations like retries, fallbacks, summarization, and human-in-the-loop required forking the loop; (2) durable execution, persistence, and streaming weren't first-class — every team rebuilt them. LangGraph (the v1 backend) provides those primitives directly, and `create_agent` exposes a middleware composition model that's strictly more powerful than the old "subclass AgentExecutor" pattern. See `langchain-v1-agents.md` for the replacement.
+The 0.x agent stack (in [`langchain_classic/agents/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/langchain/langchain_classic/agents)) had two big issues: (1) the agent loop was hard-coded with limited extension points (subclassing `BaseAgent` or providing callbacks), so customizations like retries, fallbacks, summarization, and human-in-the-loop required forking the loop; (2) durable execution, persistence, and streaming weren't first-class — every team rebuilt them. LangGraph (the v1 backend) provides those primitives directly, and `create_agent` exposes a middleware composition model that's strictly more powerful than the old "subclass AgentExecutor" pattern. See `langchain-v1-agents.md` for the replacement.
 
 ## Indexing API (still useful)
 

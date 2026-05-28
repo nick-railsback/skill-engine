@@ -5,7 +5,7 @@ description: Orientation to the langchain-ai/langchain monorepo — its subproje
 
 # LangChain monorepo overview
 
-LangChain (the Python project) is a framework for building agents and LLM-powered applications. The repo at [langchain-ai/langchain](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5) is a monorepo of independently versioned Python packages plus a small set of shared resources. The two facts most likely to confuse a new reader are: (1) there are two top-level package directories that look like the same package — `libs/langchain/` and `libs/langchain_v1/` — but they publish to PyPI under different names, and (2) the package called `langchain` on PyPI today is the *new* one, not the legacy one.
+LangChain (the Python project) is a framework for building agents and LLM-powered applications. The repo at [langchain-ai/langchain](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5) is a monorepo of independently versioned Python packages plus a small set of shared resources. The two facts most likely to confuse a new reader are: (1) there are two top-level package directories that look like the same package — [`libs/langchain/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/langchain) and [`libs/langchain_v1/`](https://github.com/langchain-ai/langchain/tree/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/langchain_v1) — but they publish to PyPI under different names, and (2) the package called `langchain` on PyPI today is the *new* one, not the legacy one.
 
 ## Repo layout
 

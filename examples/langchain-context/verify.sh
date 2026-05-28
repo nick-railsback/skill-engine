@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Contextualizer verify.sh
+# Contextualizer verify.sh — see ./README.md for the two-tier discipline
+# (this file audits a stamped contextualizer; templates/verify.sh in the
+# engine-authoring repo audits the engine itself; the surfaces don't overlap).
 #
 # Audits the stamped contextualizer's own artifacts — NOT the engine-
 # authoring repo. Stamped by /skill-engine:engine-bootstrap into the
@@ -40,7 +42,7 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-CTX_ROOT="$SCRIPT_DIR"
+CTX_ROOT="${CTX_ROOT:-$SCRIPT_DIR}"
 
 passed=0
 failed=0
@@ -58,6 +60,10 @@ fail() {
 skip() {
   passed=$((passed + 1))
   printf '  [N/A]  %s\n' "$1"
+}
+
+warn() {
+  printf '  [WARN] %s\n' "$1" >&2
 }
 
 run_check() {
@@ -92,6 +98,11 @@ extract_frontmatter() {
       if (saw_close == 0) exit 2
     }
   ' "$1" 2>/dev/null
+}
+
+# Extract scheme + host + port from a URL. POSIX-portable.
+url_origin() {
+  printf '%s' "$1" | sed -E 's#^(https?://[^/]+).*#\1#'
 }
 
 # ────────────────────────────────────────────────────────────────────────
@@ -136,6 +147,12 @@ fi
 #   lifecycle.state  ∈ {reachable, moved, removed, unknown}
 #   status           ∈ {intake, proposed, confirmed, rejected}
 #
+# Optional `branch` field (additive, git-managed only): when present,
+# must match git-ref-safe regex ^[A-Za-z0-9._/-]+$ and must pair with
+# kind == git-managed. Specifying a branch on an external-doc or
+# local-path source is a schema violation (the field is meaningless on
+# non-git kinds). Absent ⇒ downstream code uses HEAD.
+#
 run_check "Source entries: thin per-source schema (source-entries)"
 
 # Short-circuit when Check 1 has already detected a fatal upstream
@@ -172,7 +189,7 @@ else
       # Line-separated records via 0x1f field separator. Field values
       # (id, kind, status, lifecycle.state) are short kebab-case / URL /
       # path strings without embedded newlines.
-      while IFS=$'\x1f' read -r idx id kind status state url path; do
+      while IFS=$'\x1f' read -r idx id kind src_status state url src_path branch crawl_mode; do
         [ -n "${idx:-}" ] || continue
         if [ -z "$id" ]; then
           fail "sources[$idx] missing required field: id"
@@ -180,24 +197,132 @@ else
           continue
         fi
         case "$kind" in
-          git-managed|external-doc|local-path) ;;
-          *) fail "sources[$idx] ($id): kind '$kind' not in {git-managed, external-doc, local-path}"; entries_ok=0 ;;
+          git-managed|external-doc|local-path|web-doc) ;;
+          *) fail "sources[$idx] ($id): kind '$kind' not in {git-managed, external-doc, local-path, web-doc}"; entries_ok=0 ;;
         esac
         case "$state" in
           reachable|moved|removed|unknown) ;;
           *) fail "sources[$idx] ($id): lifecycle.state '$state' not in {reachable, moved, removed, unknown}"; entries_ok=0 ;;
         esac
-        if [ -z "$status" ]; then
+        if [ -z "$src_status" ]; then
           fail "sources[$idx] ($id) missing required field: status"
           entries_ok=0
         else
-          case "$status" in
+          case "$src_status" in
             intake|proposed|confirmed|rejected) ;;
-            *) fail "sources[$idx] ($id): status '$status' not in {intake, proposed, confirmed, rejected}"; entries_ok=0 ;;
+            *) fail "sources[$idx] ($id): status '$src_status' not in {intake, proposed, confirmed, rejected}"; entries_ok=0 ;;
           esac
         fi
-        if [ -z "$url" ] && [ -z "$path" ]; then
-          fail "sources[$idx] ($id): neither url nor path is set — at least one is required"
+        case "$kind" in
+          git-managed)
+            if [ -z "$url" ]; then
+              fail "sources[$idx] ($id): url is required when kind is git-managed"
+              entries_ok=0
+            fi
+            ;;
+          web-doc)
+            if [ -z "$url" ]; then
+              fail "sources[$idx] ($id): url is required when kind is web-doc"
+              entries_ok=0
+            fi
+            if [ -n "$src_path" ]; then
+              fail "sources[$idx] ($id): path '$src_path' set on kind 'web-doc' — web-doc sources are URL-addressed, not path-addressed"
+              entries_ok=0
+            fi
+            ;;
+          external-doc)
+            if [ -z "$src_path" ]; then
+              fail "sources[$idx] ($id): path is required when kind is external-doc"
+              entries_ok=0
+            fi
+            if [ -n "$url" ]; then
+              fail "sources[$idx] ($id): url '$url' set on kind 'external-doc' — external-doc sources are path-addressed (pre-curated local markdown), not URL-addressed"
+              entries_ok=0
+            fi
+            ;;
+          local-path)
+            if [ -z "$src_path" ]; then
+              fail "sources[$idx] ($id): path is required when kind is local-path"
+              entries_ok=0
+            fi
+            if [ -n "$url" ]; then
+              fail "sources[$idx] ($id): url '$url' set on kind 'local-path' — local-path sources are filesystem-addressed, not URL-addressed"
+              entries_ok=0
+            fi
+            ;;
+        esac
+        if [ -n "$branch" ]; then
+          if [ "$kind" != "git-managed" ]; then
+            fail "sources[$idx] ($id): branch '$branch' set on kind '$kind' — branch is git-managed only"
+            entries_ok=0
+          fi
+          case "$branch" in
+            *[!A-Za-z0-9._/-]*)
+              fail "sources[$idx] ($id): branch '$branch' contains characters outside [A-Za-z0-9._/-]"
+              entries_ok=0
+              ;;
+          esac
+        fi
+        if [ "$kind" = "web-doc" ]; then
+          if [ -z "$crawl_mode" ]; then
+            fail "sources[$idx] ($id): crawl_mode is required when kind is web-doc"
+            entries_ok=0
+          else
+            case "$crawl_mode" in
+              sitemap|list) ;;
+              *) fail "sources[$idx] ($id): crawl_mode '$crawl_mode' not in {sitemap, list}"; entries_ok=0 ;;
+            esac
+          fi
+          sitemap_url="$(jq -r ".sources[$idx].sitemap_url // \"\"" "$sp_file" 2>/dev/null)"
+          page_list_len="$(jq -r ".sources[$idx].page_list | if . == null then 0 else length end" "$sp_file" 2>/dev/null)"
+
+          if [ "$crawl_mode" = "list" ]; then
+            if [ -n "$sitemap_url" ]; then
+              fail "sources[$idx] ($id): sitemap_url is not allowed when crawl_mode is 'list'"
+              entries_ok=0
+            fi
+            if [ "$page_list_len" = "0" ]; then
+              if jq -e ".sources[$idx] | has(\"page_list\")" "$sp_file" >/dev/null 2>&1; then
+                fail "sources[$idx] ($id): page_list must contain at least one URL"
+              else
+                fail "sources[$idx] ($id): crawl_mode 'list' requires page_list[]"
+              fi
+              entries_ok=0
+            fi
+            if [ "$page_list_len" -gt 0 ]; then
+              source_origin="$(url_origin "$url")"
+              cross_origin_url=""
+              while IFS= read -r page_url; do
+                [ -n "$page_url" ] || continue
+                page_origin="$(url_origin "$page_url")"
+                if [ "$page_origin" != "$source_origin" ]; then
+                  cross_origin_url="$page_url"
+                  break
+                fi
+              done < <(jq -r ".sources[$idx].page_list[]" "$sp_file" 2>/dev/null)
+              if [ -n "$cross_origin_url" ]; then
+                fail "sources[$idx] ($id): page_list URL '$cross_origin_url' is cross-origin (must share origin with source url '$url')"
+                entries_ok=0
+              fi
+            fi
+          elif [ "$crawl_mode" = "sitemap" ]; then
+            if [ "$page_list_len" != "0" ]; then
+              fail "sources[$idx] ($id): page_list is not allowed when crawl_mode is 'sitemap'"
+              entries_ok=0
+            fi
+          fi
+          if jq -e ".sources[$idx] | has(\"crawl_budget\")" "$sp_file" >/dev/null 2>&1; then
+            budget_raw="$(jq -r ".sources[$idx].crawl_budget" "$sp_file" 2>/dev/null)"
+            if ! printf '%s' "$budget_raw" | grep -qE '^[0-9]+$'; then
+              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not an integer"
+              entries_ok=0
+            elif [ "$budget_raw" -lt 1 ] || [ "$budget_raw" -gt 5000 ]; then
+              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not in [1, 5000]"
+              entries_ok=0
+            fi
+          fi
+        elif [ -n "$crawl_mode" ]; then
+          fail "sources[$idx] ($id): crawl_mode '$crawl_mode' set on kind '$kind' — crawl_mode is web-doc only"
           entries_ok=0
         fi
       done < <(jq -r '
@@ -210,7 +335,9 @@ else
             (.value.status // ""),
             (.value.lifecycle.state // ""),
             (.value.url // ""),
-            (.value.path // "")
+            (.value.path // ""),
+            (.value.branch // ""),
+            (.value.crawl_mode // "")
           ]
         | join("")
       ' "$sp_file" 2>/dev/null)
@@ -269,8 +396,18 @@ fi
 #
 # Detects duplicate catalog rows (no sort -u) — strict 1:1 bijection.
 #
-# References scan: flat references/ contract; nested paths surface as
-# explicit contract violations.
+# References scan: file form `references/<slug>.md` AND directory form
+# `references/<slug>/` (containing a canonical primary `.md` of the same
+# basename) are both first-class. Catalog targets are form-tracked
+# (FILE: vs DIR: prefix on the extracted slug) so that a catalog row's
+# declared form is compared against the on-disk reference's actual form
+# — a form mismatch produces a broken rendered link and is surfaced
+# explicitly. Nested paths (depth ≥ 3 file, depth-2 `.md` whose
+# basename does not match its parent directory, or any sub-directory at
+# depth ≥ 2) remain explicit contract violations. Malformed catalog
+# targets (missing both `.md` and `/`, consecutive `/`, depth-violating
+# slugs, canonical-primary-inside-directory mistakes) surface specific
+# diagnostics rather than silently dropping out of the bijection set.
 #
 run_check "Catalog ↔ references bijection (catalog-bijection)"
 
@@ -283,37 +420,230 @@ else
 
   nav_stripped=$(sed -E '/<!--/,/-->/d' "$nav_skill" 2>/dev/null)
 
-  cat_files=()
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    cat_files+=("$f")
-  done < <(printf '%s\n' "$nav_stripped" | grep -oE '\(references/[^)]+\.md\)' 2>/dev/null | sed -E 's|^\(references/(.+)\.md\)$|\1.md|')
+  # Catalog targets: extract `(references/<inner>)`, trim whitespace,
+  # classify into FILE:<slug> / DIR:<slug>, and emit specific diagnostics
+  # for malformed shapes (collected here, emitted from inside the bijection
+  # block so they're attributed to the check rather than firing during the
+  # silent-skip empty-state guard).
+  cat_targets=()              # FILE:<slug> or DIR:<slug>
+  malformed_target_lines=()   # diagnostic strings for malformed catalog targets
+  while IFS= read -r target; do
+    [ -n "$target" ] || continue
 
-  ref_files=()
+    # Trim leading + trailing whitespace (a stray space inside the parens
+    # would otherwise cause the suffix discrimination to fall through and
+    # the entire row to silently disappear from the bijection set).
+    target="${target#"${target%%[![:space:]]*}"}"
+    target="${target%"${target##*[![:space:]]}"}"
+    [ -n "$target" ] || continue
+
+    # Consecutive `/` anywhere in the target is a typo class (`foo//`,
+    # `foo//bar/`, etc.). Surface as a specific diagnostic rather than
+    # silently normalizing.
+    case "$target" in
+      *//*)
+        malformed_target_lines+=("Catalog row target references/$target contains consecutive '/' characters — likely typo; expected file form references/<slug>.md or directory form references/<slug>/")
+        continue
+        ;;
+    esac
+
+    case "$target" in
+      */)
+        # Directory-form candidate. Strip the trailing `/`; if any internal
+        # `/` remains, the target encodes a depth-violating path and is
+        # rejected with a specific diagnostic.
+        slug="${target%/}"
+        case "$slug" in
+          */*)
+            malformed_target_lines+=("Catalog row target references/$target encodes a nested path; references are at depth-1 only (file form references/<slug>.md or directory form references/<slug>/)")
+            continue
+            ;;
+        esac
+        if [ -z "$slug" ]; then
+          malformed_target_lines+=("Catalog row target references/$target has an empty slug")
+          continue
+        fi
+        cat_targets+=("DIR:$slug")
+        ;;
+      *.md)
+        # File-form candidate, or the canonical-primary-inside-directory
+        # mistake (e.g., `(references/foo/foo.md)` instead of
+        # `(references/foo/)`), or a generic nested-path target.
+        case "$target" in
+          */*.md)
+            dir_part="${target%/*}"
+            inner_full="${target##*/}"
+            inner_slug="${inner_full%.md}"
+            if [ "$dir_part" = "$inner_slug" ]; then
+              malformed_target_lines+=("Catalog row references/$target points at the canonical primary inside a directory-form reference; the directory-form catalog target should be references/$dir_part/ (trailing-slash to disambiguate from file form)")
+            else
+              malformed_target_lines+=("Catalog row target references/$target encodes a nested path; references are at depth-1 only (file form references/<slug>.md or directory form references/<slug>/)")
+            fi
+            continue
+            ;;
+        esac
+        slug="${target%.md}"
+        if [ -z "$slug" ]; then
+          malformed_target_lines+=("Catalog row target references/$target has an empty slug")
+          continue
+        fi
+        cat_targets+=("FILE:$slug")
+        ;;
+      *)
+        malformed_target_lines+=("Catalog row target references/$target has neither a .md suffix nor a trailing / — file form requires .md, directory form requires trailing /")
+        continue
+        ;;
+    esac
+  done < <(printf '%s\n' "$nav_stripped" \
+    | grep -oE '\(references/[^()]+\)' 2>/dev/null \
+    | sed -E 's|^\(references/(.+)\)$|\1|')
+
+  # File-form refs: top-level `*.md` directly under references/.
+  file_form_slugs=()
   while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
-    ref_files+=("$(basename "$f")")
+    fname=$(basename "$f")
+    file_form_slugs+=("${fname%.md}")
   done < <(find -L "$CTX_ROOT/references" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null)
 
+  # Directory-form refs: top-level subdirectories under references/ (dotfile-
+  # prefixed names filtered out — `.git`, `.cache`, etc. inside references/
+  # are clearly authoring accidents, not directory-form references). A
+  # directory qualifies as a primary iff it contains a canonical primary
+  # `.md` of the same basename; directories lacking that canonical primary
+  # surface as a specific failure further down — they are NOT silently
+  # skipped.
+  dir_form_valid_slugs=()
+  dir_form_broken_slugs=()
+  while IFS= read -r -d '' d; do
+    [ -n "$d" ] || continue
+    dname=$(basename "$d")
+    if [ -f "$d/$dname.md" ]; then
+      dir_form_valid_slugs+=("$dname")
+    else
+      dir_form_broken_slugs+=("$dname")
+    fi
+  done < <(find -L "$CTX_ROOT/references" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -print0 2>/dev/null)
+
+  # Nested-path scan: any `.md` at depth ≥ 3, OR any `.md` at depth-2 whose
+  # basename does NOT match its parent directory's basename. The canonical
+  # primary at depth-2 (basename matches directory) is permitted under the
+  # directory-form contract; anything else at depth-2 is a contract violation.
   nested_refs=()
   while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
-    nested_refs+=("${f#"$CTX_ROOT/references/"}")
+    rel="${f#"$CTX_ROOT/references/"}"
+    seg_count=$(awk -F/ '{print NF}' <<<"$rel")
+    if [ "$seg_count" -ge 3 ]; then
+      nested_refs+=("$rel")
+    elif [ "$seg_count" -eq 2 ]; then
+      parent=$(dirname "$rel")
+      base=$(basename "$rel" .md)
+      if [ "$parent" != "$base" ]; then
+        nested_refs+=("$rel")
+      fi
+    fi
   done < <(find -L "$CTX_ROOT/references" -mindepth 2 -type f -name '*.md' -print0 2>/dev/null)
 
-  if [ "${#ref_files[@]}" -eq 0 ] && [ "${#cat_files[@]}" -eq 0 ] && [ "${#nested_refs[@]}" -eq 0 ]; then
+  # Sub-directory scan: any directory at depth ≥ 2 under references/ is a
+  # contract violation regardless of contents. The `.md`-only nested scan
+  # above misses empty sub-directories and sub-directories carrying only
+  # non-`.md` assets, both of which the depth-1 doctrine explicitly forbids.
+  nested_dirs=()
+  while IFS= read -r -d '' d; do
+    [ -n "$d" ] || continue
+    nested_dirs+=("${d#"$CTX_ROOT/references/"}")
+  done < <(find -L "$CTX_ROOT/references" -mindepth 2 -type d -print0 2>/dev/null)
+
+  if [ "${#file_form_slugs[@]}" -eq 0 ] \
+      && [ "${#dir_form_valid_slugs[@]}" -eq 0 ] \
+      && [ "${#dir_form_broken_slugs[@]}" -eq 0 ] \
+      && [ "${#cat_targets[@]}" -eq 0 ] \
+      && [ "${#malformed_target_lines[@]}" -eq 0 ] \
+      && [ "${#nested_refs[@]}" -eq 0 ] \
+      && [ "${#nested_dirs[@]}" -eq 0 ]; then
     skip "references/ exists but no *.md files yet (catalog also empty — consistent)"
   else
     bij_ok=1
 
-    for nr in "${nested_refs[@]:-}"; do
-      [ -n "$nr" ] || continue
-      fail "references/$nr is at a nested path — references must be flat (top-level *.md files only)"
+    # Surface malformed catalog targets first — they're the user-input layer
+    # and their diagnostics are usually the most actionable.
+    for line in "${malformed_target_lines[@]:-}"; do
+      [ -n "$line" ] || continue
+      fail "$line"
       bij_ok=0
     done
 
-    if [ "${#cat_files[@]}" -gt 0 ]; then
-      dup_list=$(printf '%s\n' "${cat_files[@]}" | sort | uniq -d)
+    # Duplicate-form detection: a slug appearing as BOTH file form AND
+    # directory form (valid OR broken) is a duplicate-primary violation
+    # (a reference may not exist in both forms simultaneously). The
+    # duplicated slug is recorded but kept in the canonical slug set
+    # exactly once (counted via its file-form entry).
+    duplicate_form_slugs=()
+    canonical_fs_slugs=()
+    for slug in "${file_form_slugs[@]:-}"; do
+      [ -n "$slug" ] || continue
+      canonical_fs_slugs+=("$slug")
+    done
+    for slug in "${dir_form_valid_slugs[@]:-}"; do
+      [ -n "$slug" ] || continue
+      dup=0
+      for s in "${file_form_slugs[@]:-}"; do
+        if [ "$s" = "$slug" ]; then dup=1; break; fi
+      done
+      if [ "$dup" -eq 1 ]; then
+        duplicate_form_slugs+=("$slug")
+      else
+        canonical_fs_slugs+=("$slug")
+      fi
+    done
+    # A broken directory-form whose slug ALSO has a file-form is still a
+    # duplicate-primary violation regardless of the broken side's canonical
+    # primary status — the invariant fires on the cross-form presence, not
+    # the validity of each side.
+    for slug in "${dir_form_broken_slugs[@]:-}"; do
+      [ -n "$slug" ] || continue
+      for s in "${file_form_slugs[@]:-}"; do
+        if [ "$s" = "$slug" ]; then
+          duplicate_form_slugs+=("$slug")
+          break
+        fi
+      done
+    done
+
+    for dup in "${duplicate_form_slugs[@]:-}"; do
+      [ -n "$dup" ] || continue
+      fail "duplicate primary for reference $dup: file form references/$dup.md AND directory form references/$dup/ both present"
+      bij_ok=0
+    done
+
+    for nr in "${nested_refs[@]:-}"; do
+      [ -n "$nr" ] || continue
+      fail "references/$nr is at a nested path that violates the depth-1 contract (only the canonical primary <slug>/<slug>.md is permitted at depth-2 inside a directory-form reference)"
+      bij_ok=0
+    done
+
+    for brk in "${dir_form_broken_slugs[@]:-}"; do
+      [ -n "$brk" ] || continue
+      fail "references/$brk/ is a directory but the canonical primary references/$brk/$brk.md is missing"
+      bij_ok=0
+    done
+
+    for nd in "${nested_dirs[@]:-}"; do
+      [ -n "$nd" ] || continue
+      fail "references/$nd/ is a sub-directory under a directory-form reference — sub-directories are forbidden (depth-2+ paths fail regardless of file extension)"
+      bij_ok=0
+    done
+
+    # Duplicate-row detection: a catalog row repeated for the same canonical
+    # slug across all forms (file form OR directory form OR both).
+    cat_slugs_only=()
+    for entry in "${cat_targets[@]:-}"; do
+      [ -n "$entry" ] || continue
+      cat_slugs_only+=("${entry#*:}")
+    done
+    if [ "${#cat_slugs_only[@]}" -gt 0 ]; then
+      dup_list=$(printf '%s\n' "${cat_slugs_only[@]}" | sort | uniq -d)
       if [ -n "$dup_list" ]; then
         while IFS= read -r dup; do
           [ -n "$dup" ] || continue
@@ -323,34 +653,85 @@ else
       fi
     fi
 
-    for f in "${cat_files[@]:-}"; do
-      [ -n "$f" ] || continue
-      found=0
-      for r in "${ref_files[@]:-}"; do
-        if [ "$f" = "$r" ]; then found=1; break; fi
+    # Phantom-row + form-mismatch check: every catalog slug must match a
+    # canonical fs slug AND the catalog row's declared form must match the
+    # on-disk reference's actual form (a form mismatch produces a broken
+    # rendered Markdown link). Slugs already surfaced via a more specific
+    # failure (broken directory or duplicate form) are skipped to avoid
+    # double-firing.
+    for entry in "${cat_targets[@]:-}"; do
+      [ -n "$entry" ] || continue
+      cat_form="${entry%%:*}"
+      slug="${entry#*:}"
+
+      skip_phantom=0
+      for brk in "${dir_form_broken_slugs[@]:-}"; do
+        if [ "$brk" = "$slug" ]; then skip_phantom=1; break; fi
       done
-      if [ "$found" -ne 1 ]; then
-        fail "Catalog row points at references/$f but the file does not exist (flat references/ only)"
+      if [ "$skip_phantom" -eq 0 ]; then
+        for dup in "${duplicate_form_slugs[@]:-}"; do
+          if [ "$dup" = "$slug" ]; then skip_phantom=1; break; fi
+        done
+      fi
+      [ "$skip_phantom" -eq 1 ] && continue
+
+      fs_form=""
+      for f in "${file_form_slugs[@]:-}"; do
+        if [ "$f" = "$slug" ]; then fs_form="FILE"; break; fi
+      done
+      if [ -z "$fs_form" ]; then
+        for d in "${dir_form_valid_slugs[@]:-}"; do
+          if [ "$d" = "$slug" ]; then fs_form="DIR"; break; fi
+        done
+      fi
+
+      if [ -z "$fs_form" ]; then
+        if [ "$cat_form" = "DIR" ]; then
+          fail "Catalog row points at references/$slug/ but no matching reference exists (file or directory)"
+        else
+          fail "Catalog row points at references/$slug.md but no matching reference exists (file or directory)"
+        fi
+        bij_ok=0
+      elif [ "$cat_form" != "$fs_form" ]; then
+        if [ "$cat_form" = "DIR" ]; then
+          fail "Catalog row references/$slug/ declares directory form but the on-disk reference is file form references/$slug.md — link will render broken"
+        else
+          fail "Catalog row references/$slug.md declares file form but the on-disk reference is directory form references/$slug/ — link will render broken"
+        fi
         bij_ok=0
       fi
     done
 
-    for r in "${ref_files[@]:-}"; do
-      [ -n "$r" ] || continue
-      count=0
-      for c in "${cat_files[@]:-}"; do
-        if [ "$r" = "$c" ]; then count=$((count + 1)); fi
+    # Orphan check: every canonical fs slug must appear in the catalog
+    # (in some form — form-mismatch is surfaced by the phantom side). The
+    # error message distinguishes file form from directory form for
+    # diagnostic clarity.
+    for fs in "${canonical_fs_slugs[@]:-}"; do
+      [ -n "$fs" ] || continue
+      found=0
+      for entry in "${cat_targets[@]:-}"; do
+        slug="${entry#*:}"
+        if [ "$slug" = "$fs" ]; then found=1; break; fi
       done
-      if [ "$count" -eq 0 ]; then
-        fail "references/$r exists but no catalog row points at it (run /skill-engine:self-audit to repair)"
+      if [ "$found" -ne 1 ]; then
+        is_dir=0
+        for dv in "${dir_form_valid_slugs[@]:-}"; do
+          if [ "$dv" = "$fs" ]; then is_dir=1; break; fi
+        done
+        if [ "$is_dir" -eq 1 ]; then
+          fail "references/$fs/ exists with canonical primary but no catalog row points at it (run /skill-engine:self-audit to repair)"
+        else
+          fail "references/$fs.md exists but no catalog row points at it (run /skill-engine:self-audit to repair)"
+        fi
         bij_ok=0
       fi
     done
 
     if [ "$bij_ok" -eq 1 ]; then
+      total=${#canonical_fs_slugs[@]}
       noun="references"
-      [ "${#ref_files[@]}" -eq 1 ] && noun="reference"
-      pass "Catalog ↔ references bijection valid (${#ref_files[@]} $noun, all linked from catalog)"
+      [ "$total" -eq 1 ] && noun="reference"
+      pass "Catalog ↔ references bijection valid ($total $noun, all linked from catalog)"
     fi
   fi
 fi
@@ -392,6 +773,136 @@ else
     noun="references"
     [ "$ref_count" -eq 1 ] && noun="reference"
     pass "$ref_count $noun with valid frontmatter"
+  fi
+fi
+
+# ────────────────────────────────────────────────────────────────────────
+# Check 5.5 — External-doc / web-doc provenance frontmatter
+#             (external-doc-frontmatter)
+# ────────────────────────────────────────────────────────────────────────
+#
+# Every .md file under an external-doc source's path AND every .md file
+# under a web-doc source's cache directory must carry three provenance
+# keys: source_url, crawl_date, decay. Pinned regexes per the artifact
+# contract (docs/02-artifact-contract.md).
+#
+# This check walks two roots:
+#   - external-doc: <CTX_ROOT>/<source.path>/  (recursive, follow symlinks
+#     with realpath containment guard inside the walk loop)
+#   - web-doc: ~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/
+#     (recursive, only when source.status == "confirmed" and
+#     lifecycle.last_crawl_id is set)
+#
+run_check "External-doc / web-doc provenance frontmatter (external-doc-frontmatter)"
+
+if [ ! -f "$sp_file" ] || ! jq -e '(.sources | type) == "array"' "$sp_file" >/dev/null 2>&1; then
+  skip "Cannot evaluate external-doc-frontmatter — source-paths.json missing or malformed (see Check 1)"
+else
+  fm_ok=1
+  fm_count=0
+  walk_roots=()
+
+  # external-doc roots
+  while IFS=$'\x1f' read -r ext_kind ext_path; do
+    [ "$ext_kind" = "external-doc" ] || continue
+    [ -n "$ext_path" ] || continue
+    abs="$CTX_ROOT/$ext_path"
+    [ -e "$abs" ] || continue
+    walk_roots+=("$abs")
+  done < <(jq -r '.sources[] | [(.kind // ""), (.path // "")] | join("")' "$sp_file" 2>/dev/null)
+
+  # web-doc cache roots (only when last_crawl_id is set and status confirmed)
+  cache_root="${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}"
+  while IFS=$'\x1f' read -r wd_kind wd_status wd_sid wd_crawl_id; do
+    [ "$wd_kind" = "web-doc" ] || continue
+    [ "$wd_status" = "confirmed" ] || continue
+    [ -n "$wd_crawl_id" ] || continue
+    cache_dir="$cache_root/web-doc/$wd_sid-$wd_crawl_id"
+    [ -d "$cache_dir" ] || continue
+    walk_roots+=("$cache_dir")
+  done < <(jq -r '.sources[] | [(.kind // ""), (.status // ""), (.id // ""), (.lifecycle.last_crawl_id // "")] | join("")' "$sp_file" 2>/dev/null)
+
+  # Empty-array iteration under `set -u` errors on bash < 4.4; the
+  # `${walk_roots[@]+…}` guard sidesteps that without changing non-empty
+  # semantics. The `fm_count == 0` skip path downstream still fires.
+  for root in ${walk_roots[@]+"${walk_roots[@]}"}; do
+    while IFS= read -r -d '' f; do
+      # Realpath containment guard: skip any file whose canonical path
+      # is not inside the walk root. Defends against symlinked escapes
+      # under external-doc paths or web-doc cache directories.
+      canon="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)/$(basename "$f")"
+      root_canon="$(cd "$root" 2>/dev/null && pwd -P)"
+      case "$canon" in
+        "$root_canon"/*) ;;
+        *) continue ;;
+      esac
+      fm_count=$((fm_count + 1))
+      fm=$(extract_frontmatter "$f")
+      rc=$?
+      rel="${f#"$CTX_ROOT/"}"
+      [ "$rel" = "$f" ] && rel="${f#"$cache_root/"}"
+      if [ "$rc" -eq 1 ] || [ "$rc" -eq 2 ]; then
+        fail "$rel missing or malformed frontmatter"
+        fm_ok=0
+        continue
+      fi
+      if ! printf '%s\n' "$fm" | grep -qE '^source_url:[[:space:]]+https?://[^[:space:]]+$'; then
+        fail "$rel frontmatter source_url missing or fails regex ^https?://[^[:space:]]+$"
+        fm_ok=0
+      fi
+      if ! printf '%s\n' "$fm" | grep -qE '^crawl_date:[[:space:]]+[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?$'; then
+        fail "$rel frontmatter crawl_date missing or not ISO-8601 UTC"
+        fm_ok=0
+      fi
+      if ! printf '%s\n' "$fm" | grep -qE '^decay:[[:space:]]+(none|[1-9][0-9]*[dwmy])$'; then
+        fail "$rel frontmatter decay missing or not in {none, Nd, Nw, Nm, Ny}"
+        fm_ok=0
+      fi
+    done < <(find -L "$root" -type f -name '*.md' -print0 2>/dev/null)
+  done
+
+  if [ "$fm_count" -eq 0 ]; then
+    skip "No external-doc paths or web-doc cache directories present to validate"
+  elif [ "$fm_ok" -eq 1 ]; then
+    pass "$fm_count provenance file(s) with valid frontmatter"
+  fi
+fi
+
+# ────────────────────────────────────────────────────────────────────────
+# Check 5.6 — web-doc snapshot present (web-doc-snapshot-present)
+# ────────────────────────────────────────────────────────────────────────
+#
+# WARN, not FAIL: gitignored cache may legitimately be missing on a
+# fresh clone. Actionable fix is "run /skill-engine:refresh".
+#
+run_check "Web-doc snapshot present (web-doc-snapshot-present)"
+
+if [ ! -f "$sp_file" ] || ! jq -e '(.sources | type) == "array"' "$sp_file" >/dev/null 2>&1; then
+  skip "Cannot evaluate web-doc-snapshot-present — source-paths.json missing or malformed"
+else
+  cache_root="${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}"
+  missing_count=0
+  total_count=0
+  while IFS=$'\x1f' read -r snap_kind snap_status snap_sid snap_crawl_id; do
+    [ "$snap_kind" = "web-doc" ] || continue
+    [ "$snap_status" = "confirmed" ] || continue
+    total_count=$((total_count + 1))
+    if [ -z "$snap_crawl_id" ]; then
+      warn "web-doc source '$snap_sid' has no lifecycle.last_crawl_id — run /skill-engine:refresh to seed"
+      missing_count=$((missing_count + 1))
+      continue
+    fi
+    cache_dir="$cache_root/web-doc/$snap_sid-$snap_crawl_id"
+    if [ ! -d "$cache_dir" ] || [ -z "$(ls -A "$cache_dir" 2>/dev/null)" ]; then
+      warn "web-doc source '$snap_sid' snapshot missing at $cache_dir — run /skill-engine:refresh to seed"
+      missing_count=$((missing_count + 1))
+    fi
+  done < <(jq -r '.sources[] | [(.kind // ""), (.status // ""), (.id // ""), (.lifecycle.last_crawl_id // "")] | join("")' "$sp_file" 2>/dev/null)
+
+  if [ "$total_count" -eq 0 ]; then
+    skip "No confirmed web-doc sources to check"
+  elif [ "$missing_count" -eq 0 ]; then
+    pass "$total_count web-doc snapshot(s) present"
   fi
 fi
 
@@ -521,6 +1032,141 @@ else
     pass "catalog-density heuristic clean (no sources surfaced below the row floor)"
   else
     pass "catalog-density heuristic registered $density_concerns warning(s) above (reviewer to disposition)"
+  fi
+fi
+
+# ────────────────────────────────────────────────────────────────────────
+# Check 9 — Optional SKILL.json trijection (skill-json-trijection)
+# ────────────────────────────────────────────────────────────────────────
+#
+# Asserts three-way correspondence between SKILL.md catalog rows, SKILL.json
+# non-draft catalog entries, and `*-*.md` reference files when a
+# contextualizer opts into the structured machine-readable sibling at
+# $CTX_ROOT/SKILL.json. Four states (a/b/c/d) mirror the engine-side
+# implementation in templates/verify.sh Check 27:
+#
+#   (a) SKILL.json absent  -> silent-skip pass (the opt-in default state).
+#   (b) invalid JSON       -> fail loud with the path.
+#   (c) missing required   -> fail per missing key (name / description /
+#       top-level key         catalog).
+#   (d) valid + complete   -> trijection logic.
+#
+# Trijection (state d): tags partitioned by `.draft == true` vs `(.draft //
+# false) != true`. Stringified "true" is NOT the draft marker; absence of
+# the field is equivalent to draft:false. Drafts are excluded from ALL
+# three sides — catalog rows or reference files whose JSON counterpart is
+# draft do not participate (the orthogonal catalog-bijection check still
+# fires on its own). Set equality runs over `tag` values.
+#
+# Filesystem enumeration uses `*-*.md` glob (any prefixed reference) —
+# handles single-domain `<area-domain>-*.md` and multi-domain per-source-
+# slug `<source-slug>-*.md` uniformly. Bare-name companion files (no
+# dash prefix) are excluded by glob.
+#
+# Catalog extraction is anchored to the `## Catalog` block (or per-source
+# `## Catalog: <slug>` blocks) via awk so `(references/foo.md)` links
+# elsewhere in SKILL.md prose don't get harvested as phantom catalog tags.
+# HTML-comment strip inside the catalog block bails to a `warn` if the
+# block has unbalanced `<!--` vs `-->` markers (avoids sed-range
+# over-delete on a malformed catalog).
+#
+# All `sort` and `comm` calls run under `LC_ALL=C` for collation
+# stability across user locales. `grep -qFx -- "$tag"` uses `--` so a
+# JSON tag starting with `-` does not parse as a grep option.
+#
+# Draft summary: emit one WARN line per contextualizer naming the count of
+# draft entries when >=1. `warn` does NOT increment the pass/fail counter.
+#
+run_check "Optional SKILL.json trijection (skill-json-trijection)"
+
+sj_path="$CTX_ROOT/SKILL.json"
+
+if [ ! -f "$sj_path" ]; then
+  skip "SKILL.json absent — skipping (opt-in machine-readable sibling not present)"
+elif [ "$nav_ok" -ne 1 ]; then
+  skip "SKILL.json trijection requires navigator SKILL.md (see Check 3)"
+else
+  ctx_slug=$(basename "$CTX_ROOT")
+  sj_md="$CTX_ROOT/SKILL.md"
+  refs_dir="$CTX_ROOT/references"
+
+  if ! jq -e . "$sj_path" >/dev/null 2>&1; then
+    fail "SKILL.json is not valid JSON"
+  else
+    missing_keys=""
+    for k in name description catalog; do
+      if ! jq -e "has(\"$k\")" "$sj_path" >/dev/null 2>&1; then
+        missing_keys="${missing_keys}${missing_keys:+ }$k"
+      fi
+    done
+    if [ -n "$missing_keys" ]; then
+      for k in $missing_keys; do
+        fail "SKILL.json missing required top-level key: $k"
+      done
+    else
+      json_draft_tags=$(jq -r '.catalog[]? | select(.draft == true) | .tag' "$sj_path" 2>/dev/null | LC_ALL=C sort -u)
+      json_nondraft_tags=$(jq -r '.catalog[]? | select((.draft // false) != true) | .tag' "$sj_path" 2>/dev/null | LC_ALL=C sort -u)
+      draft_count=$(printf '%s\n' "$json_draft_tags" | grep -c '^.' 2>/dev/null || true)
+      nondraft_count=$(printf '%s\n' "$json_nondraft_tags" | grep -c '^.' 2>/dev/null || true)
+
+      catalog_block=$(awk '
+        /^## Catalog/ { in_cat=1; next }
+        in_cat && /^## / { in_cat=0; next }
+        in_cat { print }
+      ' "$sj_md" 2>/dev/null)
+
+      cb_open=$(printf '%s\n' "$catalog_block" | grep -c '<!--' 2>/dev/null || true)
+      cb_close=$(printf '%s\n' "$catalog_block" | grep -c -- '-->' 2>/dev/null || true)
+      if [ "$cb_open" != "$cb_close" ]; then
+        warn "skill-json-trijection [$ctx_slug]: SKILL.md catalog block has unbalanced HTML comment markers ($cb_open <!-- vs $cb_close -->); skipping comment-strip"
+        catalog_stripped="$catalog_block"
+      else
+        catalog_stripped=$(printf '%s\n' "$catalog_block" | sed -E '/<!--/,/-->/d')
+      fi
+
+      md_tags=$(printf '%s\n' "$catalog_stripped" | { grep -oE '\(references/[^)]+\.md\)' 2>/dev/null || true; } | sed -E 's|^\(references/(.+)\.md\)$|\1|' | LC_ALL=C sort -u)
+
+      if [ -d "$refs_dir" ]; then
+        fs_tags=$(find "$refs_dir" -maxdepth 1 -type f -name '*-*.md' 2>/dev/null | sed -E 's|.*/(.+)\.md$|\1|' | LC_ALL=C sort -u)
+      else
+        fs_tags=""
+      fi
+
+      if [ -n "$json_draft_tags" ]; then
+        md_tags_filtered=$(LC_ALL=C comm -23 <(printf '%s\n' "$md_tags" | grep -v '^$' || true) <(printf '%s\n' "$json_draft_tags"))
+        fs_tags_filtered=$(LC_ALL=C comm -23 <(printf '%s\n' "$fs_tags" | grep -v '^$' || true) <(printf '%s\n' "$json_draft_tags"))
+      else
+        md_tags_filtered="$md_tags"
+        fs_tags_filtered="$fs_tags"
+      fi
+
+      union_tags=$(printf '%s\n%s\n%s\n' "$json_nondraft_tags" "$md_tags_filtered" "$fs_tags_filtered" | grep -v '^$' | LC_ALL=C sort -u || true)
+      mismatch=0
+      while IFS= read -r tag; do
+        [ -n "$tag" ] || continue
+        in_a=0; in_b=0; in_c=0
+        if printf '%s\n' "$json_nondraft_tags" | grep -qFx -- "$tag"; then in_a=1; fi
+        if printf '%s\n' "$md_tags_filtered"   | grep -qFx -- "$tag"; then in_b=1; fi
+        if printf '%s\n' "$fs_tags_filtered"   | grep -qFx -- "$tag"; then in_c=1; fi
+        total=$((in_a + in_b + in_c))
+        if [ "$total" -ne 3 ]; then
+          where=""
+          [ "$in_b" = 1 ] && where="${where}${where:+ + }SKILL.md"
+          [ "$in_a" = 1 ] && where="${where}${where:+ + }SKILL.json"
+          [ "$in_c" = 1 ] && where="${where}${where:+ + }filesystem"
+          fail "skill-json-trijection [$ctx_slug]: $tag only in $where"
+          mismatch=1
+        fi
+      done <<< "$union_tags"
+
+      if [ "$mismatch" -eq 0 ]; then
+        pass "skill-json-trijection: 3-way correspondence holds for $ctx_slug ($nondraft_count entries; $draft_count draft excluded)"
+      fi
+
+      if [ "$draft_count" -ge 1 ]; then
+        warn "skill-json-trijection: $draft_count draft entries excluded from trijection"
+      fi
+    fi
   fi
 fi
 

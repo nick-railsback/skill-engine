@@ -7,11 +7,11 @@ description: Companion repo langchain-ai/docs — the source for docs.langchain.
 
 [langchain-ai/docs](https://github.com/langchain-ai/docs/tree/a623fd54dca3b37d00e004ea6feda5ec338eab67) is the source repository for **[docs.langchain.com](https://docs.langchain.com)** — the unified docs site for LangChain (Python and JS), LangGraph, LangSmith, and LangChain Labs (Deep Agents, Open SWE, Open Agent Platform). The `langchain-ai/langchain` monorepo carries no in-tree prose docs (only README and CLAUDE.md files); everything user-facing lives here.
 
-This repo is **not** the source of [reference.langchain.com](https://reference.langchain.com/python/) — that's the auto-generated API reference site, built from docstrings in each respective package's repo and deployed by separate infra. If a question is "where is the docstring for `create_agent`?", the answer is in `libs/langchain_v1/langchain/agents/factory.py` in the `langchain` repo, not here. If the question is "where is the prose tutorial on building an agent?", the answer is here.
+This repo is **not** the source of [reference.langchain.com](https://reference.langchain.com/python/) — that's the auto-generated API reference site, built from docstrings in each respective package's repo and deployed by separate infra. If a question is "where is the docstring for `create_agent`?", the answer is in [`libs/langchain_v1/langchain/agents/factory.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/langchain_v1/langchain/agents/factory.py) in the `langchain` repo, not here. If the question is "where is the prose tutorial on building an agent?", the answer is here.
 
 ## Repo layout
 
-The docs are a Mintlify site, with hand-authored `.mdx` source under `src/` and a build pipeline that generates the deployable site under `build/` (which you should never edit directly):
+The docs are a Mintlify site (navigation and site config in [`src/docs.json`](https://github.com/langchain-ai/docs/blob/a623fd54dca3b37d00e004ea6feda5ec338eab67/src/docs.json)), with hand-authored `.mdx` source under `src/` and a build pipeline that generates the deployable site under `build/` (which you should never edit directly):
 
 ```
 docs/
@@ -37,7 +37,7 @@ docs/
 └── build/                      # Build output — DO NOT EDIT
 ```
 
-The `src/oss/` tree is most relevant to LangChain developers. It splits by product (`langchain/`, `langgraph/`, `deepagents/`) and by language (`python/`, `javascript/`). Pages mix Python and JS examples using `:::python` / `:::js` fences that the pipeline expands into separate per-language pages at build time.
+The [`src/oss/`](https://github.com/langchain-ai/docs/tree/a623fd54dca3b37d00e004ea6feda5ec338eab67/src/oss) tree is most relevant to LangChain developers. It splits by product (`langchain/`, `langgraph/`, `deepagents/`) and by language (`python/`, `javascript/`). Pages mix Python and JS examples using `:::python` / `:::js` fences that the pipeline expands into separate per-language pages at build time.
 
 ## What lives in this repo (and what doesn't)
 

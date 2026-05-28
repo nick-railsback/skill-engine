@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "last_run": "2026-05-27",
+  "sources": {
+    "langchain-ai-langchain": {
+      "sha": "84e3c795ec292cd32156f65c37c1445abb94b576",
+      "ran_at": "2026-05-27"
+    },
+    "langchain-ai-langgraph": {
+      "sha": "8cb0f3a96da422837177ca3a80a3124b6e471184",
+      "ran_at": "2026-05-27"
+    },
+    "langchain-ai-langsmith-sdk": {
+      "sha": "df9735d0badd2b07f557e8ecf1f4765e1c03e1ab",
+      "ran_at": "2026-05-27"
+    },
+    "langchain-ai-deepagents": {
+      "sha": "390551d61d57ce68c2a80ed78c07eaa8e985908b",
+      "ran_at": "2026-05-27"
+    },
+    "langchain-ai-docs": {
+      "sha": "099a34b4c2f7b06f9dde0f1433f5c5d0ef979c49",
+      "ran_at": "2026-05-27"
+    },
+    "langchain-ai-langchainjs": {
+      "sha": "dd4a1d6cc5a1f9dc3fc9f2da17e807e311fc6b1d",
+      "ran_at": "2026-05-27"
+    },
+    "langchain-ai-langchain-google": {
+      "sha": "6b7d88dbd3dd703223b27458903937df02fdf242",
+      "ran_at": "2026-05-27"
+    },
+    "langchain-ai-langchain-aws": {
+      "sha": "eea5b3c9609d9f846a901c289f586b270740b3b7",
+      "ran_at": "2026-05-27"
+    }
+  }
+}

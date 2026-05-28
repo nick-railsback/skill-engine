@@ -27,7 +27,7 @@ agent = create_agent(
 result = agent.invoke({"messages": [{"role": "user", "content": "..."}]})
 ```
 
-The result is a LangGraph Runnable. It accepts the same `invoke / ainvoke / stream / astream / astream_events` surface as any Runnable. The agent's state lives in `AgentState`, which carries `messages` (the conversation), tool-call accounting, and any keys middleware adds.
+The result is a LangGraph Runnable — [`agents/factory.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/langchain_v1/langchain/agents/factory.py) constructs the `StateGraph` and returns it compiled. It accepts the same `invoke / ainvoke / stream / astream / astream_events` surface as any Runnable. The agent's state lives in `AgentState`, which carries `messages` (the conversation), tool-call accounting, and any keys middleware adds.
 
 `model` can be a string (`"provider:name"` resolved through `init_chat_model`), a fully-instantiated `BaseChatModel`, or a callable returning one. `tools` is a list of `@tool`-decorated callables or `BaseTool` instances; the factory calls `model.bind_tools(tools)` for you. `response_format` (see `structured_output.py`) opts the agent into structured-output mode at the final step.
 

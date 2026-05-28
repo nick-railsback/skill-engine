@@ -7,7 +7,7 @@ description: Companion repo langchain-ai/langgraph — the low-level graph orche
 
 LangGraph is a low-level orchestration framework for stateful, long-running agents and workflows. It is published from [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph/tree/add269632bb32c57f3252b7a7006c8115b579fb4) — a separate repo from `langchain-ai/langchain`, but a hard dependency of the new `langchain` package: `langchain.create_agent` returns a LangGraph `StateGraph`, and agent execution is graph-node message passing under the hood. For deep questions about *how an agent actually runs* — durable execution, interrupts, checkpointing, streaming — the answer lives here, not in the `langchain` repo.
 
-LangGraph is usable standalone. It does not require LangChain at runtime — only `langchain-core` for message and runnable types. The README is explicit: "LangGraph is built by LangChain Inc … but can be used without LangChain."
+LangGraph is usable standalone. It does not require LangChain at runtime — only `langchain-core` for message and runnable types. The [`README.md`](https://github.com/langchain-ai/langgraph/blob/add269632bb32c57f3252b7a7006c8115b579fb4/README.md) is explicit: "LangGraph is built by LangChain Inc … but can be used without LangChain."
 
 ## Repo layout
 
@@ -36,11 +36,11 @@ The framework solves five problems the Runnable/LCEL surface in `langchain-core`
 
 The new `langchain` package (v1) layers a small, opinionated agent API on top of LangGraph. `create_agent(model, tools, ...)` constructs a `StateGraph` with two nodes — the model call and a `ToolNode` — and the standard message-loop edges between them, plus middleware. The compiled output *is* a LangGraph `StateGraph` you can `.stream()`, `.invoke()`, attach a checkpointer to, and inspect with the LangGraph SDK. See the contextualizer's [`langchain-v1-agents.md`](langchain-v1-agents.md) for the agent-side surface.
 
-The older `langgraph.prebuilt.create_react_agent` predates `langchain.create_agent` and overlaps with it. Both build a similar two-node ReAct-style loop; `langchain.create_agent` is the recommended entry point for new projects because it adds the middleware system and integrates with `init_chat_model`. Existing code calling `create_react_agent` does not need to migrate — the prebuilt helper is supported. Choose `langchain.create_agent` for new code; keep `create_react_agent` for code that already uses it or that needs the lower-level options the langgraph helper exposes.
+The older `langgraph.prebuilt.create_react_agent` (exported from [`prebuilt/__init__.py`](https://github.com/langchain-ai/langgraph/blob/add269632bb32c57f3252b7a7006c8115b579fb4/libs/prebuilt/langgraph/prebuilt/__init__.py)) predates `langchain.create_agent` and overlaps with it. Both build a similar two-node ReAct-style loop; `langchain.create_agent` is the recommended entry point for new projects because it adds the middleware system and integrates with `init_chat_model`. Existing code calling `create_react_agent` does not need to migrate — the prebuilt helper is supported. Choose `langchain.create_agent` for new code; keep `create_react_agent` for code that already uses it or that needs the lower-level options the langgraph helper exposes.
 
 ## Checkpointers and the persistence model
 
-A checkpointer is what makes an agent stateful across invocations. Without one, every `.invoke()` runs the graph from scratch. With one, state is keyed by `thread_id` (passed in `config={"configurable": {"thread_id": "..."}}`) and resumes after every node. Three concrete savers ship today:
+A checkpointer is what makes an agent stateful across invocations. Without one, every `.invoke()` runs the graph from scratch. With one, state is keyed by `thread_id` (passed in `config={"configurable": {"thread_id": "..."}}`) and resumes after every node. The base saver interface lives in [`libs/checkpoint/`](https://github.com/langchain-ai/langgraph/tree/add269632bb32c57f3252b7a7006c8115b579fb4/libs/checkpoint); three concrete savers ship today:
 
 - `langgraph.checkpoint.memory.InMemorySaver` — in-process; for tests and notebooks.
 - `langgraph-checkpoint-sqlite` — SQLite file; for local dev and small deployments.
@@ -52,7 +52,7 @@ A checkpointer is what makes an agent stateful across invocations. Without one, 
 
 LangGraph as installed via `pip install langgraph` is a runtime library you embed in a process. There is also a separate **LangGraph Server** — a long-running HTTP service that hosts compiled graphs, manages threads and checkpoints, and exposes a REST API. `langgraph-sdk` (Python) and the JS SDK in `libs/sdk-js/` are clients for that API. `langgraph-cli` (`langgraph dev`, `langgraph build`, `langgraph up`) is what you use to run the server locally or build it for deploy. The hosted version is part of LangSmith Deployment.
 
-If a question is about agents that "run on a server" or "scale to 1000 conversations", it is the Server + SDK story, not the embedded library. The embedded library still works fine in any process you control (web app, CLI, notebook).
+If a question is about agents that "run on a server" or "scale to 1000 conversations", it is the Server + SDK story (the client lives in [`libs/sdk-py/`](https://github.com/langchain-ai/langgraph/tree/add269632bb32c57f3252b7a7006c8115b579fb4/libs/sdk-py)), not the embedded library. The embedded library still works fine in any process you control (web app, CLI, notebook).
 
 ## Common gotchas
 

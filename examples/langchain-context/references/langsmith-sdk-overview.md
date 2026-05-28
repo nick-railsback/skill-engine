@@ -7,7 +7,7 @@ description: Companion repo langchain-ai/langsmith-sdk — the Python and JS cli
 
 LangSmith is LangChain's hosted observability and evaluation platform — traces, datasets, evaluations, prompt management. The SDK in [langchain-ai/langsmith-sdk](https://github.com/langchain-ai/langsmith-sdk/tree/b3f1b0af0618ead2160b7fde78c894acd1fe2bb2) is the Python and JS/TS client library that ships traces and runs evaluations against the platform. Both top-level READMEs in `langchain-ai/langchain` steer production users here, and `langchain-core`'s callback system has a native LangSmith tracer (`LangChainTracer`, see the contextualizer's [`langchain-core-callbacks.md`](langchain-core-callbacks.md)) — which means *if `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` are in the environment, any `langchain` / `langgraph` code already exports traces with no further code changes*.
 
-The SDK is also useful **standalone**, with no LangChain dependency. The `@traceable` decorator and `wrap_openai`-style framework wrappers let you trace plain Python (or JS) code that calls any LLM provider directly. The README's quick-start uses `openai.Client` wrapped with `wrap_openai`, no LangChain imports anywhere.
+The SDK is also useful **standalone**, with no LangChain dependency. The `@traceable` decorator and `wrap_openai`-style framework wrappers let you trace plain Python (or JS) code that calls any LLM provider directly. The [`README.md`](https://github.com/langchain-ai/langsmith-sdk/blob/b3f1b0af0618ead2160b7fde78c894acd1fe2bb2/README.md) quick-start uses `openai.Client` wrapped with `wrap_openai`, no LangChain imports anywhere.
 
 ## Repo layout
 
@@ -68,7 +68,7 @@ LangChain users almost never call this SDK directly. The chain is:
 2. App sets `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY=ls_...` (and optionally `LANGSMITH_WORKSPACE_ID` for org-scoped keys, plus `LANGSMITH_PROJECT` to override the default project name).
 3. Any `Runnable.invoke / .stream / .ainvoke / .astream` call routes through the `LangChainTracer` callback handler, which posts run trees to LangSmith.
 
-This means the *most common LangSmith question from a LangChain user* — "how do I add tracing to my agent?" — has no SDK code answer. It is two environment variables. The SDK only enters the picture when the user wants to **(a)** trace non-LangChain code (`@traceable`), **(b)** add metadata or tags to runs (`set_run_metadata`, `tracing_context`), **(c)** run evaluations (`evaluate`), or **(d)** programmatically manage datasets, projects, or prompts (`Client`).
+This means the *most common LangSmith question from a LangChain user* — "how do I add tracing to my agent?" — has no SDK code answer. It is two environment variables. The SDK only enters the picture when the user wants to **(a)** trace non-LangChain code (`@traceable`, defined in [`langsmith/run_helpers.py`](https://github.com/langchain-ai/langsmith-sdk/blob/b3f1b0af0618ead2160b7fde78c894acd1fe2bb2/python/langsmith/run_helpers.py)), **(b)** add metadata or tags to runs (`set_run_metadata`, `tracing_context`), **(c)** run evaluations (`evaluate`), or **(d)** programmatically manage datasets, projects, or prompts (`Client`).
 
 The contextualizer's [`langchain-core-callbacks.md`](langchain-core-callbacks.md) covers the LangChain side of the integration; this reference covers the SDK side.
 

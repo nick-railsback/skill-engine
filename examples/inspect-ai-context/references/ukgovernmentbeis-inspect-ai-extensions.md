@@ -1,11 +1,12 @@
 ---
-name: Extension points — model APIs, sandboxes, approvers, storage, hooks
-source_id: ukgovernmentbeis-inspect-ai
+name: ukgovernmentbeis-inspect-ai-extensions
+description: "The five Inspect extension points — model APIs, sandboxes, approvers, storage, and hooks — all wired through setuptools entry points so third-party packages register on equal terms with built-in providers. Covers decorator signatures, lifecycle rules, required class methods, and operational controls (INSPECT_REQUIRED_HOOKS, enabled(), API key override)."
 ---
 
 # Extensions
 
 Inspect exposes five extension surfaces. Four of them (model APIs, sandboxes, approvers, hooks) register through a **single** setuptools entry-point group named `inspect_ai`; the fifth (filesystems) piggybacks on the standard `fsspec.specs` group instead. The convention is to point the entry point at a `_registry.py` module inside your package — Inspect imports it at startup, which runs the `@modelapi` / `@sandboxenv` / `@approver` / `@hooks` decorators and populates the registry. No Inspect-side configuration is required to discover an installed extension.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L8-L20
 
 | Extension | Base class / decorator | Entry-point group |
 |---|---|---|
@@ -16,6 +17,7 @@ Inspect exposes five extension surfaces. Four of them (model APIs, sandboxes, ap
 | Storage (fsspec filesystem) | fsspec `AbstractFileSystem` subclass | `fsspec.specs` |
 
 The canonical `pyproject.toml` snippet for the first four (single entry pointing at a registry module that imports everything you want registered) is:
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L76-L96
 
 ```toml
 [project.entry-points.inspect_ai]
@@ -25,6 +27,7 @@ evaltools = "evaltools._registry"
 ## Model API extensions
 
 Two-file pattern, with a lazy-import indirection so the heavy provider SDK only loads when actually used:
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L22-L67
 
 ```python
 # custom.py
@@ -54,12 +57,18 @@ def custom():
 ```
 
 After `pip install`, `--model custom/<model-name>` resolves; `<model-name>` is passed through as the `model_name` argument. `generate()` may optionally return `tuple[ModelOutput, ModelCall]` so the raw request/response is recorded in the sample transcript. Several optional properties on `ModelAPI` control default max tokens/connections, rate-limit error detection, and whether consecutive user/assistant messages should be collapsed.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/model/_model.py#L185-L390
 
-The framework's own provider modules use exactly this pattern — see `src/inspect_ai/model/_providers/providers.py` (https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/model/_providers/providers.py) for the canonical reference implementation across ~25 providers.
+The `@modelapi` decorator is defined in `src/inspect_ai/model/_registry.py` (L30-L50); its factory-of-class indirection means packages required to interact with models (e.g. `openai`, `anthropic`, `vllm`) are only imported when their model API type is actually used.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/model/_registry.py#L30-L50
+
+The framework's own provider modules use exactly this pattern — see `src/inspect_ai/model/_providers/providers.py` for the canonical reference implementation across ~25 providers.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/model/_providers/providers.py#L1-L372
 
 ## Sandbox extensions
 
 `SandboxEnvironment` is heavier than the other ABCs because it owns container lifecycle. Required class methods cover task/sample init and cleanup; required instance methods cover process exec and file I/O; plus several optional class methods declare Docker compatibility and concurrency hints.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L118-L198
 
 ```python
 # podman.py
@@ -89,7 +98,10 @@ def podman():
     return PodmanSandboxEnvironment
 ```
 
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/registry.py#L24-L43
+
 Key lifecycle rules from `docs/extensions.qmd`:
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L200-L244
 
 - `task_init` / `task_cleanup` run once per unique sandbox config across an `eval()` run (shared when multiple tasks have identical configs — a performance optimization).
 - `sample_init` returns a dict of sandbox-name → environment; the "default" sandbox **must** be the first key in that dict.
@@ -100,12 +112,16 @@ Key lifecycle rules from `docs/extensions.qmd`:
 - `exec_remote()` is implemented in the base class — do not override. It supports a `user` option that uses `setuid` from the root tools server.
 
 Custom config types may derive from Pydantic's `BaseModel` and must be hashable (`frozen=True`); they're then passed via `SandboxEnvironmentSpec("podman", PodmanSandboxEnvironmentConfig(...))`. Implement `config_deserialize()` if you want such configs to survive a round trip through the eval log.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L245-L287
 
-The reference implementations are `LocalSandboxEnvironment` (https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/local.py) and `DockerSandboxEnvironment` (https://github.com/UKGovernmentBEIS/inspect_ai/tree/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/docker).
+The reference implementations are `LocalSandboxEnvironment` and `DockerSandboxEnvironment`.
+Source (local): https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/local.py#L1-L119
+Source (docker): https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/docker/docker.py
 
 ## Approver extensions
 
 An `Approver` is a callable that reviews a tool call and returns an `Approval` with a `decision` of approve / modify / reject / escalate / terminate. Use cases: human-in-the-loop UIs, pattern-based safety policies, log-only approvers that record but don't block.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L353-L380
 
 ```python
 # approvers.py
@@ -121,7 +137,10 @@ def auto_approver(decision: ApprovalDecision = "approve") -> Approver:
     return approve
 ```
 
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/approval/_registry.py#L19-L91
+
 Once the package is installed and registered (via the standard `inspect_ai` entry point pointing at a `_registry.py` that imports `auto_approver`), an approval policy YAML can reference it by `<package>/<approver-name>`:
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L425-L433
 
 ```yaml
 # approval.yaml
@@ -134,6 +153,7 @@ approvers:
 ## Storage extensions (fsspec)
 
 Datasets, prompt templates, and eval logs all flow through fsspec. Built-in support: local, S3 (via `s3fs`, bundled), plus anything else fsspec already ships (GCS, Azure Blob, Azure Data Lake, DVC, etc.). For a fully custom backend, implement an fsspec `AbstractFileSystem` and register it under the standard fsspec group:
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L436-L472
 
 ```toml
 [project.entry-points."fsspec.specs"]
@@ -141,10 +161,12 @@ myfs = "evaltools:MyFs"
 ```
 
 Inspect-only filesystems can implement just the subset of fsspec Inspect actually calls: `sep`, `open`, `makedirs`, `info`, `created`, `exists`, `ls`, `walk`, `unstrip_protocol`, `invalidate_cache`. Once installed, `myfs://...` paths work everywhere — `resource()`, `csv_dataset()`, `json_dataset()`, `list_eval_logs()`, `read_eval_log()`, `write_eval_log()`, `retryable_eval_logs()`.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L473-L513
 
 ## Hooks
 
-A `Hooks` subclass implements any subset of typed lifecycle methods. Each event receives a single typed data object (e.g. `RunStart`, `RunEnd`, `SampleEnd`, `ApiKeyOverride`); see `src/inspect_ai/hooks/_hooks.py` (https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/hooks/_hooks.py) for the full event list and payload shapes.
+A `Hooks` subclass implements any subset of typed lifecycle methods. Each event receives a single typed data object (e.g. `RunStart`, `RunEnd`, `SampleEnd`, `ApiKeyOverride`); see `src/inspect_ai/hooks/_hooks.py` for the full event list and payload shapes.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/hooks/_hooks.py#L58-L444
 
 ```python
 import wandb
@@ -164,16 +186,21 @@ class WBHooks(Hooks):
             wandb.log({"sample_id": data.sample_id, "scores": scores})
 ```
 
-Two operational controls worth knowing:
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L519-L560
 
-- **`enabled()`** — instance method on the Hooks class. Return `False` to opt out at runtime; common pattern is gating on an env var like `WANDB_API_KEY`.
-- **`INSPECT_REQUIRED_HOOKS`** — env var listing hook names that must be loaded; startup fails loudly if any are missing. Useful for enforced telemetry in shared environments.
+Two operational controls worth knowing:
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L607-L627
+
+- **`enabled()`** — instance method on the Hooks class. Return `False` to opt out at runtime; common pattern is gating on an env var like `WANDB_API_KEY`. (Defined at `_hooks.py` L334.)
+- **`INSPECT_REQUIRED_HOOKS`** — env var listing hook names that must be loaded; startup fails loudly if any are missing. Useful for enforced telemetry in shared environments. (Verified in `_startup.py` L56-L72.)
 
 Hooks also support the same factory-of-class indirection as model providers (decorate a function that lazy-imports and returns the Hooks subclass) so a hook package doesn't transitively pull in `wandb`, `mlflow`, etc.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/hooks/_hooks.py#L542-L570
 
 ### API key override hook
 
 The `override_api_key(data: ApiKeyOverride) -> str | None` method runs during model initialization and again whenever an auth error is detected. Returning a string substitutes that value for the env-var-derived API key. Intended uses: pull keys from a secrets manager at runtime, refresh tokens during long evals, or front model APIs with a reverse proxy whose credentials Inspect should never see directly.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/hooks/_hooks.py#L306-L340
 
 ```python
 @hooks(name="api_key_fetcher", description="Fetches API key from secrets manager")
@@ -184,11 +211,15 @@ class ApiKeyFetcher(Hooks):
         return None
 ```
 
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd#L629-L651
+
 Reference hook implementations live in `examples/hooks/` upstream — `wandb_weave.py`, `mlflow_tracking.py`, `mlflow_tracing.py`.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/tree/033745ddbc05431c38b015a4b8f2236e956ee9ea/examples/hooks
 
 ## Why this matters
 
 Inspect is intentionally thin in the core: the framework owns the eval lifecycle, but model providers, sandboxes, approvers, storage backends, and observability are all replaceable via sibling packages a user pip-installs. This is why the supported-provider list is so long without bloating the base install — every "built-in" provider is just a `@modelapi`-decorated factory inside `_providers/providers.py`, and the same registry mechanism is open to external packages on identical terms.
+Source: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/_util/registry.py#L64-L230
 
 ## See also
 
@@ -200,8 +231,14 @@ Inspect is intentionally thin in the core: the framework owns the eval lifecycle
 
 - `docs/extensions.qmd` — https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/docs/extensions.qmd
 - `src/inspect_ai/model/_providers/providers.py` — canonical multi-provider extension example: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/model/_providers/providers.py
-- `src/inspect_ai/hooks/` — hook system implementation: https://github.com/UKGovernmentBEIS/inspect_ai/tree/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/hooks
-- `src/inspect_ai/approval/` — approver registry and policy engine: https://github.com/UKGovernmentBEIS/inspect_ai/tree/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/approval
-- `src/inspect_ai/util/_sandbox/` — sandbox base class and built-in providers: https://github.com/UKGovernmentBEIS/inspect_ai/tree/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox
+- `src/inspect_ai/model/_registry.py` — `@modelapi` decorator: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/model/_registry.py
+- `src/inspect_ai/util/_sandbox/registry.py` — `@sandboxenv` decorator: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/registry.py
+- `src/inspect_ai/approval/_registry.py` — `@approver` decorator: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/approval/_registry.py
+- `src/inspect_ai/hooks/_hooks.py` — hook system, event classes, `@hooks` decorator: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/hooks/_hooks.py
+- `src/inspect_ai/hooks/_startup.py` — `INSPECT_REQUIRED_HOOKS` enforcement: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/hooks/_startup.py
+- `src/inspect_ai/util/_sandbox/local.py` — local sandbox reference impl: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/local.py
+- `src/inspect_ai/util/_sandbox/docker/` — docker sandbox reference impl: https://github.com/UKGovernmentBEIS/inspect_ai/tree/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/util/_sandbox/docker
 - `src/inspect_ai/_util/registry.py` — central registry machinery shared by all extension kinds: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/_util/registry.py
+- `src/inspect_ai/model/_model.py` — `ModelAPI` base class with optional properties: https://github.com/UKGovernmentBEIS/inspect_ai/blob/033745ddbc05431c38b015a4b8f2236e956ee9ea/src/inspect_ai/model/_model.py#L185-L390
+- `examples/hooks/` — reference hook implementations: https://github.com/UKGovernmentBEIS/inspect_ai/tree/033745ddbc05431c38b015a4b8f2236e956ee9ea/examples/hooks
 - Pinned SHA: `033745ddbc05431c38b015a4b8f2236e956ee9ea`

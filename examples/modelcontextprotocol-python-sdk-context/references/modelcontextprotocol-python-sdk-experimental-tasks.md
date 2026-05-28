@@ -14,11 +14,11 @@ Tasks are MCP's mechanism for **async request handling** — operations that don
 - Operations that should not block the requestor's request loop.
 - OAuth flows where the user must complete an out-of-band browser interaction.
 
-Tasks are **bidirectional**: client → server (most common, for long-running tool calls) and server → client (less common, for elicitation/sampling that need to wait on user action).
+Tasks are **bidirectional**: client → server (most common, for long-running tool calls) and server → client (less common, for elicitation/sampling that need to wait on user action). Source: [`docs/experimental/tasks.md#L60`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/docs/experimental/tasks.md#L60).
 
 ## Task lifecycle
 
-A task moves through five states:
+A task moves through five states (status constants defined in [`src/mcp/types/_types.py#L411-L415`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L411-L415)):
 
 ```text
               working
@@ -39,9 +39,9 @@ input_required ◄─── working
 | `failed` | Task encountered an error. |
 | `cancelled` | Requestor cancelled the task. |
 
-Terminal states (`completed`, `failed`, `cancelled`) are final — tasks cannot transition out of them.
+Terminal states (`completed`, `failed`, `cancelled`) are final — tasks cannot transition out of them. Source: [`docs/experimental/tasks.md`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/docs/experimental/tasks.md).
 
-Status literal constants are exported from `mcp.types`: `TASK_STATUS_WORKING`, `TASK_STATUS_INPUT_REQUIRED`, `TASK_STATUS_COMPLETED`, `TASK_STATUS_FAILED`, `TASK_STATUS_CANCELLED`. Tool execution modes: `TASK_FORBIDDEN`, `TASK_OPTIONAL`, `TASK_REQUIRED` (set via `Tool.execution = ToolExecution(task_support=TASK_REQUIRED)`).
+Status literal constants are exported from [`mcp.types`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L411-L415): `TASK_STATUS_WORKING`, `TASK_STATUS_INPUT_REQUIRED`, `TASK_STATUS_COMPLETED`, `TASK_STATUS_FAILED`, `TASK_STATUS_CANCELLED`. Tool execution modes: `TASK_FORBIDDEN`, `TASK_OPTIONAL`, `TASK_REQUIRED` (defined at [`src/mcp/types/_types.py#L34-L36`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L34-L36); set via `Tool.execution = ToolExecution(task_support=TASK_REQUIRED)`).
 
 ## Server: `enable_tasks()`
 
@@ -93,13 +93,13 @@ server = Server(
 server.experimental.enable_tasks()  # one-line registration
 ```
 
-`server.experimental.enable_tasks(store=..., queue=...)` registers task-related handlers (`tasks/get`, `tasks/list`, `tasks/cancel`, `tasks/result`). The default `store` is `InMemoryTaskStore`; pass a custom `TaskStore` for production persistence. Optional `on_get_task`, `on_task_result`, `on_list_tasks`, `on_cancel_task` kwargs override specific handlers.
+[`server.experimental.enable_tasks`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/experimental.py#L83-L105)`(store=..., queue=...)` registers task-related handlers (`tasks/get`, `tasks/list`, `tasks/cancel`, `tasks/result`). The default `store` is `InMemoryTaskStore`; pass a custom `TaskStore` for production persistence. Optional `on_get_task`, `on_task_result`, `on_list_tasks`, `on_cancel_task` kwargs override specific handlers.
 
-**v2 change:** the v1 `@server.experimental.list_tasks()` / `@server.experimental.get_task()` decorators are removed. All custom handlers go through `enable_tasks(on_*=...)` constructor-style kwargs.
+**v2 change:** the v1 `@server.experimental.list_tasks()` / `@server.experimental.get_task()` decorators are removed. All custom handlers go through `enable_tasks(on_*=...)` constructor-style kwargs. Source: [`src/mcp/server/lowlevel/experimental.py#L147-L154`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/experimental.py#L147-L154).
 
-The notation `params.arguments or {}` is important — `arguments` can be `None` in v2 (the v1 default-to-`{}` magic is gone in the lowlevel server).
+The notation `params.arguments or {}` is important — `arguments` can be `None` in v2 (the v1 default-to-`{}` magic is gone in the lowlevel server). Source: [`src/mcp/server/experimental/request_context.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/experimental/request_context.py).
 
-`ServerTaskContext.update_status(message)` emits a status notification while the task is in `working`. The eventual return value from your `work(task)` callable becomes the task's result.
+[`ServerTaskContext.update_status(message)`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/experimental/task_context.py#L122-L129) emits a status notification while the task is in `working`. The eventual return value from your `work(task)` callable becomes the task's result.
 
 ## Client: `call_tool_as_task` + `poll_task`
 
@@ -128,11 +128,11 @@ async with ClientSession(read, write) as session:
     print(final.content[0].text)
 ```
 
-`poll_task` yields `GetTaskResult` instances until the status becomes terminal. The `CallToolResult` type passed to `get_task_result` lets the SDK validate the result payload — pass the type matching the operation you submitted (e.g., `ElicitResult` for server→client elicitation tasks).
+[`poll_task`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/experimental/tasks.py#L180-L207) yields `GetTaskResult` instances until the status becomes terminal. The `CallToolResult` type passed to `get_task_result` lets the SDK validate the result payload — pass the type matching the operation you submitted (e.g., `ElicitResult` for server→client elicitation tasks).
 
 ## TaskMetadata
 
-When augmenting a request with task execution, attach `TaskMetadata`:
+When augmenting a request with task execution, attach [`TaskMetadata`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L58-L65):
 
 ```python
 from mcp.types import TaskMetadata
@@ -149,16 +149,16 @@ The `TaskMessageQueue` (also pluggable; default `InMemoryTaskMessageQueue`) carr
 
 ## Capabilities advertised
 
-The SDK manages capability negotiation automatically when `enable_tasks()` is called:
+The SDK manages capability negotiation automatically when `enable_tasks()` is called (see [`src/mcp/shared/experimental/tasks/capabilities.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/shared/experimental/tasks/capabilities.py)):
 
 - **Server**: `tasks.requests.tools.call` — server accepts task-augmented tool calls. Additional flags (`tasks.list`, `tasks.cancel`) added depending on which handlers are registered.
 - **Client**: `tasks.requests.sampling.createMessage`, `tasks.requests.elicitation.create` — client accepts task-augmented sampling/elicitation requests.
 
-Both sides must advertise the capability for tasks to work — clients without task support cannot call task-required tools.
+Both sides must advertise the capability for tasks to work — clients without task support cannot call task-required tools. Source: [`docs/experimental/tasks.md#L126`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/docs/experimental/tasks.md#L126).
 
 ## Stability caveats
 
-Tasks are **draft-spec**. Treat the API as unstable until the specification is finalized. Concrete risks:
+Tasks are **draft-spec**. Treat the API as unstable until the specification is finalized. Concrete risks (see warning in [`src/mcp/server/lowlevel/experimental.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/experimental.py)):
 
 - Type names (`CreateTaskResult`, `GetTaskPayloadResult`, etc.) may rename.
 - The status set may expand (e.g., a `paused` or `timed_out` state).

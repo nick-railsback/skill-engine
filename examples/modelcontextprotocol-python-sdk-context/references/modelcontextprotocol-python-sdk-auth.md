@@ -84,7 +84,7 @@ You don't normally interact with these directly — they're wired by `MCPServer.
 
 ## Client: OAuthClientProvider
 
-The client-side provider is an `httpx.Auth` implementation that drives the authorization-code-with-PKCE flow. You implement `TokenStorage` (`get_tokens`, `set_tokens`, `get_client_info`, `set_client_info`) and supply callbacks for the redirect (showing the user the auth URL) and the callback (parsing the redirect URL the user pastes back).
+The client-side provider is an [`httpx.Auth` implementation](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/auth/oauth2.py#L217-L269) that drives the authorization-code-with-PKCE flow. You implement [`TokenStorage`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/auth/oauth2.py#L71-L86) (`get_tokens`, `set_tokens`, `get_client_info`, `set_client_info`) and supply callbacks for the redirect (showing the user the auth URL) and the callback (parsing the redirect URL the user pastes back).
 
 ```python
 from mcp.client.auth import OAuthClientProvider, TokenStorage
@@ -123,7 +123,7 @@ oauth = OAuthClientProvider(
 )
 ```
 
-Attach it to an `httpx.AsyncClient(auth=oauth)` and pass that into `streamable_http_client(url, http_client=...)`:
+Attach it to an [`httpx.AsyncClient(auth=oauth)`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/client/auth/oauth2.py#L217) and pass that into `streamable_http_client(url, http_client=...)`:
 
 ```python
 async with httpx.AsyncClient(auth=oauth, follow_redirects=True) as client:

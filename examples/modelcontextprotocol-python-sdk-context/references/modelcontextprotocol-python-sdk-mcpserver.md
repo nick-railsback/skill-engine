@@ -39,7 +39,7 @@ Reference: [`examples/snippets/servers/mcpserver_quickstart.py`](https://github.
 
 `@mcp.tool()` registers a sync or async function as a tool. Type-hinted parameters become the input schema; the return type drives the output schema and `structured_content` marshalling. Decorator kwargs: `name` (defaults to function name), `title`, `description` (defaults to docstring), `annotations` (a `ToolAnnotations`), `structured_output` (force enable/disable).
 
-Return types the framework understands:
+Return types the framework understands (marshalled by [`_convert_to_content`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/utilities/func_metadata.py#L499-L530) in `func_metadata.py`):
 
 - **Scalar/string/dict/list of JSON-serializable values** → wrapped into a `TextContent` JSON payload and the `structured_content` field on `CallToolResult`.
 - **Pydantic `BaseModel`, `TypedDict`, `@dataclass`, or annotated plain class** → schema is inferred; instance is serialized via Pydantic.
@@ -47,7 +47,7 @@ Return types the framework understands:
 - **`list[ContentBlock]`** → returned as-is. This is the escape hatch for mixed media or pre-built blocks.
 - **Async generator** → yields progressive content blocks.
 
-Example with structured output:
+Example with structured output (see [`examples/snippets/servers/structured_output.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/examples/snippets/servers/structured_output.py)):
 
 ```python
 from pydantic import BaseModel, Field
@@ -105,7 +105,7 @@ See [`examples/snippets/servers/basic_prompt.py`](https://github.com/modelcontex
 
 If any parameter on a tool/resource/prompt function is annotated `Context`, the framework injects it. `Context` is parameterized by your lifespan-context type: `Context[AppContext]`. **There is no ambient `get_context()`** in v2 — context is always passed explicitly.
 
-`Context` exposes:
+[`Context`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/context.py#L23) exposes:
 
 - `ctx.session` — the `ServerSession` (low-level transport access).
 - `ctx.request_context.lifespan_context` — the value yielded by your `lifespan` async-context-manager.
@@ -158,7 +158,7 @@ Sampling is the server requesting LLM completions from the connected client. `ct
 
 `mcp.run(transport=...)` is the simplest entry point. Transports accepted: `"stdio"` (default; pipes), `"sse"` (legacy server-sent events), `"streamable-http"` (recommended HTTP transport per [MCP spec](https://modelcontextprotocol.io/specification/latest/basic/transports)).
 
-**v2 change:** transport-specific parameters (`host`, `port`, `sse_path`, `streamable_http_path`, `json_response`, `stateless_http`, `event_store`, `retry_interval`, `transport_security`) **moved off the constructor** onto `run()` / `sse_app()` / `streamable_http_app()`. The constructor now only handles identity and auth:
+**v2 change:** transport-specific parameters (`host`, `port`, `sse_path`, `streamable_http_path`, `json_response`, `stateless_http`, `event_store`, `retry_interval`, `transport_security`) **moved off the constructor** onto [`run()`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/server.py#L249-L307) / `sse_app()` / `streamable_http_app()`. The constructor now only handles identity and auth:
 
 ```python
 # Correct (v2)
@@ -169,11 +169,11 @@ mcp.run(transport="streamable-http", json_response=True, stateless_http=True)
 # mcp = MCPServer("Demo", json_response=True)
 ```
 
-DNS-rebinding protection auto-enables when `host` is `127.0.0.1`, `localhost`, or `::1` (set in `sse_app()` / `streamable_http_app()`, not the constructor).
+DNS-rebinding protection auto-enables when `host` is `127.0.0.1`, `localhost`, or `::1` (set in `sse_app()` / `streamable_http_app()`, not the constructor). Source: [`src/mcp/server/mcpserver/server.py#L928-L935`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/server.py#L928-L935).
 
 ## Mounting in an ASGI app
 
-For mounting under a custom path or alongside other ASGI routes, call `mcp.streamable_http_app(...)` or `mcp.sse_app(...)` and mount the returned `Starlette` app:
+For mounting under a custom path or alongside other ASGI routes, call [`mcp.streamable_http_app(...)`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/server.py#L1045-L1070) or `mcp.sse_app(...)` and mount the returned `Starlette` app:
 
 ```python
 from starlette.applications import Starlette
@@ -196,4 +196,4 @@ mcp._lowlevel_server._add_request_handler("logging/setLevel", handle_set_logging
 mcp._lowlevel_server._add_request_handler("resources/subscribe", handle_subscribe)
 ```
 
-A public registration API is planned. Until then, either use this pattern or build directly on `Server` — see the lowlevel-server reference.
+A public registration API is planned. Until then, either use this pattern or build directly on `Server` — see the lowlevel-server reference. Source: [`src/mcp/server/mcpserver/server.py#L170`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/server.py#L170).

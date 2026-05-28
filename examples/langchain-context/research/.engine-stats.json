@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "sessions": [
+    {
+      "session_id": "self-audit-20260518-152209",
+      "session_type": "SELF-AUDIT",
+      "ran_at": "2026-05-18",
+      "findings_total": 1,
+      "findings_applied": 1,
+      "verify_passed": 8,
+      "verify_failed": 0
+    }
+  ]
+}

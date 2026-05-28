@@ -38,7 +38,7 @@ Retrieval config typically lives on the retriever instance, not in the call: `ve
 - `as_retriever(search_type=..., search_kwargs=...)` — returns a `VectorStoreRetriever` wrapping this store.
 - Classmethods `from_documents` / `from_texts` for one-shot index construction.
 
-The base class provides default implementations for many methods so partners typically only implement the embed/store/search/delete primitives. Filter syntax for `similarity_search(filter=...)` is partner-specific — each integration's docs spell out the supported predicate shape (e.g., Chroma uses a Mongo-style dict, Postgres pgvector uses SQL).
+The base class ([`vectorstores/base.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/vectorstores/base.py)) provides default implementations for many methods so partners typically only implement the embed/store/search/delete primitives. Filter syntax for `similarity_search(filter=...)` is partner-specific — each integration's docs spell out the supported predicate shape (e.g., Chroma uses a Mongo-style dict, Postgres pgvector uses SQL).
 
 The in-tree vector store integrations live in `libs/partners/chroma/` and `libs/partners/qdrant/`. The legacy bulk of vectorstore integrations (FAISS, Pinecone, Weaviate, Milvus, etc.) lives in `langchain_classic.vectorstores` — see `langchain-classic.md`. New code should prefer either an in-tree partner or `langchain-community` (a separate PyPI package, not in this repo).
 
@@ -82,7 +82,7 @@ chain = (
 chain.invoke("What is X?")
 ```
 
-`retriever` is a Runnable from `str` to `list[Document]`; passing it directly into a `RunnableParallel` produces the `context` value. The prompt template's f-string substitution accepts the document list and calls `repr` — for nicer formatting, slot a `format_docs` `RunnableLambda` in between, or use a `ChatPromptTemplate` with explicit `MessagesPlaceholder`.
+`retriever` is a Runnable from `str` to `list[Document]` (the `BaseRetriever` Runnable wiring is in [`retrievers.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/retrievers.py)); passing it directly into a `RunnableParallel` produces the `context` value. The prompt template's f-string substitution accepts the document list and calls `repr` — for nicer formatting, slot a `format_docs` `RunnableLambda` in between, or use a `ChatPromptTemplate` with explicit `MessagesPlaceholder`.
 
 ## Gotchas
 

@@ -18,13 +18,13 @@ LangChain has a single uniform observability surface: every node in a `Runnable`
 - **Agent lifecycle.** `on_agent_action(action, ...)`, `on_agent_finish(finish, ...)`. Legacy `langchain_classic` agent surface; v1 agents stream LangGraph events instead.
 - **Generic.** `on_text(text, ...)` for unstructured strings, `on_retry(...)`.
 
-Each callback method gets a `run_id: UUID` and `parent_run_id: UUID | None`. The pair lets a handler reconstruct the call tree across async boundaries — LangSmith uses this to render the trace as a nested span tree.
+Each callback method gets a `run_id: UUID` and `parent_run_id: UUID | None` — the two arguments appear on every method signature in [`callbacks/base.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/callbacks/base.py). The pair lets a handler reconstruct the call tree across async boundaries — LangSmith uses this to render the trace as a nested span tree.
 
-`AsyncCallbackHandler` is the async-method twin. A handler can implement either or both. There is also an `ignore_*` family of class attributes (`ignore_llm = True`, etc.) to opt out of categories the handler doesn't care about, which avoids the cost of constructing event payloads it would throw away.
+`AsyncCallbackHandler` (also in [`callbacks/base.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/callbacks/base.py)) is the async-method twin. A handler can implement either or both. There is also an `ignore_*` family of class attributes (`ignore_llm = True`, etc.) to opt out of categories the handler doesn't care about, which avoids the cost of constructing event payloads it would throw away.
 
 ## Attaching handlers
 
-Three places callbacks attach:
+Three places callbacks attach (the merge-and-propagate logic for all three lives in [`callbacks/manager.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/callbacks/manager.py)):
 
 - **Constructor.** `ChatOpenAI(callbacks=[handler], ...)`. Permanent on that instance.
 - **Per-call config.** `chain.invoke(input, config={"callbacks": [handler]})`. Scoped to one invocation; propagates down through every nested Runnable. This is how LangSmith's `tracing_v2_enabled` context manager works under the hood.
@@ -48,7 +48,7 @@ The LangSmith tracer (`LangChainTracer`) lives here too; it batches runs and shi
 
 ## astream_events v2
 
-`runnable.astream_events(input, version="v2", **kwargs)` is the modern streaming surface. It yields events shaped like:
+`runnable.astream_events(input, version="v2", **kwargs)` is the modern streaming surface, implemented by the v2 tracer in [`tracers/event_stream.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/tracers/event_stream.py). It yields events shaped like:
 
 ```python
 {"event": "on_chat_model_stream",
@@ -59,9 +59,9 @@ The LangSmith tracer (`LangChainTracer`) lives here too; it batches runs and shi
  "data": {"chunk": AIMessageChunk(...)}}
 ```
 
-Event names mirror the callback methods: `on_chain_start`, `on_chat_model_stream`, `on_tool_end`, `on_retriever_end`, etc. Filter by event name or by tag to subscribe to only the events you want. This is the recommended API for building token-streaming UIs, debug consoles, or real-time progress indicators because it captures the entire pipeline (not just the LLM tokens) in a single typed stream.
+Event names mirror the callback methods: `on_chain_start`, `on_chat_model_stream`, `on_tool_end`, `on_retriever_end`, etc. — the emit points are in [`tracers/event_stream.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/tracers/event_stream.py). Filter by event name or by tag to subscribe to only the events you want. This is the recommended API for building token-streaming UIs, debug consoles, or real-time progress indicators because it captures the entire pipeline (not just the LLM tokens) in a single typed stream.
 
-`astream_log` (v1 streaming) still works for backward compat, but `astream_events` is what new code should use.
+`astream_log` (v1 streaming) still works for backward compat via [`tracers/log_stream.py`](https://github.com/langchain-ai/langchain/blob/7bb4130c7d460f14ec6391805cb47bf01637b5c5/libs/core/langchain_core/tracers/log_stream.py), but `astream_events` is what new code should use.
 
 ## Streaming tokens vs streaming events
 

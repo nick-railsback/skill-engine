@@ -24,7 +24,7 @@ tools.next_cursor         # v2
 tools.tools[0].input_schema  # v2 (was inputSchema)
 ```
 
-`populate_by_name=True` means old camelCase **constructor kwargs** still work — `Tool(inputSchema={...})` is accepted — but attribute reads must use snake_case. The full rename table is in the migration reference; the common renames:
+[`populate_by_name=True`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L42) means old camelCase **constructor kwargs** still work — `Tool(inputSchema={...})` is accepted — but attribute reads must use snake_case. The full rename table is in the migration reference; the common renames:
 
 | v1 | v2 |
 |---|---|
@@ -41,7 +41,7 @@ tools.tools[0].input_schema  # v2 (was inputSchema)
 
 ## Union types: `_adapter` instead of `RootModel`
 
-Seven union types were previously `RootModel` subclasses and could be validated via `ModelClass.model_validate(data)` then `.root` to unwrap. In v2 they are plain `Union` types validated through `TypeAdapter` instances:
+Seven union types were previously `RootModel` subclasses and could be validated via `ModelClass.model_validate(data)` then `.root` to unwrap. In v2 they are plain `Union` types validated through [`TypeAdapter` instances](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L1615-L1778):
 
 ```python
 from mcp.types import (
@@ -63,7 +63,7 @@ request = client_request_adapter.validate_python(data)
 # request IS the actual variant — no .root access needed
 ```
 
-When constructing — sending a notification, calling `send_request` — the wrapping is also gone:
+When constructing — sending a notification, calling `send_request` — the wrapping is also gone (see [`client_notification_adapter`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L1625)):
 
 ```python
 # v1 — gone
@@ -89,9 +89,9 @@ Tool results, prompt messages, and resource read results all carry `ContentBlock
 - **`ToolUseContent`**, **`ToolResultContent`** — sampling-side tool blocks.
 - **`SamplingMessageContentBlock`** — a separate, narrower union used in `SamplingMessage`.
 
-`Content` was a v1 alias and is removed in v2 — use `ContentBlock`.
+`Content` was a v1 alias and is removed in v2 — use [`ContentBlock`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L1054).
 
-Type-narrowing pattern:
+Type-narrowing pattern (see [`TextContent`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L883)):
 
 ```python
 from mcp.types import TextContent
@@ -103,12 +103,12 @@ if isinstance(content, TextContent):
 
 ## Resource URIs are now `str`
 
-In v1, resource URI fields used Pydantic's `AnyUrl`, which validates the value matches a URL grammar and rejects relative paths like `users/me`. The MCP spec defines URIs as plain strings (any well-formed URI reference), so v2 changed:
+In v1, resource URI fields used Pydantic's `AnyUrl`, which validates the value matches a URL grammar and rejects relative paths like `users/me`. The MCP spec defines URIs as plain strings (any well-formed URI reference), so v2 changed (see [`Resource.uri`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L632-L665)):
 
 - `Resource.uri`, `ReadResourceRequestParams.uri`, `ResourceContents.uri`, `TextResourceContents.uri`, `BlobResourceContents.uri`, `SubscribeRequestParams.uri`, `UnsubscribeRequestParams.uri`, `ResourceUpdatedNotificationParams.uri` — all now `str`.
 - `ClientSession.read_resource(uri)`, `.subscribe_resource(uri)`, `.unsubscribe_resource(uri)` — accept `str` only.
 
-If you have an `AnyUrl` instance from elsewhere, convert with `str(my_url)`.
+If you have an `AnyUrl` instance from elsewhere, convert with `str(my_url)`. Source: [`src/mcp/types/_types.py#L707-L810`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L707-L810).
 
 ## Removed type aliases
 
@@ -122,7 +122,7 @@ If you have an `AnyUrl` instance from elsewhere, convert with `str(my_url)`.
 
 ## `_meta` is the only extension field
 
-MCP protocol types no longer accept arbitrary extra fields at the top level. This matches the spec: extra fields are allowed only inside `_meta`. Attempting top-level extras raises a Pydantic ValidationError now:
+MCP protocol types no longer accept arbitrary extra fields at the top level. This matches the spec: extra fields are allowed only inside [`_meta`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L48-L79). Attempting top-level extras raises a Pydantic ValidationError now:
 
 ```python
 # Fails in v2
@@ -149,18 +149,18 @@ JSON-RPC 2.0 error code constants are top-level in `mcp.types`:
 - `INTERNAL_ERROR = -32603`
 - `URL_ELICITATION_REQUIRED = -32042` (MCP-specific)
 
-`ErrorData` is the wire shape; `MCPError` is the Python exception that wraps it (constructor `MCPError(code, message, data=None)`).
+[`ErrorData`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/jsonrpc.py#L55) is the wire shape; [`MCPError`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/shared/exceptions.py#L8-L13) is the Python exception that wraps it (constructor `MCPError(code, message, data=None)`).
 
 ## Tasks (experimental — see experimental-tasks reference)
 
-The task-related type names (`CreateTaskResult`, `GetTaskResult`, `CancelTaskRequest`, `TaskExecutionMode`, `TASK_STATUS_*` literals, `TASK_FORBIDDEN`/`OPTIONAL`/`REQUIRED` literals) are exported from `mcp.types` even though the implementation is in `mcp.server.experimental`. They track the draft spec — names and shapes can change without notice.
+The task-related type names ([`CreateTaskResult`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L459), `GetTaskResult`, `CancelTaskRequest`, `TaskExecutionMode`, `TASK_STATUS_*` literals, `TASK_FORBIDDEN`/`OPTIONAL`/`REQUIRED` literals) are exported from `mcp.types` even though the implementation is in `mcp.server.experimental`. They track the draft spec — names and shapes can change without notice.
 
 ## `_types.py` is huge — when to read it
 
-The full file is ≈1778 lines. Read it when:
+The full [`_types.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py) is ≈1778 lines. Read it when:
 
 - You need to know whether a model has a field you can't find via autocomplete (Pydantic 2 has strict field listings).
 - You're debugging a Pydantic ValidationError and want to see the exact field constraints.
 - You need to construct a less-common type (`Annotations`, `Implementation`, `Icon` with theme, `BaseMetadata`).
 
-For everything else, the public `__init__.py` `__all__` list is the safe surface to import from.
+For everything else, the public [`__init__.py` `__all__`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/__init__.py#L207) list is the safe surface to import from.

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "sessions": [
+    {
+      "session_id": "selfaudit-20260528T001740Z",
+      "session_type": "SELF-AUDIT",
+      "at": "2026-05-28T00:19:23Z",
+      "findings": 1,
+      "auto_fixed": 1
+    }
+  ]
+}

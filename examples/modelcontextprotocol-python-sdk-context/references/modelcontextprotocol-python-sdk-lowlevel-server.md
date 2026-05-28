@@ -5,9 +5,9 @@ description: "Building MCP servers with the lowlevel `Server` class — construc
 
 # MCP Python SDK — Lowlevel `Server`
 
-The lowlevel `Server` class is the minimal-magic alternative to `MCPServer`. Use it when you need direct protocol control — every request and notification handler registered explicitly, no automatic content marshalling, no JSON Schema inference from type hints, and full access to typed `params` and `ctx`. In v2 it is intentionally bare: it provides no convenience layer, and the migration guide is blunt — "If you want these conveniences, use `MCPServer` (previously `FastMCP`) instead."
+The lowlevel [`Server`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L101-L115) class is the minimal-magic alternative to `MCPServer`. Use it when you need direct protocol control — every request and notification handler registered explicitly, no automatic content marshalling, no JSON Schema inference from type hints, and full access to typed `params` and `ctx`. In v2 it is intentionally bare: it provides no convenience layer, and the migration guide is blunt — "If you want these conveniences, use `MCPServer` (previously `FastMCP`) instead."
 
-Import paths:
+Import paths ([`src/mcp/server/__init__.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/__init__.py#L1-L6), [`src/mcp/server/lowlevel/__init__.py`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/__init__.py)):
 
 ```python
 from mcp.server import Server, ServerRequestContext
@@ -72,7 +72,7 @@ server = Server(
 
 ## Full handler reference
 
-All handlers receive `ctx: ServerRequestContext` as their first argument. The second is the typed params (`None`-allowed where the spec permits no params). Return types are the full result objects from `mcp.types`. The constructor kwarg name in the right-hand column is what you pass to `Server(...)`.
+All handlers receive `ctx: ServerRequestContext` as their first argument. The second is the typed params (`None`-allowed where the spec permits no params). Return types are the full result objects from `mcp.types`. The constructor kwarg name in the right-hand column is what you pass to `Server(...)`. ([`src/mcp/server/lowlevel/server.py#L117-L186`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L117-L186))
 
 | Operation | Constructor kwarg | `params` type | Return type |
 |---|---|---|---|
@@ -91,11 +91,11 @@ All handlers receive `ctx: ServerRequestContext` as their first argument. The se
 | Progress notification | `on_progress` | `ProgressNotificationParams` | `None` |
 | Roots list-changed | `on_roots_list_changed` | `NotificationParams \| None` | `None` |
 
-Notification handlers (`on_progress`, `on_roots_list_changed`) return `None`. Request handlers return their result type — never `list[Tool]` or `dict`. Capabilities are inferred from which handlers you provide; for example, supplying `on_subscribe_resource` correctly advertises `resources.subscribe: true` in the initialize result (a v1 bug where this was hardcoded `false` is fixed).
+Notification handlers (`on_progress`, `on_roots_list_changed`) return `None`. Request handlers return their result type — never `list[Tool]` or `dict`. Capabilities are inferred from which handlers you provide; for example, supplying `on_subscribe_resource` correctly advertises `resources.subscribe: true` in the initialize result (a v1 bug where this was hardcoded `false` is fixed). ([`src/mcp/server/lowlevel/server.py#L283-L328`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L283-L328))
 
 ## Returning results — no automatic wrapping
 
-In v1, returning a `dict` from a `@server.call_tool()` handler auto-wrapped into `structured_content` + a JSON `TextContent`. In v2, you build the result:
+In v1, returning a `dict` from a `@server.call_tool()` handler auto-wrapped into `structured_content` + a JSON `TextContent`. In v2, you build the result ([`src/mcp/server/lowlevel/server.py#L122-L126`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L122-L126)):
 
 ```python
 import json
@@ -110,7 +110,7 @@ async def handle_call_tool(
     )
 ```
 
-For `on_read_resource`, you build `TextResourceContents` or `BlobResourceContents` directly. Binary content must be base64-encoded by you:
+For `on_read_resource`, you build [`TextResourceContents`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L738-L745) or [`BlobResourceContents`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L748-L752) directly. Binary content must be base64-encoded by you:
 
 ```python
 import base64
@@ -128,11 +128,11 @@ async def handle_read(
     )
 ```
 
-The deprecated `str`/`bytes` shorthand return types for `read_resource` are removed.
+The deprecated `str`/`bytes` shorthand return types for `read_resource` are removed. ([`src/mcp/server/lowlevel/server.py#L137-L141`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L137-L141))
 
 ## Streamable HTTP from the lowlevel
 
-A v2 new feature: `streamable_http_app()` is exposed directly on `Server`, not just on `MCPServer`. This lets you run the lowlevel server over Streamable HTTP without the `MCPServer` wrapper:
+A v2 new feature: [`streamable_http_app()`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L562-L578) is exposed directly on `Server`, not just on `MCPServer`. This lets you run the lowlevel server over Streamable HTTP without the `MCPServer` wrapper:
 
 ```python
 server = Server("my-server", on_list_tools=handle_list_tools)
@@ -143,18 +143,18 @@ app = server.streamable_http_app(
 )
 ```
 
-`server.session_manager` (a `StreamableHTTPSessionManager`) is accessible after `streamable_http_app()` is called.
+[`server.session_manager`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/lowlevel/server.py#L345-L357) (a `StreamableHTTPSessionManager`) is accessible after `streamable_http_app()` is called.
 
 ## `ServerRequestContext`
 
-`ctx: ServerRequestContext` (from `mcp.server.context` or re-exported as `mcp.server.ServerRequestContext`) carries:
+[`ctx: ServerRequestContext`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/context.py#L17-L23) (from `mcp.server.context` or re-exported as `mcp.server.ServerRequestContext`) carries:
 
 - `ctx.session` — `ServerSession` for sending notifications, log messages, progress updates.
 - `ctx.lifespan_context` — the value yielded by your lifespan async-context-manager.
 - `ctx.experimental` — `ExperimentalHandlers` (currently only `enable_tasks()`).
 - `ctx.request_id`, `ctx.meta` — request-scoped data (`None` in notification handlers).
 
-`ctx.meta` is now a `RequestParamsMeta` TypedDict, not a Pydantic model. Read fields via dict access:
+`ctx.meta` is now a [`RequestParamsMeta`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/types/_types.py#L48) TypedDict, not a Pydantic model. Read fields via dict access:
 
 ```python
 if ctx.meta and "progress_token" in ctx.meta:
@@ -168,4 +168,4 @@ if ctx.meta and "progress_token" in ctx.meta:
 - You want to skip the JSON Schema generation overhead of `MCPServer` for hot paths.
 - You want zero magic — auto-wrapping, decorator metadata, ambient contextvars are all surface area for confusion. `Server` has none of it.
 
-Most servers should still use `MCPServer`. The lowlevel is the precise tool, not the default.
+Most servers should still use [`MCPServer`](https://github.com/modelcontextprotocol/python-sdk/blob/3eb579948a4719d606d2adbd1f3f69371c9c0f48/src/mcp/server/mcpserver/server.py#L129). The lowlevel is the precise tool, not the default.

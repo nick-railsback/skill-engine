@@ -25,31 +25,31 @@ Plus an [`llms.txt`](https://github.com/langchain-ai/langchain-aws/blob/b175d5ab
 - **Amazon Bedrock Nova Sonic** — `ChatBedrockNovaSonic` for the speech model.
 - **SageMaker Endpoints** — `SagemakerEndpoint` LLM class for custom-deployed models.
 
-**Retrieval / RAG** (`langchain-aws`):
+**Retrieval / RAG** (`langchain-aws`, retriever classes re-exported from [`langchain_aws/__init__.py`](https://github.com/langchain-ai/langchain-aws/blob/b175d5ab0c51412ecf4e4a18404bb03bd64764ab/libs/aws/langchain_aws/__init__.py)):
 
 - **Amazon Kendra** — `AmazonKendraRetriever`.
 - **Amazon Bedrock Knowledge Bases** — `AmazonKnowledgeBasesRetriever`.
 - **Amazon S3 Vectors** — `AmazonS3VectorsRetriever` and `AmazonS3Vectors` vector store.
 - **Amazon MemoryDB** / **Amazon ElastiCache Valkey** — `InMemoryVectorStore`, `ValkeyVectorStore`, `InMemorySemanticCache`.
 
-**Graph databases** (`langchain-aws`):
+**Graph databases** (`langchain-aws`, lazy-imported from [`langchain_aws/__init__.py`](https://github.com/langchain-ai/langchain-aws/blob/b175d5ab0c51412ecf4e4a18404bb03bd64764ab/libs/aws/langchain_aws/__init__.py)):
 
 - **Amazon Neptune** — `NeptuneGraph`, `NeptuneAnalyticsGraph`, plus the `create_neptune_opencypher_qa_chain` and `create_neptune_sparql_qa_chain` helpers.
 
-**Agents and tools** (`langchain-aws`):
+**Agents and tools** (`langchain-aws`, in [`libs/aws/`](https://github.com/langchain-ai/langchain-aws/tree/b175d5ab0c51412ecf4e4a18404bb03bd64764ab/libs/aws)):
 
 - **Amazon Bedrock Agents** — Runnables to integrate Bedrock-hosted agents into LangChain / LangGraph flows.
 - **Amazon Bedrock AgentCore Browser** — `create_browser_toolkit(region=...)` returns a toolkit for managed browser automation (navigation, content extraction, form fill, screenshots).
 - **Amazon Bedrock AgentCore Code Interpreter** — `create_code_interpreter_toolkit(region=...)` for sandboxed code execution as a tool. (Distinct from the Deep Agents sandbox backend in the third package — same underlying service, different integration shape.)
 
-**Persistence / state** (`langgraph-checkpoint-aws`):
+**Persistence / state** (`langgraph-checkpoint-aws`, in [`libs/langgraph-checkpoint-aws/`](https://github.com/langchain-ai/langchain-aws/tree/b175d5ab0c51412ecf4e4a18404bb03bd64764ab/libs/langgraph-checkpoint-aws)):
 
 - **AgentCore Memory** — checkpoint saver and a long-term memory store.
 - **Bedrock Session Management** — checkpoint saver.
 - **DynamoDB** — checkpoint saver.
 - **ElastiCache Valkey** — checkpoint saver and memory store.
 
-**Sandboxes** (`langchain-agentcore-codeinterpreter`):
+**Sandboxes** (`langchain-agentcore-codeinterpreter`, in [`libs/agentcore-codeinterpreter/`](https://github.com/langchain-ai/langchain-aws/tree/b175d5ab0c51412ecf4e4a18404bb03bd64764ab/libs/agentcore-codeinterpreter)):
 
 - **AgentCore Code Interpreter** as a Deep Agents `execute` backend. The `AgentCoreSandbox` wrapper takes a `bedrock_agentcore.tools.code_interpreter_client.CodeInterpreter` instance and exposes the protocol Deep Agents expects.
 
