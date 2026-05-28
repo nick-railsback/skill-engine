@@ -6,6 +6,8 @@ This chapter ships the measurement primitive the engine has been missing. Withou
 
 **Short answer:** every contextualizer carries a small set of `evals/evals.json` queries co-located with its navigator skill; a harness runs each query three times against the navigator and records pass/fail per run; a renderer aggregates the runs, stratifies by persona, and reports deltas between two invocations. The eval set is split 70/30 train/test once and never regenerated. The framework is bash + JSON + a single-file HTML viewer, plus the agent CLI you are already running the navigator through (the engine's runtime — not a third-party dependency on top of it).
 
+Grounding-side coverage — paragraph→permalink density (Check 7) and grounded-citation rate (Check 8) — is a different question and is documented in [chapter 13](./13-coverage-testing.md). This chapter is about *routing*: did the navigator's description match the query? Chapter 13 is about *grounding*: are the references that got routed actually anchored to upstream, and does the model emit the anchor when it answers?
+
 ## When to read this chapter
 
 Read this chapter when:

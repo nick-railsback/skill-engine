@@ -115,7 +115,7 @@ describing how you'd want to use it.
 
 ## Where this is in its life
 
-This is v0.2.1. There is one worked example, one maintainer who built it because
+This is v0.2.1. There are three worked examples, one maintainer who built it because
 he needed it and it did not yet exist.
 
 If you've ever stood in front of a codebase that outlived its authors, or
@@ -153,7 +153,7 @@ graph LR
   style R fill:#475569,stroke:#1e293b,color:#fff,stroke-width:2px
 ```
 
-- **Lint** — ≥80% of load-bearing paragraphs carry a permalink within 5 lines.
+- **Lint** — ≥80% of load-bearing paragraphs carry a permalink within 5 lines ([methodology](./plugin/skill-engine/docs/13-coverage-testing.md); GitHub-permalink density is a git-source metric; web-doc / multi-source verifiability is out of scope for this gate).
 - **SHA-pinning** — every snapshot records the commit it was reviewed against.
 - **Drift surfacing** — stale snapshots fail loudly, not silently.
 - **Hooks audit** — `make hooks-audit` ([workflow](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml)) asserts the bundled settings ship zero hooks and the plugin declares only the single `SessionStart` bootstrap; any hook creep fails the check, not a reviewer's memory.

@@ -149,7 +149,11 @@ pinned) GitHub permalink within 5 lines. The check is scoped to
 `$CTX_ROOT/references/**/*.md` only — the navigator (`$CTX_ROOT/SKILL.md`)
 is a router and is intentionally out of scope, the same way the `verify.sh`
 SHA-pin invariant carves out navigator prose. Companion files under
-`references/` participate on equal footing with primaries.
+`references/` participate on equal footing with primaries. GitHub-permalink
+density is a git-source metric; web-doc / multi-source verifiability is
+out of scope for this gate. The methodology — what the metric measures,
+what it deliberately does not measure, and the live numbers across the
+bundled `examples/` — is documented in [chapter 13](../../docs/13-coverage-testing.md).
 
 **Threshold.** ≥80% corpus-wide coverage required to PASS. The threshold
 was sourced from the AI-1 measurement that motivated the check: 46.9%
@@ -233,7 +237,11 @@ did the answering model both (a) open ≥1 reference via the
 GitHub permalink in its final response text? The check is the empirical
 counterpart to Check 7's corpus-side density: Check 7 asks whether the
 references *contain* permalinks near load-bearing prose; Check 8 asks
-whether the model *emits* one when it answers.
+whether the model *emits* one when it answers. The grader runs keyless
+and deterministically — verified against 17/17 mocked cases with no
+API calls; the live rate is per-contextualizer and downstream. See [chapter 13](../../docs/13-coverage-testing.md)
+for the methodology, mocked-vs-live distinction, and the live-run recipe
+for a forker supplying their own `eval-prompts.json`.
 
 **Opt-in.** Check 8 makes paid Anthropic API calls (~$0.01–$0.05 per run,
 sometimes more for long prompt corpora or many references). Unlike Checks

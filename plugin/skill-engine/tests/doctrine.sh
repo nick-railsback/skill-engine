@@ -241,6 +241,55 @@ if [ -n "$sentinel_imbalance" ]; then
   fail=1
 fi
 
+# 6. README example-count claim matches reality.
+# Doctrine: the cardinal count of worked examples named in README.md prose
+# must equal the actual `examples/<slug>/SKILL.md` count. Drift means the
+# README is lying to readers about the corpus shape. The README claim is
+# unbolded ("There are three worked examples, …") per the current README
+# prose direction; the grep maps a small set of cardinal words to digits
+# and compares. If the README ever moves to a numeric form ("There are 3
+# …"), extend the matcher; for now the cardinal form is what ships. The
+# cardinal map ceiling is currently `ten`; a fork running with 11+
+# bundled examples must extend the map (loud-fail with "unrecognized
+# cardinal" alerts that this needs doing).
+#
+# Hidden-directory guard: `find -not -path '*/.*'` so an in-progress
+# `examples/.draft/SKILL.md` does not inflate `actual_count`.
+#
+# Multi-match guard: if the README contains more than one
+# "there (are|is) <word> worked example(s)" sentence, fail rather than
+# letting `head -1` silently swallow a second contradictory claim. The
+# whole point of this check is to detect drift.
+REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
+readme_matches=$(grep -oiE 'there (are|is) [a-z]+ worked examples?' \
+  "$REPO_ROOT/README.md" 2>/dev/null)
+readme_match_count=$(printf '%s\n' "$readme_matches" | grep -c . 2>/dev/null || echo 0)
+readme_cardinal=$(printf '%s\n' "$readme_matches" | head -1 | awk '{ print tolower($3) }')
+actual_count=$(find "$REPO_ROOT/examples" -maxdepth 2 -name SKILL.md -not -path '*/.*' 2>/dev/null | wc -l | tr -d ' ')
+case "$readme_cardinal" in
+  one)   claimed=1 ;;
+  two)   claimed=2 ;;
+  three) claimed=3 ;;
+  four)  claimed=4 ;;
+  five)  claimed=5 ;;
+  six)   claimed=6 ;;
+  seven) claimed=7 ;;
+  eight) claimed=8 ;;
+  nine)  claimed=9 ;;
+  ten)   claimed=10 ;;
+  *)     claimed=-1 ;;
+esac
+if [ "$readme_match_count" -gt 1 ]; then
+  echo "FAIL: README example-count claim is multi-stated ($readme_match_count matches) — drift risk; reconcile to a single sentence."
+  fail=1
+elif [ "$claimed" = "-1" ]; then
+  echo "FAIL: README example-count claim not found or unrecognized cardinal (looked for 'there (are|is) <word> worked example(s)' with <word> in one..ten)."
+  fail=1
+elif [ "$claimed" != "$actual_count" ]; then
+  echo "FAIL: README example-count claim ($readme_cardinal = $claimed) does not match actual ($actual_count) examples/*/SKILL.md."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
