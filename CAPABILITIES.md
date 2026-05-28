@@ -8,7 +8,8 @@ overrides both. The unit of value is not "a skill that knows your repo." It is
 *the navigator that composes them*: per-domain contextualizers, each expert in
 one source, assembled into a single skill that holds their disagreements as
 output, stays accurate against its upstreams, and audits itself when it drifts.
-The rest of this document is the proof.
+The [README](./README.md) makes the one-paragraph case for that; the rest of
+this document is the proof.
 
 ## Contents
 
@@ -19,18 +20,15 @@ The rest of this document is the proof.
 - [How it gets built](#how-it-gets-built) — DISCOVER, source-paths.json, bootstrap scaffolding
 - [How it handles failure](#how-it-handles-failure) — archived, renamed, deleted, transient, permanent
 - [How it's distributed](#how-its-distributed) — plugin install, hand-rolled, per-contextualizer CLI
-- [How human review fits](#how-human-review-fits) — proposal–validate–approve, gates, SHA audit trail
-- [Appendix — The eight workflows](#appendix--the-eight-workflows) — command reference
+- [How human review fits](#how-human-review-fits) — propose–review–promote, gates, SHA audit trail
+- [Appendix — Command reference](#appendix--command-reference) — every slash command and what it does
 
 ---
 
 ## How it synthesizes across sources
 
-A navigator skill earns its keep when a single question touches four sources
-at once and the answer has to hold all four in tension — the older intent in
-the design doc, the newer correction in the changelog, the monorepo
-constraint that overrides both, the external spec that everyone forgot was
-canonical. Skill-engine produces skills that do this by composing per-domain
+A navigator skill earns its keep precisely when no single source has the whole
+answer. Skill-engine produces skills that meet that bar by composing per-domain
 contextualizers, each one expert in its own source, each one written so the
 others can stand next to it without overlap. A careful prompt with four
 pasted documents collapses under the fifth; a navigator built this way
@@ -59,8 +57,7 @@ decides what matters, writes references that cite their origins by
 `(source_id, path, sha)` triple, and the navigator's catalog maps each
 reference back to the sources it draws from. Reasoning across that graph
 happens at query time — when Claude answers a question that touches four
-sources at once, it holds the tensions between them: the older intent, the
-newer correction, the constraint that overrides both.
+sources at once, it holds the tensions between them.
 
 This is what the Solutions Engineer persona depends on. Five competing
 payment protocols plus a business-context skill collapse into one reasoning
@@ -234,7 +231,7 @@ so a finding from one doesn't dilute a finding from another.
 
 See also: [How it stays accurate](#how-it-stays-accurate) (for drift
 detection of the underlying sources), [How human review fits](#how-human-review-fits)
-(for the proposal-validate-approve loop).
+(for the propose–review–promote loop).
 
 ---
 
@@ -513,8 +510,8 @@ plugin for the marketplace.
 
 `/plugin marketplace add nick-railsback/skill-engine` registers the repo as
 a marketplace; `/plugin install skill-engine@skill-engine-marketplace`
-stamps eight commands into the Claude Code session under `/skill-engine:`.
-From that point forward, `/skill-engine:engine-bootstrap`,
+stamps the engine's commands into the Claude Code session under
+`/skill-engine:`. From that point forward, `/skill-engine:engine-bootstrap`,
 `/skill-engine:discover`, and the rest are available in any session. This
 is the lowest-friction path for a Claude Code user already inside the
 environment, and it's the path the project README's quickstart recommends.
@@ -581,29 +578,41 @@ choice, not a safety bolt-on — the contents of a contextualizer become
 Claude's source of truth for an entire domain, and silent propagation of
 wrong content is a worse failure than five minutes of review.
 
-### The proposal-validate-approve loop
+### The propose–review–promote loop
 
-Three workflows share this loop: DISCOVER, REFRESH, and SELF-AUDIT's
-optional fix flow. The engine proposes a change, runs the pre-approval
-validations against an isolated sandbox copy (no stray frontmatter, catalog
-bijection holds, `./verify.sh` passes), and only then surfaces a unified
-diff plus a one-line rationale per file for human review. The reviewer
-responds with `APPROVE`, `DEFER`, or `REJECT`. On approve, the engine
-writes the working tree and records the session in
-`research/.engine-stats.json`. (Per-reference SHA-256 fixture refresh is
-pre-fixture-harness aspirational; the pre-fixture-harness state has no fixture-refresh step.) On reject, the
-proposal is logged to `research/.rejection-log.json` with a
-maintainer-provided rationale; at the next session activation, the engine
-clusters rejections by `category × reference` and surfaces a warning when
-the same pattern crosses three rejections — so the agent sees its own
-mistakes before proposing again.
+The reviewer gate takes two shapes, depending on what is changing. DISCOVER
+and REFRESH stage their work into a sibling `<slug>-context.proposed/`
+directory rather than touching the live contextualizer; the run ends with a
+"Proposal staged at `<slug>-context.proposed/`" line, and promotion is a
+separate, explicit step. `/skill-engine:review <slug>` drives a
+predict-then-compare sign-off — the engine surfaces the manifest and the diff
+command, the reviewer records in `REVIEW.md` what they expect each changed
+file to say, and a second pass generates the points where prediction and
+reality diverge. Only a signed-off proposal can be promoted by
+`/skill-engine:apply <slug>` (atomic per-file rename, with `REVIEW.md` carried
+into the live tree as an audit trail) or dropped by
+`/skill-engine:discard <slug>`. SELF-AUDIT's optional fix flow uses the
+lighter in-session shape instead: deterministic fixes are drafted on an
+isolated sandbox copy at `/tmp/skill-engine-validate-<session-id>/` and
+surfaced inline for an explicit `APPROVE` / `DEFER` / `REJECT`.
+
+Both shapes share the same two hard gates — pre-approval validation must pass
+(no stray frontmatter, catalog bijection holds, `./verify.sh` passes), and
+nothing reaches the live tree without explicit human approval. On approval the
+engine records the session in `research/.engine-stats.json`. (Per-reference
+SHA-256 fixture refresh is pre-fixture-harness aspirational; the
+pre-fixture-harness state has no fixture-refresh step.) On rejection the
+proposal is logged to `research/.rejection-log.json` with a maintainer-provided
+rationale; at the next session activation the engine clusters rejections by
+`category × reference` and surfaces a warning when the same pattern crosses
+three rejections — so the agent sees its own mistakes before proposing again.
 
 ### Per-workflow review gates
 
-Each workflow has its own approval surface, scoped to its operational
-shape. DISCOVER's gate is "should this companion source be confirmed,
-should this reference land." REFRESH's gate is "this source moved; is the
-re-emission correct." SELF-AUDIT's optional fix flow gates the deterministic
+Each workflow frames its gate around its own operational question.
+DISCOVER's is "should this companion source be confirmed, should this
+reference land." REFRESH's is "this source moved; is the re-emission
+correct." SELF-AUDIT's optional fix flow gates the deterministic
 auto-fixes (stale-date refresh, catalog-row sync to the frontmatter
 canonical) while leaving judgment-required findings (broken URLs, scope
 drift, cross-reference accuracy) as recommendations the human acts on
@@ -645,19 +654,24 @@ See also: [How it stays accurate](#how-it-stays-accurate),
 
 ---
 
-## Appendix — The eight workflows
+## Appendix — Command reference
 
-The eight slash commands under `/skill-engine:` and what each does.
-Operational detail lives in each workflow's `SKILL.md`; this appendix is
-the index.
+The slash commands under `/skill-engine:` and what each does, in roughly the
+order a contextualizer's lifecycle visits them — scaffold, propose, review,
+audit, maintain. Operational detail lives in each workflow's `SKILL.md`; this
+appendix is the index.
 
 | Command | What it does | Read more |
 |---|---|---|
 | `/skill-engine:engine-bootstrap` | Scaffolds a fresh contextualizer skeleton into `.claude/skills/<slug>-context/`. | [SKILL.md](./plugin/skill-engine/skills/engine-bootstrap/SKILL.md) |
-| `/skill-engine:discover` | Goal-given reference generation: reads registered sources and emits references that satisfy the four invariants. | [SKILL.md](./plugin/skill-engine/skills/discover/SKILL.md) |
-| `/skill-engine:refresh` | Drift-triggered re-emission: re-checks SHAs, proposes updated references for review. | [SKILL.md](./plugin/skill-engine/skills/refresh/SKILL.md) |
-| `/skill-engine:self-audit` | Five drift checks on the artifact: stale dates, broken URLs, long-untouched references, catalog drift, cross-reference accuracy. | [SKILL.md](./plugin/skill-engine/skills/self-audit/SKILL.md) |
+| `/skill-engine:discover` | Goal-given reference generation: reads registered sources and stages references that satisfy the four invariants for review. | [SKILL.md](./plugin/skill-engine/skills/discover/SKILL.md) |
+| `/skill-engine:refresh` | Drift-triggered re-emission: re-checks SHAs, stages updated references for review. | [SKILL.md](./plugin/skill-engine/skills/refresh/SKILL.md) |
 | `/skill-engine:new-reference` | Single-reference addition without a full DISCOVER pass. | [SKILL.md](./plugin/skill-engine/skills/new-reference/SKILL.md) |
+| `/skill-engine:review` | Inspects a staged proposal (`<slug>-context.proposed/`) and drives the predict-then-compare sign-off in `REVIEW.md` before anything is promoted. | [SKILL.md](./plugin/skill-engine/skills/review/SKILL.md) |
+| `/skill-engine:apply` | Promotes a signed-off proposal into the live contextualizer — atomic per-file rename, preserving the `REVIEW.md` audit trail. | [SKILL.md](./plugin/skill-engine/skills/apply/SKILL.md) |
+| `/skill-engine:discard` | Drops a staged proposal without promoting it, leaving the live contextualizer untouched. | [SKILL.md](./plugin/skill-engine/skills/discard/SKILL.md) |
+| `/skill-engine:self-audit` | Five drift checks on the artifact: stale dates, broken URLs, long-untouched references, catalog drift, cross-reference accuracy. | [SKILL.md](./plugin/skill-engine/skills/self-audit/SKILL.md) |
 | `/skill-engine:status` | Read-only health report: which references are fresh, stale, or critical. | [SKILL.md](./plugin/skill-engine/skills/status/SKILL.md) |
 | `/skill-engine:clean-cache` | Opt-in deletion of the local clone cache (dry-runs by default). | [SKILL.md](./plugin/skill-engine/skills/clean-cache/SKILL.md) |
+| `/skill-engine:config-set` | Sets an engine-wide config value (currently the `review` diff tool). | [SKILL.md](./plugin/skill-engine/skills/config-set/SKILL.md) |
 | `/skill-engine:using-skill-engine` | Router for "do something with the engine here" intent; dispatches to the right workflow based on contextualizer state. | [SKILL.md](./plugin/skill-engine/skills/using-skill-engine/SKILL.md) |

@@ -12,13 +12,13 @@ them, and where the reasons are worth writing down so the answer isn't
 The engine's chapters describe what the engine *does*. This document
 describes what was *deliberately not built*.
 
-## Eight workflows under one plugin
+## One plugin, not two
 
 The alternative considered was shipping a separate scaffolder as its own
 plugin, so the once-used setup workflow wouldn't sit in `~/.claude/plugins/`
 forever. The call came down to plugin discovery: two plugins is two pieces
 of context the user keeps, and the second one is a permanent reminder of a
-workflow they ran once. The decision was one plugin — eight workflows under
+workflow they ran once. The decision was one plugin — every workflow under
 one name, smart entry-point routing on first run, no eviction problem.
 
 A related call inside the same surface: the cache lifecycle moves through

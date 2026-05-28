@@ -4,7 +4,7 @@
 
 You're reading this because you installed the plugin. Here's what just happened:
 
-- Eight commands are now available under `/skill-engine:` — bootstrap, discover, refresh, self-audit, new-reference, status, clean-cache, using-skill-engine.
+- The engine's commands are now available under `/skill-engine:` — scaffold (`engine-bootstrap`), propose (`discover`, `refresh`, `new-reference`), review and promote (`review`, `apply`, `discard`), and inspect or maintain (`self-audit`, `status`, `clean-cache`, `config-set`), plus the `using-skill-engine` router.
 - On first bootstrap, the engine may ask whether to pre-clone referenced repos into `~/.cache/skill-engine/`. It defaults to **No**. The engine works without the cache; pre-cloning is purely an optimization, though highly recommended.
 - The engine never auto-applies a change by default. Every proposed edit surfaces for review.
 
