@@ -255,10 +255,17 @@ of truth.
 
 **N/A behavior.** When `eval-prompts.json` is absent or carries 0
 prompts, Check 8 emits `[N/A]` and exits 0 without calling the API.
-Contextualizers with no eval corpus pay nothing. When the file exists
-but its schema is invalid (e.g., missing `prompts` key, missing required
-prompt fields), Check 8 emits `[FAIL]` rather than silently skipping —
-a malformed corpus would otherwise look identical to "no corpus."
+Contextualizers with no eval corpus pay nothing. An absent or zero-prompt
+corpus is a clean, terminal N/A — a check that does not apply, not a
+finding — so the auditor records the status line and stops there, without
+recommending that anyone author a corpus or otherwise framing the absence
+as outstanding work. Authoring an eval corpus is the maintainer's
+discretionary curation, never something SELF-AUDIT requests; a corpus that
+is present but scores below threshold is the only Check 8 state that earns
+a remediation line. When the file exists but its schema is invalid (e.g.,
+missing `prompts` key, missing required prompt fields), Check 8 emits
+`[FAIL]` rather than silently skipping — a malformed corpus would
+otherwise look identical to "no corpus."
 
 **Dependency.** Check 8 requires the `anthropic` Python SDK
 (and `httpx`, which `anthropic` pulls in). The engine does not ship a
