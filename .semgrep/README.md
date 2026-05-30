@@ -80,17 +80,14 @@ documentation are `WARNING`.
   `pattern-not-regex` carve-out skips lines that already pin a version
   (`==`, `>=`, etc.) or install editable/local/requirements targets.
 
-  **Documented floats (inline `nosemgrep`).** Two skill-authored lines float
-  deliberately and carry an inline `<!-- nosemgrep: skill-content-unpinned-pip-install -->`
+  **Documented floats (inline `nosemgrep`).** One skill-authored line floats
+  deliberately and carries an inline `<!-- nosemgrep: skill-content-unpinned-pip-install -->`
   — the rule message's own "or document why it floats" escape, applied
   surgically rather than excluding whole files:
   - `skills/self-audit/SKILL.md` — `pip install anthropic`. The `anthropic`
     SDK is the *user's* dependency for the opt-in Check 8 eval; the engine
     ships no Python manifest and should not pin the user's SDK in install
     guidance, so the install line tracks whatever current version they have.
-  - `docs/examples/astro-langchain-conversation.md` — `pip install langchain`.
-    Narrative prose describing a dependency's transitive behavior, not an
-    install instruction to pin.
 
 ## Path carve-outs
 
