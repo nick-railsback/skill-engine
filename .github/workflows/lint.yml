@@ -102,7 +102,7 @@ jobs:
           for refs in examples/*/references; do
             [ -d "$refs" ] || continue
             echo "== $refs =="
-            python3 plugin/skill-engine/tests/permalink_density.py "$refs" --threshold 0.80 --min-paragraphs 5
+            python3 plugin/skill-engine/tests/permalink_density.py "$refs" --threshold 0.80 --min-paragraphs 5 --require-min-paragraphs
           done
       - name: Validate example eval corpora (grounded-rate dry-run)
         run: |
