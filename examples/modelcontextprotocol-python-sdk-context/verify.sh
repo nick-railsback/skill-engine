@@ -71,6 +71,48 @@ run_check() {
   printf '\n=== %s ===\n' "$1"
 }
 
+# Strip HTML comments from markdown on stdin, comment-robustly. Used by the
+# catalog-bijection (Check 4) and skill-json-trijection (Check 9) checks so a
+# `(references/foo.md)` link inside a comment is not counted as a catalog row —
+# and, just as important, so a *live* catalog row is never dropped by a stray
+# comment marker. It handles:
+#   - same-line `<!-- ... -->`, several per line and comments flanking a link,
+#     via a shortest-match index() loop (a greedy `s/<!--.*-->//` would eat the
+#     link sitting between two comments);
+#   - genuine multi-line `<!-- ... -->` blocks (e.g. a commented-out draft row),
+#     tracked across lines with an in_block flag.
+# A dangling `<!--` (no closing `-->` on its line) opens a block only when it
+# begins the line (modulo leading whitespace); a dangling `<!--` appearing
+# mid-line — e.g. literal text in a table cell — is left as-is, so that row and
+# every row after it survive. The single shape this does not catch (a block
+# opener placed mid-line *after* a complete inline comment on the same line) is
+# never emitted by the engine, and catching it would re-drop the stray-marker
+# rows this exists to preserve. POSIX awk only (index/substr/sub) for portability.
+strip_md_comments() {
+  awk '
+  {
+    line = $0
+    if (in_block) {
+      idx = index(line, "-->")
+      if (idx == 0) { next }
+      line = substr(line, idx + 3)
+      in_block = 0
+    }
+    while ((s = index(line, "<!--")) > 0) {
+      rest = substr(line, s + 4)
+      e = index(rest, "-->")
+      if (e == 0) break
+      line = substr(line, 1, s - 1) substr(rest, e + 3)
+    }
+    if (line ~ /^[[:space:]]*<!--/ && index(line, "-->") == 0) {
+      sub(/<!--.*/, "", line)
+      in_block = 1
+    }
+    print line
+  }
+  '
+}
+
 if ! command -v jq >/dev/null 2>&1; then
   printf 'verify.sh requires jq. Install via your package manager (brew install jq; apt install jq).\n' >&2
   exit 2
@@ -428,15 +470,13 @@ elif [ "$nav_ok" -ne 1 ]; then
 else
   nav_skill="$CTX_ROOT/SKILL.md"
 
-  # Strip same-line `<!-- ... -->` comments first (s///g), THEN delete
-  # multi-line comment blocks (range d). Order matters: the bare range
-  # `/<!--/,/-->/d` mishandles an inline comment whose `<!--` and `-->`
-  # share a line — sed opens the range on that line and does not close it
-  # until a LATER line matches `-->` (or EOF), silently deleting every
-  # catalog row after an inline comment (e.g. a trailing
-  # `<!-- nosemgrep: ... -->` on a catalog row). The leading s///g removes
-  # the inline comment so the line no longer triggers the range.
-  nav_stripped=$(sed -E 's/<!--.*-->//g; /<!--/,/-->/d' "$nav_skill" 2>/dev/null)
+  # Remove HTML comments before harvesting catalog links, so a commented-out
+  # row does not count and an inline annotation (e.g. a trailing
+  # `<!-- nosemgrep: ... -->`) does not drop the live row it sits on. See
+  # strip_md_comments above for why this is an awk state machine and not a
+  # `sed s/<!--.*-->//g; /<!--/,/-->/d` (greedy same-line match, and a range
+  # that over-deletes to EOF on an inline comment).
+  nav_stripped=$(strip_md_comments < "$nav_skill" 2>/dev/null)
 
   # Catalog targets: extract `(references/<inner>)`, trim whitespace,
   # classify into FILE:<slug> / DIR:<slug>, and emit specific diagnostics
@@ -1099,9 +1139,9 @@ fi
 # Catalog extraction is anchored to the `## Catalog` block (or per-source
 # `## Catalog: <slug>` blocks) via awk so `(references/foo.md)` links
 # elsewhere in SKILL.md prose don't get harvested as phantom catalog tags.
-# HTML-comment strip inside the catalog block bails to a `warn` if the
-# block has unbalanced `<!--` vs `-->` markers (avoids sed-range
-# over-delete on a malformed catalog).
+# HTML comments inside the catalog block are removed by strip_md_comments (the
+# same comment-robust helper Check 4 uses), so a commented-out draft row is not
+# counted and a live row carrying an inline annotation is not dropped.
 #
 # All `sort` and `comm` calls run under `LC_ALL=C` for collation
 # stability across user locales. `grep -qFx -- "$tag"` uses `--` so a
@@ -1148,16 +1188,12 @@ else
         in_cat { print }
       ' "$sj_md" 2>/dev/null)
 
-      cb_open=$(printf '%s\n' "$catalog_block" | grep -c '<!--' 2>/dev/null || true)
-      cb_close=$(printf '%s\n' "$catalog_block" | grep -c -- '-->' 2>/dev/null || true)
-      if [ "$cb_open" != "$cb_close" ]; then
-        warn "skill-json-trijection [$ctx_slug]: SKILL.md catalog block has unbalanced HTML comment markers ($cb_open <!-- vs $cb_close -->); skipping comment-strip"
-        catalog_stripped="$catalog_block"
-      else
-        # Same inline-comment-safe strip as Check 4 (see note there): remove
-        # same-line `<!-- ... -->` before deleting multi-line comment ranges.
-        catalog_stripped=$(printf '%s\n' "$catalog_block" | sed -E 's/<!--.*-->//g; /<!--/,/-->/d')
-      fi
+      # Same comment-robust strip as Check 4 (see strip_md_comments above). The
+      # block fed in here is already scoped to `## Catalog` / `## Catalog: <slug>`
+      # by the awk pass above, so a comment that opens inside the catalog and
+      # closes in a later `## ` section is bounded to the block — correct within
+      # the trijection's scope.
+      catalog_stripped=$(printf '%s\n' "$catalog_block" | strip_md_comments)
 
       md_tags=$(printf '%s\n' "$catalog_stripped" | { grep -oE '\(references/[^)]+\.md\)' 2>/dev/null || true; } | sed -E 's|^\(references/(.+)\.md\)$|\1|' | LC_ALL=C sort -u)
 
