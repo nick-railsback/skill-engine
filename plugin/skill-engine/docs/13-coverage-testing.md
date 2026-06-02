@@ -59,7 +59,7 @@ The test runner at `plugin/skill-engine/tests/grounded-rate/run.sh` exercises th
 
 ### What is not here, and why
 
-There is **no committed `eval-prompts.json`** in this repo. The file is a per-contextualizer downstream artifact: committing one to the engine repo would couple the engine to a single contextualizer's prompt set, invite gaming (the grader sees the prompts), and churn whenever an example is re-snapshotted. Check 8 therefore reports `[N/A]` against this repo by design, and the rate the engine prints for the bundled `examples/` is unmeasured live. The grader being verified deterministically is the engine-side claim; what a forker's contextualizer actually scores is downstream territory.
+The engine ships **no single canonical `eval-prompts.json`**. The prompt set is a per-contextualizer downstream artifact: committing one shared corpus to the engine would couple it to a single contextualizer's prompt set, invite gaming (the grader sees the prompts), and churn whenever an example is re-snapshotted. The bundled MCP example carries its own `research/eval-prompts.json` and a recorded `research/eval-results.md` as a worked demonstrator — that is the 30% → 90% live measurement noted above; the other examples ship none, so Check 8 reports `[N/A]` against them by design. The grader being verified deterministically is the engine-side claim; what a forker's contextualizer actually scores is downstream territory.
 
 ### Live-run recipe (for a forker)
 
