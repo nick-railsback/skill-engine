@@ -193,7 +193,8 @@ All three emit `[WARN]` (not `[FAIL]`); the reviewer remains the
 backstop trust mechanism. The same three heuristics live in the
 contextualizer-side `verify.sh` the plugin stamps at bootstrap
 (`plugin/skill-engine/engine-bootstrap-templates/verify.sh`), so the
-consumer's contextualizer enforces them on every invocation.
+same heuristics are available in the contextualizer's `verify.sh`, run on
+demand by the user or CI.
 
 ## Cadence
 

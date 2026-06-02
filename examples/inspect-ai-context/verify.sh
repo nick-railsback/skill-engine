@@ -428,7 +428,15 @@ elif [ "$nav_ok" -ne 1 ]; then
 else
   nav_skill="$CTX_ROOT/SKILL.md"
 
-  nav_stripped=$(sed -E '/<!--/,/-->/d' "$nav_skill" 2>/dev/null)
+  # Strip same-line `<!-- ... -->` comments first (s///g), THEN delete
+  # multi-line comment blocks (range d). Order matters: the bare range
+  # `/<!--/,/-->/d` mishandles an inline comment whose `<!--` and `-->`
+  # share a line — sed opens the range on that line and does not close it
+  # until a LATER line matches `-->` (or EOF), silently deleting every
+  # catalog row after an inline comment (e.g. a trailing
+  # `<!-- nosemgrep: ... -->` on a catalog row). The leading s///g removes
+  # the inline comment so the line no longer triggers the range.
+  nav_stripped=$(sed -E 's/<!--.*-->//g; /<!--/,/-->/d' "$nav_skill" 2>/dev/null)
 
   # Catalog targets: extract `(references/<inner>)`, trim whitespace,
   # classify into FILE:<slug> / DIR:<slug>, and emit specific diagnostics
@@ -1146,7 +1154,9 @@ else
         warn "skill-json-trijection [$ctx_slug]: SKILL.md catalog block has unbalanced HTML comment markers ($cb_open <!-- vs $cb_close -->); skipping comment-strip"
         catalog_stripped="$catalog_block"
       else
-        catalog_stripped=$(printf '%s\n' "$catalog_block" | sed -E '/<!--/,/-->/d')
+        # Same inline-comment-safe strip as Check 4 (see note there): remove
+        # same-line `<!-- ... -->` before deleting multi-line comment ranges.
+        catalog_stripped=$(printf '%s\n' "$catalog_block" | sed -E 's/<!--.*-->//g; /<!--/,/-->/d')
       fi
 
       md_tags=$(printf '%s\n' "$catalog_stripped" | { grep -oE '\(references/[^)]+\.md\)' 2>/dev/null || true; } | sed -E 's|^\(references/(.+)\.md\)$|\1|' | LC_ALL=C sort -u)

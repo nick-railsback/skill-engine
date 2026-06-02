@@ -72,3 +72,20 @@ jobs:
         run: bash plugin/skill-engine/tests/permalink-density/run.sh
       - name: Run grounded-rate tests
         run: bash plugin/skill-engine/tests/grounded-rate/run.sh
+      - name: Run verify-bijection tests
+        run: bash plugin/skill-engine/tests/verify-bijection/run.sh
+      - name: Verify bundled example contextualizers
+        run: |
+          set -e
+          for v in examples/*/verify.sh; do
+            echo "== $v =="
+            bash "$v"
+          done
+      - name: Permalink density on example references
+        run: |
+          set -e
+          for refs in examples/*/references; do
+            [ -d "$refs" ] || continue
+            echo "== $refs =="
+            python3 plugin/skill-engine/tests/permalink_density.py "$refs" --threshold 0.80 --min-paragraphs 5
+          done

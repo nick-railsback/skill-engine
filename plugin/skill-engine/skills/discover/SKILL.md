@@ -260,14 +260,22 @@ When `/skill-engine:discover` is invoked:
 
    ```bash
    # ref = source entry's "branch" if present, else HEAD
-   sha=$(git ls-remote "<url>" "<ref>" | cut -f1)
+   # Refuse an unsafe source_id before it becomes a cache path component
+   # (mirrors engine-bootstrap Step 3.5).
+   case "<source_id>" in
+     ""|-*|*[!a-z0-9-]*)
+       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2
+       exit 0 ;;
+   esac
+   # `--` terminates git option parsing so a '-'-leading url is not read as a flag.
+   sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
    mkdir -p ~/.cache/skill-engine/git-managed/
    dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
    tmpdir="${dest}.tmp.$$"
    if [ "<ref>" = "HEAD" ]; then
-     git clone --depth=1 --filter=blob:none "<url>" "$tmpdir"
+     git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"
    else
-     git clone --depth=1 --filter=blob:none --branch "<ref>" "<url>" "$tmpdir"
+     git clone --depth=1 --filter=blob:none --branch "<ref>" -- "<url>" "$tmpdir"
    fi && mv "$tmpdir" "$dest" || rm -rf "$tmpdir"
    ```
 

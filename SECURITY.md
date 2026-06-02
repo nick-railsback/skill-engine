@@ -25,6 +25,14 @@ What these checks do *not* do, and are not meant to:
 - **No prompt-injection detection.** Nothing here inspects upstream content for instructions aimed at the assistant.
 - **No SLSA provenance or SBOM.** See "What this policy does not promise" below.
 
+### Threat model: untrusted upstream content
+
+This is the risk that most defines `skill-engine`, so it is named here rather than buried in a bullet. The engine's entire purpose is to ingest upstream content — a repository's README, a docs page, a crawled documentation site — and turn it into a contextualizer that becomes Claude's *source of truth* for a domain. That is exactly the setup a prompt-injection attacker wants: text that an assistant will later read and may act on. A malicious or compromised upstream can embed instructions aimed at the assistant ("ignore prior guidance and…", a fake "convention" that exfiltrates secrets, a doctored code sample) and, if that content lands in a contextualizer unreviewed, every downstream answer rooted in it is suspect.
+
+**The control is human review, and it is the *only* control.** The engine does not scan upstream content for injection, and no static analysis can reliably detect adversarial natural language. What stands between a poisoned upstream and a poisoned contextualizer is the reviewer-in-the-loop model: every reference enters as a *proposal*, a human compares it against the version it replaces before it is promoted, and each accepted snapshot is pinned to the upstream SHA it was reviewed against.
+
+**The honest residual.** That control is *process-enforced, not sandbox-enforced.* The engine ships no auto-apply code path and every workflow routes changes through review — but the guarantee is the operator (and the assistant) actually performing that review, not a mechanism that makes skipping it impossible. Treat a proposal sourced from an upstream you do not control with the scrutiny you would give a pull request from a stranger: read the diff, not just the summary. Pin to reviewed SHAs, and re-review on drift rather than rubber-stamping a refresh.
+
 ### The one hook we ship, and why we ship no others
 
 The plugin declares exactly one hook: a `SessionStart` bootstrap hook, declared inline in the plugin manifest's `hooks` key (`plugin/skill-engine/.claude-plugin/plugin.json`). It does one thing — hydrate the engine's own state. On a fresh session it creates `${CLAUDE_PLUGIN_DATA}/state/current.json` if it is absent, validates that it parses as JSON if it is present, and emits a one-line notice on stderr. It guards on `CLAUDE_PLUGIN_DATA` and `jq` being available, touches only the plugin's own data directory, and always exits 0, so it can never block a session. The inline-`hooks` form is idiomatic per the official plugin examples ([`anthropics/claude-plugins-official`](https://github.com/anthropics/claude-plugins-official)) and conforms to the current plugin-manifest schema.

@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml) [![Hooks Audit](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml) [![Version](https://img.shields.io/badge/version-v0.3.0-blue)](https://github.com/nick-railsback/skill-engine/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Scans: bandit · semgrep · shellcheck](https://img.shields.io/badge/scans-bandit%20%C2%B7%20semgrep%20%C2%B7%20shellcheck-475569)](https://github.com/nick-railsback/skill-engine/blob/main/.github/workflows/security.yml)
 
-skill-engine turns the repos and docs of your given domain area into a Claude a skill
+skill-engine turns the repos and docs of your given domain area into a Claude skill
 you can use elsewhere — registering each source in `source-paths.json`,
 cloning it to `~/.cache/skill-engine/` on your confirmation, and generating a
 contextualizer skill that loads its index on demand.
@@ -15,7 +15,7 @@ contextualizer skill that loads its index on demand.
 >
 > Then the turn: the *method* generalized even though the bespoke tool didn't. So I built this general, plug-and-play repo independently from the same ideas.
 >
-> Each use surfaced the next gap the spec hadn't addressed: drift detection, multi-source synthesis, reviewer gates, evaluation, coverage testing. Each gap is now closed.
+> Each use surfaced the next gap the spec hadn't addressed: drift detection, multi-source synthesis, reviewer gates, evaluation, coverage testing. Each gap is addressed in the engine that follows.
 
 **Same question. Two different realities.**
 
@@ -36,18 +36,19 @@ Claude: Use register_route() in src/api/routing.py — that's the single
         decorators will silently skip tracing.
 ```
 
-**→ [Get started in 2 minutes](#quickstart)**
+**→ [Quickstart — a working contextualizer in ~20 min](#quickstart)**
 
 ## What this is
 
 Anthropic publishes [a spec](https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf) for giving Claude reusable
 skills — directories of markdown files Claude reads on demand. Skill-engine is the
-operational infrastructure that makes that spec production-grade for real codebases:
-multi-source synthesis, drift detection, reviewer gates, and a self-auditing eval
-layer the spec never had to provide.
+operational infrastructure that extends that spec for real, multi-repo codebases:
+multi-source synthesis, drift detection, reviewer gates, and a self-audit
+layer (drift checks plus grounded-rate and permalink-density metrics) the
+spec never had to provide.
 
-If pip is to PEPs what Kubernetes is to container primitives — skill-engine is that
-layer for Anthropic's skill-directory pattern.
+If pip is the operational layer on top of Python's packaging PEPs, skill-engine
+is that layer for Anthropic's skill-directory pattern.
 
 ## The load-bearing capability
 
@@ -86,8 +87,9 @@ default; future versions may add opt-in autonomy flags for low-risk operations.
 
 **[source-paths.json — a schema, not a config file](./CAPABILITIES.md#how-it-gets-built).** Four first-class source
 kinds (`git-managed`, `external-doc`, `web-doc` (documentation sites crawled
-via WebFetch / MCP fetch), `local-path`) with a machine-readable schema other
-tools can conform to. The schema is the contract.
+via WebFetch / MCP fetch), `local-path`) with a validated shape — required
+fields and enum constraints per kind — that `verify.sh` enforces at audit
+time. The contract is enforced, not just declared.
 
 [**→ Full capabilities reference**](./CAPABILITIES.md)
 
@@ -101,6 +103,10 @@ Two ways in, depending on what you want.
 - **[Usage modes](./docs/usage-modes.md)** — the shapes the engine takes
   across different kinds of work. Useful for recognizing your own situation
   before reaching for a case study.
+- **[Worked example: `langchain-context`](./examples/langchain-context/)** — the
+  multi-source claim made concrete: eight registered sources (LangChain,
+  LangGraph, LangSmith, LangChain-AWS/Google, deepagents, the JS port) behind
+  one navigator. Run its `verify.sh` to confirm the contract holds.
 
 ## Where this is in its life
 
@@ -129,7 +135,9 @@ snapshot records the upstream commit SHA it was reviewed against, so the
 bundle carries its own provenance. When upstream moves past a pinned
 snapshot, drift surfaces loudly rather than silently — and surfaces back
 through the reviewer, not around them. The engine never mutates git state on
-the user's behalf. Reviewer-in-the-loop is not a setting; it is the only mode.
+the user's behalf. Reviewer-in-the-loop is the only mode the engine
+implements: there is no auto-apply code path, and every workflow routes a
+proposed change through review before it lands.
 
 ```mermaid
 graph LR
@@ -168,10 +176,10 @@ Twenty minutes from a fresh Claude Code session to a working contextualizer.
 ## What this plugin reads and writes
 
 - Writes per-skill context files under `.claude/skills/<slug>-context/`
-  in your project (including a `verify.sh` that runs on every invocation
-  of the contextualizer — see below).
+  in your project (including a `verify.sh` you or CI run to audit the
+  contextualizer's artifacts — see below).
 - Writes cloned source repositories under `~/.cache/skill-engine/<source_id>-<sha>/`,
-  only after you type `y` at the opt-in prompt.
+  only after you confirm at the per-source opt-in prompt (default: no).
 - Reads from paths registered in `source-paths.json` — nothing else on
   disk, nothing over the network beyond those clones.
 
