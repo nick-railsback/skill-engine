@@ -19,7 +19,7 @@ this document is the proof.
 - [How you evaluate it](#how-you-evaluate-it) — three runs, 70/30 split, three-persona stratification, drop-in templates
 - [How it gets built](#how-it-gets-built) — DISCOVER, source-paths.json, bootstrap scaffolding
 - [How it handles failure](#how-it-handles-failure) — archived, renamed, deleted, transient, permanent
-- [How it's distributed](#how-its-distributed) — plugin install, hand-rolled, per-contextualizer CLI
+- [How it's distributed](#how-its-distributed) — plugin install, hand-rolled, Claude Desktop
 - [How human review fits](#how-human-review-fits) — propose–review–promote, gates, SHA audit trail
 - [Appendix — Command reference](#appendix--command-reference) — every slash command and what it does
 
@@ -528,45 +528,49 @@ special CLI, no SDK boilerplate. The engine's "infrastructure" is the
 model's ability to follow a system prompt; anything fancier is something
 else to maintain.
 
-### Per-contextualizer CLI installer
+### Use a contextualizer in Claude Desktop
 
-Each contextualizer ships its own bash CLI at `bin/<area-domain>-context`
-that copies the navigator skill plus references into `.claude/skills/`,
-writes a `.<area-domain>-metadata.json` file recording exactly what was
-installed, and supports `install`, `update`, `package`, and `clean` verbs.
-The CLI is the reliable path when plugin-marketplace flakiness (Issue
-#46594) leaves users on stale versions with no in-product signal. It is
-scriptable, has explicit error codes, and surfaces what it did to the user
-on every invocation. Desktop zips ship two artifacts per release: a
-version-stamped one and a stable-named `<area-domain>-context.zip` for
-`/releases/latest/download/` URLs that survive versioning.
+A contextualizer is a self-contained skill directory — the navigator
+`SKILL.md` plus its `references/` — so it runs anywhere Claude Code skills
+do, including Claude Desktop. There is no separate installer to build: to add
+one to Desktop, zip the skill directory and upload it.
 
-### Version sync across surfaces
+1. Zip the contextualizer's skill directory so the **top-level entry inside
+   the zip is the skill folder itself** (`<slug>-context/`), not a nested
+   path — Desktop's upload rejects nested-path zips. From the directory that
+   contains it: `zip -r <slug>-context.zip <slug>-context -x '*.DS_Store'`.
+2. In Claude Desktop, open the skill upload (Settings → Capabilities →
+   Skills) and add the zip.
+3. The skill is then available the same way it is in Claude Code.
 
-The version string lives in three places per contextualizer — the CLI
-script's header comment, the CLI's `VERSION` variable, and
-`.claude-plugin/plugin.json` — and the release checklist in
-[06-release-doctrine.md](plugin/skill-engine/docs/06-release-doctrine.md)
-bumps all three together. The pre-fixture-harness state relies on eyeball-review of the bump diff
-to catch a missed surface; a fourth surface — a `verify.sh`
-version-consistency check that would enforce match automatically — is
-fixture-harness planned. When a contextualizer depends on a specific skill-engine
-engine version, the artifact contract surfaces the mismatch rather than
-letting a maintainer see one version in the CLI and a different one in the
-navigator.
+Once installed, the contextualizer **answers entirely from its bundled
+references** — the navigator reads `references/*.md` on demand. No engine
+install, no clone cache, and no network are needed at answer time: the
+`~/.cache/skill-engine/` clones and the engine workflows are authoring- and
+refresh-time only. (The exact Desktop menu path can shift between releases;
+confirm the current upload flow in Desktop's settings if it has moved.)
+
+### Version pinning across surfaces
+
+A published contextualizer carries one version string, in its
+`.claude-plugin/plugin.json`; bump it per the release checklist in
+[06-release-doctrine.md](plugin/skill-engine/docs/06-release-doctrine.md).
+Content freshness is tracked separately and more granularly: every source in
+`source-paths.json` pins to the reviewed upstream SHA it was last checked
+against (`lifecycle.last_checked_sha`), so "what revision of the upstream
+does this reference reflect" is answerable per source, not just per release.
+A refresh that finds drift surfaces the SHA delta in the proposed diff for
+review.
 
 ### What's deliberately not built
 
 No SaaS distribution. No hosted service. No auto-update beyond what the
-plugin marketplace itself offers. The engine has no telemetry — the CLI is
-fully offline. Code-signing the Desktop zip is out of scope; organizations
-that require it layer that on top. The constraint stack stays bash +
-markdown + JSON with `jq` as the only non-shell dependency, so the engine
-works the same way on every Tier 1 platform (macOS, Linux, WSL2) without a
-portability matrix.
-
-See also: [How it handles failure](#how-it-handles-failure) (for the
-plugin-update silent-failure mode the CLI is the workaround for).
+plugin marketplace itself offers. The engine has no telemetry, and makes no
+network calls beyond the source fetches you explicitly confirm. Code-signing
+the Desktop zip is out of scope; organizations that require it layer that on
+top. The constraint stack stays bash + markdown + JSON with `jq` as the only
+non-shell dependency, so the engine works the same way on every Tier 1
+platform (macOS, Linux, WSL2) without a portability matrix.
 
 ---
 

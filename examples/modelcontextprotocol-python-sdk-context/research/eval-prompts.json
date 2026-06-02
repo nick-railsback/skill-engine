@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "prompts": [
+    {
+      "id": "n01",
+      "category": "needs_reference",
+      "text": "What's the exact import path for the high-level server class in MCP Python SDK v2?"
+    },
+    {
+      "id": "n02",
+      "category": "needs_reference",
+      "text": "List the parameters of MCPServer.run() and their defaults."
+    },
+    {
+      "id": "n03",
+      "category": "needs_reference",
+      "text": "Walk me through the v1-to-v2 migration steps for a server that uses @tool decorators."
+    },
+    {
+      "id": "n04",
+      "category": "needs_reference",
+      "text": "What happens when an elicitation request times out — exact behavior?"
+    },
+    {
+      "id": "n05",
+      "category": "needs_reference",
+      "text": "Show me how to inject a custom Context instance into a tool handler."
+    },
+    {
+      "id": "n06",
+      "category": "needs_reference",
+      "text": "What's the recommended transport for serverless deployment and why?"
+    },
+    {
+      "id": "n07",
+      "category": "needs_reference",
+      "text": "Which lowlevel server hooks are exposed but not wrapped by MCPServer?"
+    },
+    {
+      "id": "n08",
+      "category": "needs_reference",
+      "text": "What's the OAuth callback URL convention this SDK expects?"
+    },
+    {
+      "id": "n09",
+      "category": "needs_reference",
+      "text": "What's the specific format of structured output for a tool returning Image or Audio?"
+    },
+    {
+      "id": "n10",
+      "category": "needs_reference",
+      "text": "What experimental task APIs exist as of the pinned SHA, and what's their stability marker?"
+    }
+  ]
+}

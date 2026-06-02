@@ -1,7 +1,9 @@
 # 04-Delivery
 
 A contextualizer that's only installable one way is a contextualizer that excludes some of its consumers.
-This chapter covers the three delivery surfaces, the CLI machinery that powers them, the metadata contract that lets future versions know what's installed, and the version-sync discipline that keeps all surfaces in lockstep.
+This chapter covers the delivery surfaces, an optional CLI-installer pattern, the metadata contract that lets future versions know what's installed, and the version-sync discipline that keeps surfaces in lockstep.
+
+> **Scope note — what the public engine actually ships.** This chapter documents the full delivery *pattern*, including a per-contextualizer CLI installer that the **predecessor** tool shipped. The public `skill-engine` engine does **not** generate that CLI. A contextualizer is a self-contained skill directory (navigator `SKILL.md` + `references/`) that needs no installer to run; the engine supports the **plugin-marketplace** path and the **Claude Desktop zip** path (see [CAPABILITIES.md](../../../CAPABILITIES.md#how-its-distributed)). Read the CLI sections below as an optional pattern a builder *can* adopt — not as something the engine produces. Where the text below says "the CLI is the primary path," read "within the optional CLI pattern."
 
 **Two-tier framing.** The contextualizer (this chapter's subject) sits inside the engine — the maintenance system described in [01-principles.md](01-principles.md#two-tier-architecture). The engine ships once; a contextualizer plugs into it per domain. Everything below assumes that frame.
 

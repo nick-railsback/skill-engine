@@ -17,24 +17,38 @@ contextualizer skill that loads its index on demand.
 >
 > Each use surfaced the next gap the spec hadn't addressed: drift detection, multi-source synthesis, reviewer gates, evaluation, coverage testing. Each gap is addressed in the engine that follows.
 
-**Same question. Two different realities.**
+**Same question, with and without the contextualizer.** A model answering from
+general training gives the LangChain agent recipe that was current a year ago;
+the contextualizer answers from the pinned sources and corrects it.
 
 ```
-You: What's the convention for adding a new API endpoint here?
+You: How do I build an agent in LangChain?
 
-Claude: In most frameworks you'd register a route on the app object —
-        Flask uses @app.route, FastAPI uses @router.get, Express uses
-        app.get(). Check your framework's docs for middleware patterns.
+Claude: Use initialize_agent() with an AgentType to wire up your tools, run
+        the loop with an AgentExecutor, and add a ConversationBufferMemory
+        for multi-turn state.
 ```
 
 ```
-You: What's the convention for adding a new API endpoint here?
+You: How do I build an agent in LangChain?
 
-Claude: Use register_route() in src/api/routing.py — that's the single
-        entrypoint. The gateway middleware at src/api/gateway.py:42
-        injects correlation IDs for every request, so bare @app.route
-        decorators will silently skip tracing.
+Claude: In the v1 `langchain` package, build it with create_agent() from
+        langchain.agents — that and AgentState are the only two top-level
+        exports now; initialize_agent, AgentExecutor, and the per-style
+        create_* constructors are gone. create_agent compiles a LangGraph
+        StateGraph, so you customize the loop with middleware
+        (human_in_the_loop, summarization, …) rather than constructor
+        flags, and state across calls needs a LangGraph checkpointer
+        (InMemorySaver / SqliteSaver / PostgresSaver), not
+        ConversationBufferMemory.
+
+        Sources: langchain-v1-agents.md · langgraph-overview.md · langchain-classic.md
 ```
+
+*Illustrative — but the "after" answer is grounded in the bundled
+[`langchain-context`](examples/langchain-context) example (8 sources): every API it
+names (`create_agent`, `AgentState`, the LangGraph `StateGraph` backing, middleware,
+checkpointers) is documented in the cited reference files.*
 
 **→ [Quickstart — a working contextualizer in ~20 min](#quickstart)**
 
@@ -87,9 +101,11 @@ default; future versions may add opt-in autonomy flags for low-risk operations.
 
 **[source-paths.json — a schema, not a config file](./CAPABILITIES.md#how-it-gets-built).** Four first-class source
 kinds (`git-managed`, `external-doc`, `web-doc` (documentation sites crawled
-via WebFetch / MCP fetch), `local-path`) with a validated shape — required
-fields and enum constraints per kind — that `verify.sh` enforces at audit
-time. The contract is enforced, not just declared.
+via WebFetch / MCP fetch), `local-path`) with a machine-readable
+[JSON Schema](plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json)
+other tools can validate against — required fields and enum constraints per
+kind, transcribed from the `verify.sh` contract and checked in CI. The
+contract is an artifact, not just prose.
 
 [**→ Full capabilities reference**](./CAPABILITIES.md)
 

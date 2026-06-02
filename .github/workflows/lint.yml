@@ -48,6 +48,21 @@ jobs:
               echo "Skipping $f (not present)"
             fi
           done
+      - name: Validate source-paths.json against its schema
+        run: |
+          set -e
+          python3 -m pip install --quiet check-jsonschema
+          schema="plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json"
+          echo "Meta-validating the schema"
+          check-jsonschema --check-metaschema "$schema"
+          targets=( "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template" )
+          for f in examples/*/research/source-paths.json; do
+            [ -f "$f" ] && targets+=( "$f" )
+          done
+          for f in "${targets[@]}"; do
+            echo "Validating $f against schema"
+            check-jsonschema --schemafile "$schema" "$f"
+          done
 
   doctrine:
     runs-on: ubuntu-latest
@@ -88,4 +103,12 @@ jobs:
             [ -d "$refs" ] || continue
             echo "== $refs =="
             python3 plugin/skill-engine/tests/permalink_density.py "$refs" --threshold 0.80 --min-paragraphs 5
+          done
+      - name: Validate example eval corpora (grounded-rate dry-run)
+        run: |
+          set -e
+          for ctx in examples/*/; do
+            [ -f "$ctx/research/eval-prompts.json" ] || continue
+            echo "== $ctx =="
+            python3 plugin/skill-engine/tests/grounded_rate.py "$ctx" --dry-run
           done

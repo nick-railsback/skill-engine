@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json",
+  "title": "skill-engine source-paths.json",
+  "description": "Registry of the upstream sources a contextualizer tracks. This file is the machine-readable transcription of the contract that verify.sh Check 1 (source-paths-shape) and Check 2 (source-entries) enforce at audit time. One semantic rule is not expressible in JSON Schema and remains enforced only by verify.sh: web-doc page_list URLs must share an origin with the source url. Schema evolution is additive — unknown keys are tolerated (additionalProperties is open) so older and newer files validate against the same contract.",
+  "type": "object",
+  "required": ["schema_version", "sources"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Additive evolution; v1 is still current."
+    },
+    "sources": {
+      "type": "array",
+      "description": "The tracked sources. May be empty (no sources registered yet).",
+      "items": { "$ref": "#/$defs/source" }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "description": "A single tracked source. Required: id, kind, status, lifecycle.state, and (per kind) at least one of url-or-path. Additive fields (archived, discovered_via, lifecycle.last_checked, etc.) are tolerated.",
+      "required": ["id", "kind", "status", "lifecycle"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable identifier. Used as a cache-path component at bootstrap, where it is additionally constrained to ^[a-z0-9][a-z0-9-]*$ before being interpolated into a filesystem path."
+        },
+        "kind": {
+          "enum": ["git-managed", "external-doc", "local-path", "web-doc"]
+        },
+        "status": {
+          "enum": ["intake", "proposed", "confirmed", "rejected"]
+        },
+        "url": {
+          "type": "string",
+          "description": "Source URL. Required for git-managed and web-doc; forbidden for external-doc and local-path."
+        },
+        "path": {
+          "type": "string",
+          "description": "Filesystem path. Required for external-doc and local-path; forbidden for web-doc."
+        },
+        "branch": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._/-]+$",
+          "description": "git-managed only; must be git-ref-safe. Absent ⇒ downstream code uses HEAD."
+        },
+        "lifecycle": {
+          "type": "object",
+          "required": ["state"],
+          "additionalProperties": true,
+          "properties": {
+            "state": {
+              "enum": ["reachable", "moved", "removed", "unknown"]
+            }
+          }
+        },
+        "crawl_mode": {
+          "enum": ["sitemap", "list"],
+          "description": "web-doc only. 'sitemap' crawls from a sitemap; 'list' crawls an explicit page_list."
+        },
+        "crawl_budget": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000,
+          "description": "web-doc only; max pages to crawl."
+        },
+        "sitemap_url": {
+          "type": "string",
+          "description": "web-doc crawl_mode 'sitemap' only; not allowed when crawl_mode is 'list'."
+        },
+        "page_list": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "web-doc crawl_mode 'list' only. Each URL must share an origin with the source url (origin equality is enforced by verify.sh, not this schema)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "git-managed" } } },
+          "then": { "required": ["url"], "properties": { "url": { "minLength": 1 } } }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "web-doc" } } },
+          "then": {
+            "required": ["url", "crawl_mode"],
+            "properties": { "url": { "minLength": 1 } },
+            "not": { "required": ["path"] }
+          }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "external-doc" } } },
+          "then": {
+            "required": ["path"],
+            "properties": { "path": { "minLength": 1 } },
+            "not": { "required": ["url"] }
+          }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "local-path" } } },
+          "then": {
+            "required": ["path"],
+            "properties": { "path": { "minLength": 1 } },
+            "not": { "required": ["url"] }
+          }
+        },
+        {
+          "if": { "required": ["branch"] },
+          "then": { "properties": { "kind": { "const": "git-managed" } } }
+        },
+        {
+          "if": { "required": ["crawl_mode"] },
+          "then": { "properties": { "kind": { "const": "web-doc" } } }
+        },
+        {
+          "if": { "required": ["crawl_mode"], "properties": { "crawl_mode": { "const": "list" } } },
+          "then": {
+            "required": ["page_list"],
+            "properties": { "page_list": { "minItems": 1 } },
+            "not": { "required": ["sitemap_url"] }
+          }
+        },
+        {
+          "if": { "required": ["crawl_mode"], "properties": { "crawl_mode": { "const": "sitemap" } } },
+          "then": { "not": { "required": ["page_list"] } }
+        }
+      ]
+    }
+  }
+}
