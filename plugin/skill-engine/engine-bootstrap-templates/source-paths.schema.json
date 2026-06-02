@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json",
   "title": "skill-engine source-paths.json",
-  "description": "Registry of the upstream sources a contextualizer tracks. This file is the machine-readable transcription of the contract that verify.sh Check 1 (source-paths-shape) and Check 2 (source-entries) enforce at audit time. One semantic rule is not expressible in JSON Schema and remains enforced only by verify.sh: web-doc page_list URLs must share an origin with the source url. Schema evolution is additive — unknown keys are tolerated (additionalProperties is open) so older and newer files validate against the same contract.",
+  "description": "Registry of the upstream sources a contextualizer tracks. This file is the machine-readable transcription of the contract that verify.sh Check 1 (source-paths-shape) and Check 2 (source-entries) enforce at audit time. One semantic rule is not expressible in JSON Schema and remains enforced only by verify.sh: web-doc page_list URLs must share an origin with the source url. Schema evolution is additive — unknown keys are tolerated (additionalProperties is open) so older and newer files validate against the same contract. Optional cross-axis fields (url/path/sitemap_url/page_list on the kinds where they are not required) accept an explicit null as equivalent to absent, matching verify.sh's `.field // \"\"` reading; the required field for each kind must still be a non-null value.",
   "type": "object",
   "required": ["schema_version", "sources"],
   "additionalProperties": true,
@@ -37,12 +37,12 @@
           "enum": ["intake", "proposed", "confirmed", "rejected"]
         },
         "url": {
-          "type": "string",
-          "description": "Source URL. Required for git-managed and web-doc; forbidden for external-doc and local-path."
+          "type": ["string", "null"],
+          "description": "Source URL. Required (non-null) for git-managed and web-doc; absent or explicit null for external-doc and local-path. An explicit null is treated as absent, matching verify.sh's `.url // \"\"` reading."
         },
         "path": {
-          "type": "string",
-          "description": "Filesystem path. Required for external-doc and local-path; forbidden for web-doc."
+          "type": ["string", "null"],
+          "description": "Filesystem path. Required (non-null) for external-doc and local-path; absent or explicit null for web-doc. An explicit null is treated as absent, matching verify.sh's `.path // \"\"` reading."
         },
         "branch": {
           "type": "string",
@@ -70,42 +70,39 @@
           "description": "web-doc only; max pages to crawl."
         },
         "sitemap_url": {
-          "type": "string",
-          "description": "web-doc crawl_mode 'sitemap' only; not allowed when crawl_mode is 'list'."
+          "type": ["string", "null"],
+          "description": "web-doc crawl_mode 'sitemap' only; absent or explicit null when crawl_mode is 'list'."
         },
         "page_list": {
-          "type": "array",
+          "type": ["array", "null"],
           "items": { "type": "string" },
-          "description": "web-doc crawl_mode 'list' only. Each URL must share an origin with the source url (origin equality is enforced by verify.sh, not this schema)."
+          "description": "web-doc crawl_mode 'list' only. Absent or explicit null when crawl_mode is 'sitemap'. Each URL must share an origin with the source url (origin equality is enforced by verify.sh, not this schema)."
         }
       },
       "allOf": [
         {
           "if": { "required": ["kind"], "properties": { "kind": { "const": "git-managed" } } },
-          "then": { "required": ["url"], "properties": { "url": { "minLength": 1 } } }
+          "then": { "required": ["url"], "properties": { "url": { "type": "string", "minLength": 1 } } }
         },
         {
           "if": { "required": ["kind"], "properties": { "kind": { "const": "web-doc" } } },
           "then": {
             "required": ["url", "crawl_mode"],
-            "properties": { "url": { "minLength": 1 } },
-            "not": { "required": ["path"] }
+            "properties": { "url": { "type": "string", "minLength": 1 }, "path": { "type": "null" } }
           }
         },
         {
           "if": { "required": ["kind"], "properties": { "kind": { "const": "external-doc" } } },
           "then": {
             "required": ["path"],
-            "properties": { "path": { "minLength": 1 } },
-            "not": { "required": ["url"] }
+            "properties": { "path": { "type": "string", "minLength": 1 }, "url": { "type": "null" } }
           }
         },
         {
           "if": { "required": ["kind"], "properties": { "kind": { "const": "local-path" } } },
           "then": {
             "required": ["path"],
-            "properties": { "path": { "minLength": 1 } },
-            "not": { "required": ["url"] }
+            "properties": { "path": { "type": "string", "minLength": 1 }, "url": { "type": "null" } }
           }
         },
         {
@@ -120,13 +117,12 @@
           "if": { "required": ["crawl_mode"], "properties": { "crawl_mode": { "const": "list" } } },
           "then": {
             "required": ["page_list"],
-            "properties": { "page_list": { "minItems": 1 } },
-            "not": { "required": ["sitemap_url"] }
+            "properties": { "page_list": { "type": "array", "minItems": 1 }, "sitemap_url": { "type": "null" } }
           }
         },
         {
           "if": { "required": ["crawl_mode"], "properties": { "crawl_mode": { "const": "sitemap" } } },
-          "then": { "not": { "required": ["page_list"] } }
+          "then": { "properties": { "page_list": { "type": "null" } } }
         }
       ]
     }
