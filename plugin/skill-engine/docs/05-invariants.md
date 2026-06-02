@@ -29,7 +29,7 @@ The engine runs the suite before surfacing changes for review.
 * [Hermetic test environment](#hermetic-test-environment)
 * [Suggested adoption order](#suggested-adoption-order)
 
-> **Pre-fixture-harness aspirational.** The byte-equality-fixture + `test/test-cli.sh` harness described in this chapter is the fixture-harness contract — not yet implemented in the pre-fixture-harness state. The pre-fixture-harness validation gate is the stamped `verify.sh` (catalog bijection, frontmatter discipline, link integrity, schema). The design below is preserved as the fixture-harness specification; expect Invariants 1 and 4 in particular to shift as the fixture-harness milestone lands.
+> **What ships today vs. the fixture-harness spec.** Not all eleven invariants below are enforced by the public engine, and the chapter is explicit about which is which. The stamped, shipped enforcement is the contextualizer-side `verify.sh` — it backs Invariants **2, 3, 8, 9, 10, and 11** (catalog bijection, frontmatter discipline, navigator-size budget, max-ref-depth, long-reference TOC, and the optional SKILL.json trijection). Invariants **1, 4, 6, and 7** (byte-equality fixture, version consistency, metadata-after-install, package-zip hygiene) belong to the **fixture-harness + optional-CLI pattern**: they assume the `bin/<area-domain>-context` installer and a `test/test-cli.sh` harness that the public engine does **not** generate (see the optional CLI pattern in [04-delivery.md](04-delivery.md)). They are preserved here as the fixture-harness specification for a builder who adopts that pattern — read them as design, not as gates the shipped engine runs — and expect Invariants 1 and 4 in particular to shift as the fixture-harness milestone lands.
 
 ## Test framework primitives
 
@@ -99,6 +99,8 @@ Six assertions plus a `run_test` runner. That's the whole framework. Add more as
 Each gets its own test below.
 
 ## Invariant 1: Byte-equality (with reverse-direction check)
+
+> *Specified, not shipped: this invariant assumes the optional CLI / fixture-harness pattern the public engine doesn't generate — `verify.sh` does not enforce it (see the chapter banner above).*
 
 The single most load-bearing test. It pins reference content to a committed checksum fixture so that any unintended content drift fails CI.
 
@@ -292,6 +294,8 @@ The BOM-stripping step is a defensive measure — some editors silently inject a
 
 ## Invariant 4: Version consistency across 4 surfaces
 
+> *Specified, not shipped: this invariant assumes the optional CLI / fixture-harness pattern the public engine doesn't generate — `verify.sh` does not enforce it (see the chapter banner above).*
+
 The version string lives in four places (see [04-delivery.md#4-place-version-sync](04-delivery.md)). All four must agree.
 
 ```bash
@@ -361,6 +365,8 @@ Companion files are exempt from this cap - they're optional deep-dives. Apply th
 
 ## Invariant 6: Metadata schema after install
 
+> *Specified, not shipped: this invariant assumes the optional CLI / fixture-harness pattern the public engine doesn't generate — `verify.sh` does not enforce it (see the chapter banner above).*
+
 This test exercises the actual install pipeline end-to-end in a hermetic temp directory. If `create_metadata()` regresses (writes malformed JSON, drops a field), this catches it.
 
 ```bash
@@ -397,6 +403,8 @@ test_metadata_schema_after_install() {
 ```
 
 ## Invariant 7: Package zip hygiene
+
+> *Specified, not shipped: this invariant assumes the optional CLI / fixture-harness pattern the public engine doesn't generate — `verify.sh` does not enforce it (see the chapter banner above).*
 
 After running `<area-domain>-context package`, the resulting zip should:
 * Have `<area-domain>-context/` as the top-level entry (not `skills/<area-domain>-context/`)

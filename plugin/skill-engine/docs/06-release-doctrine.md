@@ -4,6 +4,8 @@ This chapter covers two related concerns: how the artifact gets released, and th
 
 ## Release process
 
+> **Scope note — CLI steps are the optional pattern.** The public `skill-engine` engine carries its version in **one** surface (`.claude-plugin/plugin.json`) and distributes through the plugin marketplace and the Claude Desktop zip (the manual `zip` in [04-delivery.md](04-delivery.md#surface-3-desktop-zip)). The CLI-specific steps below — the `# Version:` / `VERSION=` surfaces and the `bin/<area-domain>-context package` artifact build — belong to the **optional CLI pattern** a builder may adopt (see [04-delivery.md](04-delivery.md#surface-1-cli-installer-optional-pattern)), not to something the engine generates. Where a step says "all N surfaces," read it as "`plugin.json`, plus the CLI / test surfaces only if you adopted that pattern."
+
 ### Semantic versioning, applied to a contextualizer
 
 Standard MAJOR.MINOR.PATCH, but adapted to what changes in a contextualizer mean:
@@ -11,7 +13,7 @@ Standard MAJOR.MINOR.PATCH, but adapted to what changes in a contextualizer mean
 | Version bump | When |
 |---|---|
 | **MAJOR** (e.g., 1.0.0 -> 2.0.0) | Breaking change to the install layout, the metadata schema, or the navigator structure. Triggers a legacy-upgrade flow on existing installs. |
-| **MINOR** (e.g., 1.0.0 -> 1.1.0) | New CLI feature, new reference file added to the catalog, new engine workflow. |
+| **MINOR** (e.g., 1.0.0 -> 1.1.0) | New reference file added to the catalog, a new engine workflow (or a new CLI feature, under the optional CLI pattern). |
 | **PATCH** (e.g., 1.0.0 -> 1.0.1) | Reference content updates, bug fixes, doc fixes that change what users see after running update. |
 
 **A subtle case: what about internal changes that don't affect users?** Engine refactors, tooling tweaks, doc-only updates to the contextualizer itself (not the references it ships). Those go into `[Unreleased]` (see CHANGELOG conventions below) and roll into the next release - not a separate patch bump.
@@ -21,16 +23,17 @@ Standard MAJOR.MINOR.PATCH, but adapted to what changes in a contextualizer mean
 Eight steps, in order. Most are scriptable; treat the whole thing as a manual checklist for the first dozen releases until the muscle memory is reliable, then automate selectively.
 
 1. **Decide the version.** Pick MAJOR/MINOR/PATCH from the table above. If unclear, ask: "what would surprise a user about this update?" Surprise = bigger bump.
-2. **Bump version in all 3 surfaces** (see [04-delivery.md#4-place-version-sync](04-delivery.md)):
-   * CLI script header comment: `# Version: X.Y.Z`
-   * CLI script `VERSION="X.Y.Z"` variable
-   * `.claude-plugin/plugin.json` `"version": "X.Y.Z"`
-   * (fixture-harness planned: a `verify.sh` version-consistency check would make this the fourth surface.)
+2. **Bump the version** (see [04-delivery.md#4-place-version-sync](04-delivery.md)):
+   * `.claude-plugin/plugin.json` `"version": "X.Y.Z"` — **always** (the engine's one version surface)
+   * CLI script header comment: `# Version: X.Y.Z` — *optional CLI pattern only*
+   * CLI script `VERSION="X.Y.Z"` variable — *optional CLI pattern only*
+   * (fixture-harness planned: a `verify.sh` version-consistency check would add a further surface.)
 3. **Update CHANGELOG.md.** Move any `[Unreleased]` entries under a new `[X.Y.Z] - YYYY-MM-DD` header. Add new entries for any release-only changes.
 4. **Run the validator.** `./verify.sh` must pass with `Failed: 0`. Version-consistency belongs to the fixture-harness milestone; until then, eyeball-review the diff in step 5 to catch a missed bump.
 5. **Commit and push the version bump.** One commit, message like `chore(release): vX.Y.Z`. Push to your default branch.
-6. **Build the release artifacts.**
+6. **Build the release artifacts.** The Desktop zip is the engine-supported artifact — build it with the manual `zip` from [04-delivery.md](04-delivery.md#surface-3-desktop-zip) (top-level entry = the skill folder). If you adopted the optional CLI pattern, `bin/<area-domain>-context package` automates the same zip:
    ```bash
+   # optional CLI pattern:
    bin/<area-domain>-context package
    # produces <area-domain>-context-vX.Y.Z.zip and <area-domain>-context.zip (stable name)
    ```
@@ -61,7 +64,7 @@ Treat these as manual approval gates. Do not chain them into a single automated 
 
 1. **Preflight** - tools present, host CLI authed, working tree clean, current branch noted, tests pass
 2. **Version resolution** - read current VERSION, compute next, display current -> new, pause for confirmation
-3. **Bump the four version surfaces** - CLI header, CLI variable, `plugin.json`, test assertion
+3. **Bump the version surfaces** - `plugin.json` always; the CLI header, CLI variable, and test assertion only if you adopted the optional CLI pattern
 4. **Draft the CHANGELOG entry** - collect commits since last tag, render in your house style, pause for human edit
 5. **Re-run tests** - test version consistency is the gate that catches missed bumps
 6. **Commit (destructive gate #1)** - single commit `chore(release): vX.Y.Z`, show the diff, pause before push

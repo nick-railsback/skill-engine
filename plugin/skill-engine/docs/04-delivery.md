@@ -19,23 +19,25 @@ A contextualizer is shaped by two scope questions, decided before the first refe
 
 For source-root topology — single-repo vs. multi-repo, monorepo workspace vs. sibling repositories — see [01-principles.md](01-principles.md#source-root-topology). Topology and scope are independent axes.
 
-## The case for shipping all three surfaces - and not just the plugin marketplace
+## The case for multiple delivery surfaces - and not just the plugin marketplace
 
-This falls out of [Issue #46594](https://github.com/anthropics/claude-code/issues/46594) (covered in [01-principles.md](01-principles.md)): plugin update is unreliable, so the CLI must remain the trustworthy primary path. Plugin marketplace is added convenience. Desktop zip is for users who don't have a terminal or who prefer the Desktop app's native skill UI.
+This falls out of [Issue #46594](https://github.com/anthropics/claude-code/issues/46594) (covered in [01-principles.md](01-principles.md)): `/plugin update` is unreliable, so a single-surface plan is fragile. The public engine ships **two** surfaces — the plugin marketplace (one-line install in Claude Code) and the Desktop zip (for users who don't have a terminal or who prefer the Desktop app's native skill UI). A builder who adopts the **optional CLI pattern** below gains a third, scriptable path; within that pattern the CLI is the trustworthy primary path precisely because `/plugin update` can't be relied on. Read the CLI sections that follow as that optional pattern — not as a surface the engine generates.
 
 ## Three delivery surfaces
 
 | Surface | Best for | Update story |
 |---|---|---|
-| **CLI installer** | Engineers who already work in a terminal; scripted/automated installs | `<area-domain>-context update` re-runs the install |
 | **Plugin marketplace** | Engineers in Claude Code who want one-line install | `/plugin update` (with caveat that this is currently unreliable per Issue #46594) |
 | **Desktop zip** | Claude Desktop users who don't have a terminal | Re-download zip, re-upload via Settings -> Capabilities -> Skills |
+| **CLI installer** *(optional pattern — not engine-generated)* | Engineers who already work in a terminal; scripted/automated installs | `<area-domain>-context update` re-runs the install |
 
 Each surface installs the same navigator + references content. The only differences are how the content gets onto the user's machine and where it lives once installed.
 
-**npm as a future surface.** Because the artifact ships a CLI binary already, an npm package is a natural fourth surface: the `bin/<area-domain>-context` script becomes an npm `bin/` entry, `package.json` joins the version-sync surfaces alongside `plugin.json`, and `npm install -g <area-domain>-context` becomes an additional install path that fits into existing JavaScript/TypeScript developer workflows. This guide does not yet flesh out the npm-specific details (publish flow, version-tag conventions, dependency declarations), but the artifact contract is intentionally compatible with that path so adoption later doesn't require a rewrite.
+**npm as a future surface.** If you adopt the optional CLI pattern, the artifact already ships a CLI binary, which makes an npm package a natural fourth surface: the `bin/<area-domain>-context` script becomes an npm `bin/` entry, `package.json` joins the version-sync surfaces alongside `plugin.json`, and `npm install -g <area-domain>-context` becomes an additional install path that fits into existing JavaScript/TypeScript developer workflows. This guide does not yet flesh out the npm-specific details (publish flow, version-tag conventions, dependency declarations), but the optional CLI artifact contract is intentionally compatible with that path so adoption later doesn't require a rewrite.
 
-## Surface 1: CLI installer
+## Surface 1: CLI installer *(optional pattern)*
+
+> The public `skill-engine` engine does **not** generate this CLI; everything in this section is the optional builder-adopted pattern (see the scope note at the top of the chapter). Surfaces 2 and 3 are what the engine actually ships.
 
 The CLI is a single bash (or your-language-of-choice) script that copies the `skills/<area-domain>-context/` directory tree from the repo into the user's `.claude/skills/` directory and writes a metadata file recording what was installed.
 

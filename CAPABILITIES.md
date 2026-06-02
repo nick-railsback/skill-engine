@@ -9,7 +9,7 @@ overrides both. The unit of value is not "a skill that knows your repo." It is
 one source, assembled into a single skill that holds their disagreements as
 output, stays accurate against its upstreams, and audits itself when it drifts.
 The [README](./README.md) makes the one-paragraph case for that; the rest of
-this document is the proof.
+this document is the detail behind it.
 
 ## Contents
 
@@ -134,6 +134,12 @@ context isolation is warranted. The 8-character `source_id` value space is
 safe to about a thousand sources; the design includes a future widening to
 16 characters when contextualizers approach the ten-thousand-source band.
 
+To be precise about the boundary between design and demonstration: the
+"hundreds" figure is a design target the linear index and batched operations
+are built for, not a benchmarked result. Demonstrated scale today is the
+bundled examples (up to eight sources in `langchain-context`); the headroom
+above that rests on the architecture, not on a run at that size.
+
 ### What this is *not*
 
 Skill-engine doesn't enforce naming conventions across forks. It doesn't
@@ -203,8 +209,9 @@ enforced by the contextualizer-bundled `verify.sh`:
 The navigator's catalog table and the set of primary references form a
 bijection: every catalog row points to a real primary, and every primary
 appears as a catalog row. An orphaned file is invisible to the AI; a phantom
-row makes the AI try to read a missing file mid-conversation. The skill is
-provably complete, or it doesn't ship.
+row makes the AI try to read a missing file mid-conversation. The
+correspondence is checked mechanically by `verify.sh`, or the skill doesn't
+ship.
 
 ### Pre-approval validation
 
@@ -364,7 +371,7 @@ See also: [How it synthesizes across sources](#how-it-synthesizes-across-sources
 
 Two questions every adopter has: *what do I point this at*, and *how does it
 decide what to write*. Skill-engine answers both with explicit, reviewable
-primitives — never magic, never opaque.
+primitives rather than opaque automation.
 
 ### Goal-given DISCOVER
 
@@ -630,7 +637,7 @@ per-session `research/sessions/<session-id>.json` files record what the
 agent proposed and what the human approved. Together they form a de facto
 audit trail — every line of every reference is traceable to a specific
 upstream snapshot, and every change to a reference is traceable to a
-specific approval. Nothing about a contextualizer's history is opaque.
+specific approval. A contextualizer's history is traceable, not opaque.
 
 ### Citation discipline
 
