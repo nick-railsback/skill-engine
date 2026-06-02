@@ -17,38 +17,32 @@ contextualizer skill that loads its index on demand.
 >
 > Each use surfaced the next gap the spec hadn't addressed: drift detection, multi-source synthesis, reviewer gates, evaluation, coverage testing. Each gap is addressed in the engine that follows.
 
-**Same question, with and without the contextualizer.** A model answering from
-general training gives the LangChain agent recipe that was current a year ago;
-the contextualizer answers from the pinned sources and corrects it.
+**What you get.** From your registered sources, skill-engine emits one
+*contextualizer* skill: a navigator that routes each question to the right
+reference files, every reference pinned to the source commit it was drawn from.
+Claude loads the index on demand and answers from that corpus — citing the file
+and SHA behind each load-bearing claim.
 
 ```
-You: How do I build an agent in LangChain?
+You: /langchain-context How do I require human approval before a tool runs?
 
-Claude: Use initialize_agent() with an AgentType to wire up your tools, run
-        the loop with an AgentExecutor, and add a ConversationBufferMemory
-        for multi-turn state.
+Claude: Add the built-in human_in_the_loop middleware to
+        create_agent(middleware=[...]). It declares the pause; the actual
+        pause/resume is LangGraph's interrupt mechanism, so it needs a
+        checkpointer to be durable and a thread_id to resume.
+        (human_in_the_loop.py, factory.py; langgraph/types.py)
+
+        References consulted: langchain-v1-agents.md, langgraph-overview.md.
+        Grounded in langchain@v1 (SHA 7bb4130) + langgraph@1.2.2 (SHA add2696).
 ```
 
-```
-You: How do I build an agent in LangChain?
-
-Claude: In the v1 `langchain` package, build it with create_agent() from
-        langchain.agents — that and AgentState are the only two top-level
-        exports now; initialize_agent, AgentExecutor, and the per-style
-        create_* constructors are gone. create_agent compiles a LangGraph
-        StateGraph, so you customize the loop with middleware
-        (human_in_the_loop, summarization, …) rather than constructor
-        flags, and state across calls needs a LangGraph checkpointer
-        (InMemorySaver / SqliteSaver / PostgresSaver), not
-        ConversationBufferMemory.
-
-        Sources: langchain-v1-agents.md · langgraph-overview.md · langchain-classic.md
-```
-
-*Illustrative — but the "after" answer is grounded in the bundled
-[`langchain-context`](examples/langchain-context) example (8 sources): every API it
-names (`create_agent`, `AgentState`, the LangGraph `StateGraph` backing, middleware,
-checkpointers) is documented in the cited reference files.*
+*A real answer from the bundled [`langchain-context`](examples/langchain-context)
+example — each load-bearing claim cites the source file and the commit it was
+pinned at. A web-enabled frontier model answers this correctly too; the
+contextualizer's edge is **auditable grounding in one local read** — no per-query
+web fetch, every claim traceable to a reviewed snapshot at a fixed commit. That
+matters most where web search can't help anyway: **private code, internal docs,
+and air-gapped or cost-controlled deployments.***
 
 **→ [Quickstart — a working contextualizer in ~20 min](#quickstart)**
 

@@ -11,6 +11,17 @@ output, stays accurate against its upstreams, and audits itself when it drifts.
 The [README](./README.md) makes the one-paragraph case for that; the rest of
 this document is the detail behind it.
 
+**Where this earns its keep.** The contextualizer's value is *grounded,
+auditable, offline* answers over a chosen corpus — one local read, every
+load-bearing claim pinned to a reviewed snapshot at a fixed commit, no per-query
+web fetch. On a large, well-documented *public* library, a web-enabled frontier
+model is already competitive on correctness, so the edge there is provenance and
+reproducibility rather than raw accuracy. The leverage is highest where the web
+can't help at all: **private code and internal docs** the model has never seen,
+and **air-gapped or cost-controlled deployments** where live search isn't an
+option. The bundled `examples/` use public libraries because a stranger can
+verify them — they demonstrate the mechanism, not the ceiling of its value.
+
 ## Contents
 
 - [How it synthesizes across sources](#how-it-synthesizes-across-sources) — multi-source reasoning, per-domain contextualizers, composition discipline
