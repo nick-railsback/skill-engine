@@ -20,31 +20,14 @@ When asked a question:
 
 ## Claims policy
 
-Mode: `cite-by-default` (override: `offer-cite-on-request` — for contextualizers whose users prefer to ask for citations on a per-answer basis).
-Citation syntax: `inline-cite-suffix` (override: `blockquote-with-permalink` — for domains where exact wording matters, e.g. legal text, license terms, or API contracts).
-Inline-cite shape: a trailing parenthetical naming the reference filename, e.g. *Tools are stateless (mcp-server-design.md).* — not footnote markers, not bracketed numerics.
+Cite by default, and make load-bearing claims verifiable:
 
-Answers grounded in this contextualizer's references should carry their provenance plainly. Cite what is load-bearing; don't decorate orientational prose with citations; if no reference was opened, say so in the footer rather than fake it. The voice is competent and careful — not anxious, not apologetic, and without "as an AI assistant" hedging.
+1. **Inline-cite every load-bearing claim with its SHA-pinned permalink** — the `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` link the reference gives for that fact (versions, defaults, signatures, deprecations, behavior a user could get wrong by guessing). Put the permalink inline, on the claim. Use a bare filename parenthetical (e.g. *(reference-name.md)*) only when the reference genuinely provides no permalink. This inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades.
+2. Don't cite orientational prose — *"what is X?"*, *"when did X launch?"* — answer those from this navigator alone; opening a reference is itself a citation gesture.
+3. End with a one-line provenance footer, emitted italic, formatted `*References consulted: foo.md, bar.md. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*` The footer is a **summary of what you read — not a substitute** for the inline permalinks on the claims. Tokens are agent-substituted at answer time (they appear literally in the stamped `SKILL.md`); across multiple sources, `{{LIBRARY}}` resolves to the source slug(s) the answer drew from, or every registered slug when no reference was opened.
+4. If no reference was opened, say so in the footer (*"Answered from general knowledge — no {{LIBRARY}} references consulted"*) — never fake it.
 
-1. Always end response with one-line provenance footer (format defined under **Provenance footer** below).
-2. Inline-cite load-bearing claims (versions, defaults, signatures, deprecations, behavior a user could reasonably get wrong by guessing).
-3. Do not cite orientational prose.
-4. One claim, one citation; do not repeat the citation across adjacent sentences.
-5. If no reference was opened to answer the question, say so plainly in the footer (`"Answered from general knowledge — no {{LIBRARY}} references consulted"`). Never fake the footer.
-
-### Provenance footer
-
-Format (verbatim, modulo placeholder substitution):
-
-    *References consulted: foo.md, bar.md. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*
-
-The `{{LIBRARY}}`, `{{VERSION}}`, and `{{INDEX_URL}}` tokens are **agent-substituted at answer time** from the contextualizer's known source set — they are not engine-stamp-substituted at bootstrap, so they appear literally in the stamped `SKILL.md` and are filled by the answering model, not by the scaffolder. Italic delimiters are `*…*` rather than `_…_` so that substituted names containing underscores (e.g. `scikit_learn`) do not terminate the italic span early.
-
-<!-- Multi-domain divergence: this navigator routes across multiple sources, so `{{LIBRARY}}` resolves to either (a) the per-source slug that authored the cited references when the answer drew from one source, (b) a comma-joined list of source slugs when the answer drew from several, or (c) the comma-joined list of every source slug registered with this contextualizer when zero references were opened (the rule-5 zero-reference case). The placeholder is unchanged in the wire format; the substitution rule differs from the single-source template. -->
-
-The reference list reflects the references actually read while answering — derived from the agent's tool-use trace (which `Read` calls landed on `references/<source-slug>-*.md`), not invented by the model. The template instructs the model to emit the footer; the list is what the model can audit against its own tool calls. (Implementation choice: template-instruction-plus-auditability, rather than runtime injection by the using-agent layer — runtime injection assumes trace-aware template substitution at invocation time, which is not mechanically guaranteed across platforms. A future platform that supports such injection can supersede this contract without changing the footer's wire format.)
-
-If zero references were opened, emit the rule-5 wording rather than an empty list.
+The voice is competent and careful — no "as an AI assistant" hedging.
 
 ## How to search this navigator
 

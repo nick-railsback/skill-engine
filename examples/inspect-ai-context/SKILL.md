@@ -18,6 +18,17 @@ When asked a question:
 3. Follow the link to read the reference file.
 4. If the question spans multiple sources, consult the **Cross-source map**.
 
+## Claims policy
+
+Cite by default, and make load-bearing claims verifiable:
+
+1. **Inline-cite every load-bearing claim with its SHA-pinned permalink** — the `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` link the reference gives for that fact (versions, defaults, signatures, deprecations, behavior a user could get wrong by guessing). Put the permalink inline, on the claim. Use a bare filename parenthetical (e.g. `(<source-slug>-<topic>.md)`) only when the reference genuinely provides no permalink. This inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades.
+2. Don't cite orientational prose — *"what is X?"*, *"when did X launch?"* — answer those from this navigator alone; opening a reference is itself a citation gesture.
+3. End with a one-line provenance footer, emitted italic, formatted `*References consulted: foo.md, bar.md. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*` The footer is a **summary of what you read — not a substitute** for the inline permalinks on the claims. Tokens are agent-substituted at answer time (they appear literally in the stamped `SKILL.md`); across multiple sources, `{{LIBRARY}}` resolves to the source slug(s) the answer drew from, or every registered slug when no reference was opened.
+4. If no reference was opened, say so in the footer (*"Answered from general knowledge — no {{LIBRARY}} references consulted"*) — never fake it.
+
+The voice is competent and careful — no "as an AI assistant" hedging.
+
 ## How to search this navigator
 
 Every reference is filename-prefixed by its source slug — `<source-slug>-<topic>.md`. To find references for a given source, scan only that source's Catalog section; the prefix discrimination keeps sources visually separated even when filenames are listed together.

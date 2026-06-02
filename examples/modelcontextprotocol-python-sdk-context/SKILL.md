@@ -16,6 +16,17 @@ When asked a question this navigator's domain covers:
 3. If the question spans multiple references, consult the **Cross-reference map**.
 4. If a reference points at a source URL for deeper detail, follow it only if the reference itself didn't answer the question.
 
+## Claims policy
+
+Cite by default, and make load-bearing claims verifiable:
+
+1. **Inline-cite every load-bearing claim with its SHA-pinned permalink** — the `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` link the reference gives for that fact (versions, defaults, signatures, deprecations, behavior a user could get wrong by guessing). Put the permalink inline, on the claim. Use a bare filename parenthetical (e.g. *(reference-name.md)*) only when the reference genuinely provides no permalink.
+2. Don't cite orientational prose — *"what is X?"*, *"when did X launch?"* — answer those from this navigator alone; opening a reference is itself a citation gesture.
+3. End with a one-line provenance footer, emitted italic, formatted `*References consulted: foo.md, bar.md. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*` The footer is a **summary of what you read — not a substitute** for the inline permalinks on the claims. The `{{LIBRARY}}` / `{{VERSION}}` / `{{INDEX_URL}}` tokens are agent-substituted at answer time, so they appear literally in the stamped `SKILL.md`.
+4. If no reference was opened, say so in the footer (*"Answered from general knowledge — no {{LIBRARY}} references consulted"*) — never fake it.
+
+The voice is competent and careful — no "as an AI assistant" hedging.
+
 ## Catalog
 
 | Reference | Description |

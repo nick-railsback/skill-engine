@@ -644,12 +644,16 @@ specific approval. A contextualizer's history is traceable, not opaque.
 Reference bodies cite source-repo URLs as SHA-pinned permalinks —
 `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` —
 rather than branch-pinned ones. Branch-pinned URLs rot at 38-66% over a
-one-to-two-year horizon; SHA-pinned URLs are immutable. Claude can't cite
-"the docs" as a vague gesture from a reference body; it cites a specific
-snapshot at a specific line range. The verify gate enforces SHA-pinning
-on reference bodies; navigator prose and README pointers may carry
-unpinned URLs because they are *intentional latest* — meant to track the
-current state of an upstream, not freeze.
+one-to-two-year horizon; SHA-pinned URLs are immutable. The discipline holds
+at two points: the verify gate enforces SHA-pinning in reference *bodies* (the
+permalink-density check), and the navigator's Claims policy tells Claude to
+*surface* those permalinks when it answers — so the reader lands on a specific
+snapshot at a specific line range, not a vague gesture at "the docs." The
+grounded-citation eval (SELF-AUDIT Check 8) measures the second: the worked
+result in [`eval-results.md`](examples/modelcontextprotocol-python-sdk-context/research/eval-results.md)
+went from 30% to 90% once the Claims policy instructed permalink citation.
+Navigator prose and README pointers may carry unpinned URLs because they are
+*intentional latest* — meant to track the current state of an upstream, not freeze.
 
 ### Future direction: opt-in autonomy flags
 

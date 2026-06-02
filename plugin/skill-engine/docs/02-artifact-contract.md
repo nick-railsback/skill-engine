@@ -200,7 +200,7 @@ Beyond the `kind` discriminator and the external-doc-specific provenance frontma
 
 **Two state-machine axes — load-bearing.** `status` (curation) and `lifecycle.state` (upstream) describe distinct things and must not be conflated. A `confirmed` source can become `removed` upstream without invalidating the curation; a `rejected` companion can still have its upstream reach `moved`. The engine surfaces both axes separately — directly in `source-paths.json` and in each workflow's post-run summary — so the two states are never collapsed into one. Conflating them would lose information at the moment the user most needs it.
 
-### Body - five sections in this order
+### Body - six sections in this order
 
 **1. Overview** - two or three paragraphs: what the domain is, what this navigator catalogs, how the AI is meant to use it.
 
@@ -218,7 +218,26 @@ matching topic, follow the link to read the reference, then consult
 the Cross-reference map if the question spans multiple subsystems.
 ```
 
-**2. Catalog** - a markdown table. One row per primary reference. Two columns:
+**2. Claims policy** - how the navigator instructs the model to cite. Load-bearing claims carry the reference's SHA-pinned source permalink (the `blockquote-with-permalink` shape — this is what the grounded-citation eval, SELF-AUDIT Check 8, grades); the lighter `inline-cite-suffix` filename form is the fallback for orientational references. Every answer ends with a one-line provenance footer; orientational prose is not decorated with citations.
+
+```markdown
+## Claims policy
+
+Mode: `cite-by-default`.
+Citation syntax: for load-bearing claims, surface the SHA-pinned source
+permalink the reference cites
+(`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>`); fall
+back to the `(<reference>.md)` filename form only when no permalink applies.
+Do not cite orientational prose.
+End every answer with a one-line provenance footer:
+*References consulted: …. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*
+The `{{LIBRARY}}` / `{{VERSION}}` / `{{INDEX_URL}}` tokens are filled by the
+answering model at answer time, so they appear literally in the stamped SKILL.md.
+```
+
+The full Claims policy (the numbered rules plus the provenance-footer subsection) lives in the navigator templates (`engine-bootstrap-templates/navigator*.md.template`); the block above is the contract summary. The grounded-citation eval (Check 8) measures whether the model actually emits the permalink when it answers — see [13-coverage-testing.md](13-coverage-testing.md).
+
+**3. Catalog** - a markdown table. One row per primary reference. Two columns:
 
 ```markdown
 ## Catalog
@@ -232,7 +251,7 @@ the Cross-reference map if the question spans multiple subsystems.
 
 The first column is a markdown link to the reference file. The second is a one-line factual summary that helps the AI route correctly. The catalog is bijective with `references/<area-domain>-*.md` - `verify.sh` enforces this (catalog-bijection check); see "The bijection invariant" below.
 
-**3. Cross-reference map** - a bullet list of multi-domain query patterns: when does a question naturally span two or more references?
+**4. Cross-reference map** - a bullet list of multi-domain query patterns: when does a question naturally span two or more references?
 
 ```markdown
 ## Cross-reference map
@@ -246,7 +265,7 @@ The first column is a markdown link to the reference file. The second is a one-l
   client-side cookie behavior lives in the companion file `session-cookie-deep-dive.md`.
 ```
 
-**4. Instructions to Claude** - the load-syntax contract. Path syntax differs by platform:
+**5. Instructions to Claude** - the load-syntax contract. Path syntax differs by platform:
 
 ```markdown
 ## Instructions to Claude
@@ -271,7 +290,7 @@ Loading rules:
 
 Keeping the syntax explicit prevents the AI from guessing the path (which it will get wrong on at least one platform).
 
-**5. Progressive Disclosure note** - a short closing section stating that references curate and point; they don't re-specify upstream sources.
+**6. Progressive Disclosure note** - a short closing section stating that references curate and point; they don't re-specify upstream sources.
 
 ```markdown
 ## Progressive Disclosure

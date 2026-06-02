@@ -55,7 +55,7 @@ Check 7 measures what the references *contain*. Check 8 measures what the model 
 
 The test runner at `plugin/skill-engine/tests/grounded-rate/run.sh` exercises the grader against **17/17 mocked cases** with zero API calls — the cases inject pre-recorded model responses (`--mock-responses`) and assert exit-code + stdout substring. The grader runs keyless and deterministically: no environment credentials, no network I/O, identical exit codes on repeat invocations. Coverage spans PASS, FAIL, schema-invalid, opt-in N/A, empty-prompts N/A, error-marker handling, and the per-prompt timeout / tool-turn-cap paths. The fixtures live at `plugin/skill-engine/tests/grounded-rate/fixtures/`.
 
-***Grader validated (mocked, 17/17 as of 2026-05-28); live rate not yet measured in this repo.***
+***Grader validated (mocked, 17/17 as of 2026-05-28). First live measurement (2026-06-02, MCP example, Haiku 4.5): 30% → 90% grounded-rate after the navigator's Claims policy began instructing permalink citation — see [`eval-results.md`](../../../examples/modelcontextprotocol-python-sdk-context/research/eval-results.md).***
 
 ### What is not here, and why
 
