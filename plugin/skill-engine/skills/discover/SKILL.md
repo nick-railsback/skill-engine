@@ -266,28 +266,37 @@ When `/skill-engine:discover` is invoked:
    ```bash
    # ref = source entry's "branch" if present, else HEAD
    # Refuse an unsafe source_id before it becomes a cache path component
-   # (mirrors engine-bootstrap Step 3.5).
+   # (mirrors engine-bootstrap Step 3.5). Skip this source on a bad id — do
+   # not exit, so a multi-source DISCOVER keeps pre-flighting the rest.
    case "<source_id>" in
      ""|-*|*[!a-z0-9-]*)
-       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2
-       exit 0 ;;
+       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2 ;;
+     *)
+       # `--` terminates git option parsing so a '-'-leading url is not read as a flag.
+       sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
+       if [ -z "$sha" ]; then
+         # Empty SHA: the ref does not exist upstream (or ls-remote failed).
+         # Building `<source_id>-` would land a cache path no lookup matches —
+         # decline to clone this source and use the CLI fallback for it.
+         echo "skill-engine: <source_id> @ <ref> not found upstream (empty ls-remote) — declining to clone; using CLI fallback" >&2
+       else
+         mkdir -p ~/.cache/skill-engine/git-managed/
+         dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
+         tmpdir="${dest}.tmp.$$"
+         if [ "<ref>" = "HEAD" ]; then
+           git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"
+         else
+           git clone --depth=1 --filter=blob:none --branch "<ref>" -- "<url>" "$tmpdir"
+         fi && mv "$tmpdir" "$dest" || rm -rf "$tmpdir"
+       fi ;;
    esac
-   # `--` terminates git option parsing so a '-'-leading url is not read as a flag.
-   sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
-   mkdir -p ~/.cache/skill-engine/git-managed/
-   dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
-   tmpdir="${dest}.tmp.$$"
-   if [ "<ref>" = "HEAD" ]; then
-     git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"
-   else
-     git clone --depth=1 --filter=blob:none --branch "<ref>" -- "<url>" "$tmpdir"
-   fi && mv "$tmpdir" "$dest" || rm -rf "$tmpdir"
    ```
 
-   A `git ls-remote` that returns an empty SHA for an explicitly-named
-   branch means the branch does not exist upstream — surface a one-line
-   diagnostic naming the source and the branch, decline to clone, and
-   fall back to the CLI path for the remainder of this DISCOVER run.
+   The empty-SHA branch above handles a `git ls-remote` that returns nothing
+   for an explicitly-named ref (the ref does not exist upstream, or the probe
+   failed): it surfaces a one-line diagnostic naming the source and ref,
+   declines to clone that source, and falls back to the CLI path for it — it
+   does not abort DISCOVER.
 
    On success, prefer local reads under the new cache directory for the
    rest of this DISCOVER run. On clone failure, emit one line ("Couldn't

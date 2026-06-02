@@ -419,25 +419,33 @@ path:
 # Guard: refuse a source_id that is not a safe path component, so a crafted
 # id (e.g. one containing '/' or '..') cannot escape the cache directory
 # when interpolated into `dest` below. source_id is kebab-case by
-# construction; assert it before building any path.
+# construction; assert it before building any path. On a bad id, skip THIS
+# source's cache seed — do not exit, so a multi-source intake does not lose
+# every later source to one bad id.
 case "<source_id>" in
   ""|-*|*[!a-z0-9-]*)
-    echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping cache seed for this source" >&2
-    exit 0 ;;
+    echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping cache seed for this source" >&2 ;;
+  *)
+    # `--` terminates git option parsing, so a URL beginning with '-' cannot be
+    # interpreted as a flag (e.g. --upload-pack=...), closing an argument-
+    # injection vector on the user-supplied url.
+    sha=$(git ls-remote -- "<url>" HEAD | cut -f1)
+    if [ -z "$sha" ]; then
+      # Empty SHA (unreachable repo, flaky ls-remote): building `<source_id>-`
+      # would land a cache path no later `<source_id>-<sha>` lookup matches.
+      # Skip the seed for this source instead.
+      echo "skill-engine: couldn't resolve <source_id> HEAD (empty ls-remote) — skipping cache seed for this source" >&2
+    else
+      mkdir -p ~/.cache/skill-engine/
+      dest="$HOME/.cache/skill-engine/<source_id>-$sha"
+      tmpdir="${dest}.tmp.$$"
+      if git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"; then
+        mv "$tmpdir" "$dest"
+      else
+        rm -rf "$tmpdir"
+      fi
+    fi ;;
 esac
-
-# `--` terminates git option parsing, so a URL beginning with '-' cannot be
-# interpreted as a flag (e.g. --upload-pack=...), closing an argument-
-# injection vector on the user-supplied url.
-sha=$(git ls-remote -- "<url>" HEAD | cut -f1)
-mkdir -p ~/.cache/skill-engine/
-dest="$HOME/.cache/skill-engine/<source_id>-$sha"
-tmpdir="${dest}.tmp.$$"
-if git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"; then
-  mv "$tmpdir" "$dest"
-else
-  rm -rf "$tmpdir"
-fi
 ```
 
 The `$$` PID tag scopes `tmpdir` per-process; two concurrent bootstraps
