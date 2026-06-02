@@ -29,7 +29,7 @@ The engine runs the suite before surfacing changes for review.
 * [Hermetic test environment](#hermetic-test-environment)
 * [Suggested adoption order](#suggested-adoption-order)
 
-> **What ships today vs. the fixture-harness spec.** Not all eleven invariants below are enforced by the public engine, and the chapter is explicit about which is which. The stamped, shipped enforcement is the contextualizer-side `verify.sh` — it backs Invariants **2, 3, 8, 9, 10, and 11** (catalog bijection, frontmatter discipline, navigator-size budget, max-ref-depth, long-reference TOC, and the optional SKILL.json trijection). Invariants **1, 4, 6, and 7** (byte-equality fixture, version consistency, metadata-after-install, package-zip hygiene) belong to the **fixture-harness + optional-CLI pattern**: they assume the `bin/<area-domain>-context` installer and a `test/test-cli.sh` harness that the public engine does **not** generate (see the optional CLI pattern in [04-delivery.md](04-delivery.md)). They are preserved here as the fixture-harness specification for a builder who adopts that pattern — read them as design, not as gates the shipped engine runs — and expect Invariants 1 and 4 in particular to shift as the fixture-harness milestone lands.
+> **What ships today vs. what is specified.** Not all eleven invariants below are mechanically enforced, and the chapter is explicit about which is which. The stamped, shipped validator is the contextualizer-side `verify.sh` (eleven named checks). It backs Invariant **2** (catalog bijection), Invariant **3** (frontmatter discipline), and Invariant **11** (the optional SKILL.json trijection) directly, plus the **depth-1 rule of Invariant 9** — depth-1 is enforced *inside* the `catalog-bijection` check, not as a standalone `max-ref-depth` check. SHA-pinning (a target of the four-reference-invariants framing rather than a numbered invariant here) is enforced separately by the Check-7 `permalink_density.py` CI lint, **not** by `verify.sh`. Invariants **5** (reference size), **8** (first-5K standing-instruction budget), and **10** (long-reference TOC) are **specified but not yet mechanically enforced anywhere** — they are authoring discipline the reviewer backstops, so read the `first-5K` and `long-ref-toc` check names below as planned, not shipped. Invariants **1, 4, 6, and 7** (byte-equality fixture, version consistency, metadata-after-install, package-zip hygiene) belong to the **fixture-harness + optional-CLI pattern**: they assume the `bin/<area-domain>-context` installer and a `test/test-cli.sh` harness that the public engine does **not** generate (see the optional CLI pattern in [04-delivery.md](04-delivery.md)). Read everything except the three checks (plus depth-1) that `verify.sh` actually runs as specification, not as gates the shipped engine enforces — and expect Invariants 1 and 4 in particular to shift as the fixture-harness milestone lands.
 
 ## Test framework primitives
 
@@ -457,7 +457,7 @@ The navigator's **standing instructions** - invariants, critical rules, and disp
 
 The catalog table is excluded from the budget per the **catalog-as-TOC carve-out**, so multi-domain navigators with large sectioned catalogs are not penalized — the catalog is a router, not standing instructions.
 
-The full rule lives in [02-artifact-contract.md#navigator-size-budget](02-artifact-contract.md#navigator-size-budget). The test body is the `first-5K` named check in the contextualizer-side `verify.sh` (template source: `plugin/skill-engine/engine-bootstrap-templates/verify.sh`); the frontmatter-strip semantics (only the leading `---` block, only when line 1 is `---`, fenced `---` are not terminators, multi-document YAML unsupported) are documented inline in that check's leading comment.
+The full rule lives in [02-artifact-contract.md#navigator-size-budget](02-artifact-contract.md#navigator-size-budget). **This invariant is specified but not yet mechanically enforced** — there is no `first-5K` check in the shipped `verify.sh` (`plugin/skill-engine/engine-bootstrap-templates/verify.sh`), and no CI lint measures the standing-instruction budget today, so the budget is authoring discipline the reviewer backstops. The frontmatter-strip semantics a future check would need (only the leading `---` block, only when line 1 is `---`, fenced `---` are not terminators, multi-document YAML unsupported) are specified here for whoever implements it.
 
 ## Invariant 9: Max-ref-depth (one level)
 
@@ -467,7 +467,7 @@ The failure mode is shallow probes: nested references tempt Claude to `head -100
 
 When a reference takes the optional directory form (`references/<area-domain>-<topic>/`, containing a canonical primary `.md` of the same basename plus optional non-`.md` assets — see [02-artifact-contract.md#reference-depth-one-level](02-artifact-contract.md#reference-depth-one-level)), the directory itself is the reference: the canonical primary `.md` at depth-2 is permitted because it is part of the directory-form reference, not a nested reference. Any other `.md` at depth-2 is a contract violation; depth-3+ paths fail regardless of extension; and any sub-directory under `references/<area-domain>-<topic>/` is a contract violation regardless of what it contains.
 
-The full rule lives in [02-artifact-contract.md#reference-depth-one-level](02-artifact-contract.md#reference-depth-one-level). The test body is the `max-ref-depth` named check in the contextualizer-side `verify.sh`.
+The full rule lives in [02-artifact-contract.md#reference-depth-one-level](02-artifact-contract.md#reference-depth-one-level). The depth-1 rule **is** enforced by the shipped `verify.sh` — but inside the `catalog-bijection` check (Check 4), which rejects any catalog row whose target encodes a nested path, rather than as a standalone `max-ref-depth` check. The directory-form carve-out (a same-basename canonical primary `.md` permitted at depth-2) is handled in that same check.
 
 ## Invariant 10: Long-reference TOC presence
 
@@ -475,7 +475,7 @@ Any reference body exceeding 100 lines must contain a Markdown TOC marker — ty
 
 Short references (under 100 lines) do not need a TOC; they are short enough to scan directly.
 
-The full rule lives in [02-artifact-contract.md#long-references-must-have-a-toc-100-lines](02-artifact-contract.md#long-references-must-have-a-toc-100-lines). The test body is the `long-ref-toc` named check in the contextualizer-side `verify.sh`.
+The full rule lives in [02-artifact-contract.md#long-references-must-have-a-toc-100-lines](02-artifact-contract.md#long-references-must-have-a-toc-100-lines). **This invariant is specified but not yet mechanically enforced** — there is no `long-ref-toc` check in the shipped `verify.sh`, so the TOC requirement is authoring discipline the reviewer backstops.
 
 ## Invariant 11: Optional SKILL.json trijection
 

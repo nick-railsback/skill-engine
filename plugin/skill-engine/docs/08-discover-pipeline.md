@@ -2,8 +2,12 @@
 
 DISCOVER scans the sources registered with the engine and writes
 reference files for the parts that matter. The engine hands the model
-a task; the model executes it; `verify.sh` and the four reference
-invariants are the trust mechanism.
+a task; the model executes it; `verify.sh` plus the permalink-density
+lint and the reviewer are the trust mechanism. Of the four reference
+invariants, `verify.sh` mechanically checks depth-1 (inside its
+`catalog-bijection` check) and the lint checks SHA-pinning; first-5K
+and the long-reference TOC are authoring discipline the reviewer
+backstops.
 
 ## The goal
 

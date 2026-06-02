@@ -188,21 +188,27 @@ detect:
 
 ### The four reference invariants
 
-Every reference file in `references/` must satisfy four shape invariants
-enforced by the contextualizer-bundled `verify.sh`:
+Every reference file in `references/` is authored to four shape invariants.
+They differ in *how* — and *whether* — each is mechanically enforced; the
+annotations below are exact:
 
 - **first-5K** — the navigator's standing instructions (invariants, critical
   rules, dispatch logic) fit in the first 5 KB of `SKILL.md` so the platform's
   auto-compaction never silently truncates them mid-conversation.
+  *(Authoring discipline — not yet machine-checked.)*
 - **depth-1** — every reference is reachable from `SKILL.md` in exactly one
   link traversal; nested reference subdirectories are forbidden so Claude
   never shallow-probes a partial file.
+  *(Enforced by `verify.sh`, inside its `catalog-bijection` check.)*
 - **max-100-line-TOC** — any reference body over 100 lines carries a `##
   Contents` marker within the first 30 lines, so Claude lands at the right
   section instead of reading top-to-bottom.
+  *(Authoring discipline — not yet machine-checked.)*
 - **SHA-pin** — source-repo URLs in reference bodies are pinned to a 40-char
   commit SHA, not a branch. Branch-pinned URLs rot at 38-66% over a one-to-
   two-year horizon; SHA-pinning makes them immutable.
+  *(Enforced by the `permalink_density.py` CI lint — SELF-AUDIT Check 7 — not
+  by `verify.sh`.)*
 
 ### The bijection invariant
 
@@ -378,8 +384,9 @@ primitives rather than opaque automation.
 The planning engine. `/skill-engine:discover` hands the model a task —
 *"discover the essence of the registered sources; write references for the
 parts that matter; satisfy the four reference invariants (first-5K, depth-1,
-max-100-line-TOC, SHA-pin)"* — and validates the output via `verify.sh` rather
-than prescribing a step-by-step pipeline. The model decides how to spend its
+max-100-line-TOC, SHA-pin)"* — and validates the structural output via
+`verify.sh` (with SHA-pinning checked by the `permalink_density.py` lint)
+rather than prescribing a step-by-step pipeline. The model decides how to spend its
 context, what to read, what to skip, what to propose.
 
 A `--hint` flag lets you steer the run with one sentence of intent — *"I'm
@@ -645,9 +652,9 @@ Reference bodies cite source-repo URLs as SHA-pinned permalinks —
 `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` —
 rather than branch-pinned ones. Branch-pinned URLs rot at 38-66% over a
 one-to-two-year horizon; SHA-pinned URLs are immutable. The discipline holds
-at two points: the verify gate enforces SHA-pinning in reference *bodies* (the
-permalink-density check), and the navigator's Claims policy tells Claude to
-*surface* those permalinks when it answers — so the reader lands on a specific
+at two points: the permalink-density lint (SELF-AUDIT Check 7) enforces
+SHA-pinning in reference *bodies*, and the navigator's Claims policy tells
+Claude to *surface* those permalinks when it answers — so the reader lands on a specific
 snapshot at a specific line range, not a vague gesture at "the docs." The
 grounded-citation eval (SELF-AUDIT Check 8) measures the second: the worked
 result in [`eval-results.md`](examples/modelcontextprotocol-python-sdk-context/research/eval-results.md)

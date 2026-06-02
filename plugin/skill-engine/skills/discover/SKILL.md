@@ -6,9 +6,11 @@ description: Propose new reference files for registered sources.
 # Discover
 
 You receive a task: **discover the essence of the registered sources,
-then write reference files for the parts that matter**. The engine
-validates your output via the four reference invariants and the named
-checks in `verify.sh`. How you reason about the corpus is your call —
+then write reference files for the parts that matter**. The named
+checks in `verify.sh` (plus the permalink-density lint for SHA-pinning)
+validate your output; the four reference invariants are your authoring
+targets — not all are machine-checked (see § Output contract). How you
+reason about the corpus is your call —
 there is no Stage 0/1/2 prescription, no fixed keystroke menu, no
 required worker dispatch. Vary your approach by what the corpus
 rewards.
@@ -124,9 +126,12 @@ Two things, both load-bearing:
      branch or tag.
 2. **A post-run summary** for the author (see "Post-run summary" below).
 
-`verify.sh` is the trust mechanism. Variance below the invariant floor
-is acceptable and expected — two sessions on the same corpus may
-produce different reference counts, different topical partitions,
+`verify.sh` — plus the permalink-density lint and the reviewer — is the
+trust mechanism. Of the four invariants above, `verify.sh` mechanically
+checks depth-1 (inside its `catalog-bijection` check) and the lint checks
+SHA-pinning; first-5K and the TOC are reviewer-backstopped. Variance below
+the invariant floor is acceptable and expected — two sessions on the same
+corpus may produce different reference counts, different topical partitions,
 different prose styles. The invariants plus the named checks are what
 bind quality.
 

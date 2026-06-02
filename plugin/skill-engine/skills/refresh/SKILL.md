@@ -7,9 +7,10 @@ description: Refresh a contextualizer's references against current upstream stat
 
 You receive a task: **bring the contextualizer's existing references
 into agreement with the current upstream state of every registered
-source**. The engine validates your output via the four reference
-invariants and the named checks in `verify.sh`. How you reason about
-drift is your call — there is no Stage -1/1/2/3 prescription, no
+source**. The named checks in `verify.sh` (plus the permalink-density
+lint for SHA-pinning) validate your output; the four reference
+invariants are your authoring targets — not all are machine-checked
+(see § Output contract). How you reason about drift is your call — there is no Stage -1/1/2/3 prescription, no
 fixed keystroke menu, no required worker dispatch.
 
 ## Contextualizer root
@@ -86,9 +87,12 @@ Two things, both load-bearing:
    timestamps). The four-state field on `source-paths.json` is the
    single source of truth for upstream state.
 
-`verify.sh` is the trust mechanism. Variance below the invariant floor
-is acceptable and expected — two REFRESH runs against the same corpus
-may differ in which references were rewritten or which sources
+`verify.sh` — plus the permalink-density lint and the reviewer — is the
+trust mechanism. Of the four invariants above, `verify.sh` mechanically
+checks depth-1 (inside its `catalog-bijection` check) and the lint checks
+SHA-pinning; first-5K and the TOC are reviewer-backstopped. Variance below
+the invariant floor is acceptable and expected — two REFRESH runs against
+the same corpus may differ in which references were rewritten or which sources
 transitioned. The invariants plus the named checks are what bind
 quality.
 

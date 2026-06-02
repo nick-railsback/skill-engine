@@ -306,7 +306,7 @@ The full keep/replace decision framework lives in the [Progressive disclosure](#
 
 ### Navigator size budget
 
-**Hard invariant.** The navigator's **standing instructions** - invariants, critical rules, and dispatch logic - must fit in the first **5K bytes** of `SKILL.md` body, with frontmatter excluded. The verify gate enforces this with the `first-5K` check (see [05-invariants.md](05-invariants.md)).
+**Hard invariant** (by contract, not yet by machine). The navigator's **standing instructions** - invariants, critical rules, and dispatch logic - must fit in the first **5K bytes** of `SKILL.md` body, with frontmatter excluded. This is a contract rule the author and reviewer uphold: the shipped `verify.sh` has **no** `first-5K` check, and no CI lint measures the budget today (see [05-invariants.md](05-invariants.md)).
 
 The platform constraint motivating the rule is auto-compaction. When the orchestrator re-attaches skills mid-conversation, the budget for all attached skills is roughly 25K bytes. Reserving 5K for any one navigator's standing instructions leaves headroom for multi-skill scenarios; a navigator that exceeds it will be silently truncated by the platform.
 
@@ -450,7 +450,7 @@ From `SKILL.md`, every reference is reachable in exactly one link traversal — 
 
 The failure mode this prevents is shallow probes. When references nest, Claude is tempted to `head -100` a reference to "preview" it before deciding whether to follow a deeper link, instead of reading the reference fully. The depth-1 rule keeps every reference a single, complete unit.
 
-Companion files (bare-named, linked from primaries) live in the same `references/` directory and remain depth 1 — the rule constrains directory nesting, not the link graph between siblings. The verify gate enforces this with the `max-ref-depth` check (see [05-invariants.md](05-invariants.md)).
+Companion files (bare-named, linked from primaries) live in the same `references/` directory and remain depth 1 — the rule constrains directory nesting, not the link graph between siblings. The shipped `verify.sh` enforces depth-1 inside its `catalog-bijection` check — a catalog row whose target encodes a nested path fails there; there is no standalone `max-ref-depth` check (see [05-invariants.md](05-invariants.md)).
 
 **Optional directory form for multimodal references.** A reference MAY take a second shape: a directory at `references/<area-domain>-<topic>/` containing a canonical primary `.md` file whose basename matches the directory basename — so a directory `references/billing-refunds/` contains `references/billing-refunds/billing-refunds.md` as its primary. Non-`.md` asset files (architecture diagrams, JSON schemas, SVG flows, screenshots, example payloads) MAY sit alongside the primary at the same depth; there is no extension restriction beyond "not `.md`." Both shapes are first-class. The flat file form `references/<area-domain>-<topic>.md` remains the default for text-only references — it is lighter to maintain (a rename touches one file). The directory form exists for references whose value is genuinely visual or asset-bearing: a diagram explains a flow more vividly than 200 words of prose; a JSON schema is most useful when shipped alongside the prose that describes it. The size budget above is text-token-only; an asset's effect on the model's attention is real even though the asset itself does not count toward Markdown bytes.
 
@@ -471,7 +471,7 @@ references/
 
 Any reference body exceeding 100 lines must contain a Markdown TOC marker — typically `## Contents` — within the first 30 lines of the body. The TOC tells Claude where to land when the reference is loaded, instead of forcing a top-to-bottom read of a long file.
 
-Short references (under 100 lines) do not need a TOC; they are short enough to scan directly. The verify gate enforces this with the `long-ref-toc` check (see [05-invariants.md](05-invariants.md)).
+Short references (under 100 lines) do not need a TOC; they are short enough to scan directly. This is an authoring rule, not yet a machine check — the shipped `verify.sh` has **no** `long-ref-toc` check, so the TOC requirement is upheld by reviewer judgment (see [05-invariants.md](05-invariants.md)).
 
 ### Empowerment prose: where each voice belongs
 
@@ -545,7 +545,7 @@ The canonical URL form for any source pointer in a primary reference is a commit
 https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>
 ```
 
-`<sha>` is a 40-char commit SHA captured at harvest time. The engine captures it during the SHA-comparison phase of the freshness algorithm (see [03-engine.md](03-engine.md)) and persists it in the per-source enrichment cache; the emitter renders it back into the URL at write time. Stable version tags (`v1.2.3`) are accepted equivalently - the verify gate treats them as immutable.
+`<sha>` is a 40-char commit SHA captured at harvest time. The engine captures it during the SHA-comparison phase of the freshness algorithm (see [03-engine.md](03-engine.md)) and persists it in the per-source enrichment cache; the emitter renders it back into the URL at write time. Stable version tags (`v1.2.3`) are accepted equivalently - the SHA-pin lint (Check 7, `permalink_density.py`) treats them as immutable.
 
 **The failure mode this prevents** is link rot. GitHub's own permalink documentation warns that a URL on `blob/main/...` survives only as long as the file is at that path on the default branch; industry estimates place the rot rate on branch-pinned source URLs at 38-66% over a one-to-two-year horizon. The same observation drives the LSP `Location` shape (line-pinned references that survive refactors) and TypeDoc's defaults (commit SHA, not branch, for source-link generation). Branch-pinned URLs in a curated reference are a slow-burn correctness regression: they pass review, then quietly stop pointing at the right code as the source repo evolves.
 
@@ -559,7 +559,7 @@ Pin everything in references corpus content. The exception is **intentional late
 | "Read whatever is current upstream" (e.g., the project README, a stable spec page) | unpinned (`blob/main/...`, `tree/main/...`) | navigator prose, README pointers, "see the project" hints |
 | "Read this exact stable release" | tag-pinned (`blob/v1.2.3/...`) | reference bodies; accepted equivalently to SHA-pinned |
 
-The verify gate enforces this distinction: the SHA-pin invariant scans references corpus only - navigator prose, chapter prose, and READMEs may carry unpinned URLs without flagging.
+The SHA-pin gate enforces this distinction: the Check-7 `permalink_density.py` CI lint (not `verify.sh`) scans the references corpus only - navigator prose, chapter prose, and READMEs may carry unpinned URLs without flagging.
 
 #### Source identifier (`source_id`)
 
