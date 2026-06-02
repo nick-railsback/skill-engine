@@ -218,24 +218,29 @@ matching topic, follow the link to read the reference, then consult
 the Cross-reference map if the question spans multiple subsystems.
 ```
 
-**2. Claims policy** - how the navigator instructs the model to cite. Load-bearing claims carry the reference's SHA-pinned source permalink (the `blockquote-with-permalink` shape — this is what the grounded-citation eval, SELF-AUDIT Check 8, grades); the lighter `inline-cite-suffix` filename form is the fallback for orientational references. Every answer ends with a one-line provenance footer; orientational prose is not decorated with citations.
+**2. Claims policy** - how the navigator instructs the model to cite. Every load-bearing claim carries the reference's SHA-pinned source permalink *inline, on the claim* — this is what the grounded-citation eval (SELF-AUDIT Check 8) grades; a bare `(<reference>.md)` filename parenthetical is the fallback only when the reference provides no permalink. Orientational prose is not decorated with citations, and every answer ends with a one-line provenance footer.
 
 ```markdown
 ## Claims policy
 
-Mode: `cite-by-default`.
-Citation syntax: for load-bearing claims, surface the SHA-pinned source
-permalink the reference cites
-(`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>`); fall
-back to the `(<reference>.md)` filename form only when no permalink applies.
-Do not cite orientational prose.
-End every answer with a one-line provenance footer:
-*References consulted: …. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*
-The `{{LIBRARY}}` / `{{VERSION}}` / `{{INDEX_URL}}` tokens are filled by the
-answering model at answer time, so they appear literally in the stamped SKILL.md.
+Cite by default, and make load-bearing claims verifiable:
+
+1. Inline-cite every load-bearing claim with its SHA-pinned permalink
+   (`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>`) —
+   inline, on the claim. Fall back to a bare `(<reference>.md)` filename
+   parenthetical only when the reference genuinely provides no permalink. This
+   inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades.
+2. Don't cite orientational prose — answer "what is X?" / "when did X launch?"
+   from this navigator alone.
+3. End with a one-line provenance footer, emitted italic:
+   *References consulted: …. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*
+   The footer summarizes what you read; it does not replace the inline permalinks.
+   The `{{LIBRARY}}` / `{{VERSION}}` / `{{INDEX_URL}}` tokens are agent-substituted
+   at answer time, so they appear literally in the stamped SKILL.md.
+4. If no reference was opened, say so in the footer — never fake it.
 ```
 
-The full Claims policy (the numbered rules plus the provenance-footer subsection) lives in the navigator templates (`engine-bootstrap-templates/navigator*.md.template`); the block above is the contract summary. The grounded-citation eval (Check 8) measures whether the model actually emits the permalink when it answers — see [13-coverage-testing.md](13-coverage-testing.md).
+The full Claims policy lives in the navigator templates (`engine-bootstrap-templates/navigator*.md.template`); the block above is the contract summary. The provenance footer is rule 3 of that policy, not a separate subsection. The grounded-citation eval (Check 8) measures whether the model actually emits the permalink when it answers — see [13-coverage-testing.md](13-coverage-testing.md).
 
 **3. Catalog** - a markdown table. One row per primary reference. Two columns:
 
