@@ -30,7 +30,7 @@ verify them — they demonstrate the mechanism, not the ceiling of its value.
 - [How you evaluate it](#how-you-evaluate-it) — three runs, 70/30 split, three-persona stratification, drop-in templates
 - [How it gets built](#how-it-gets-built) — DISCOVER, source-paths.json, bootstrap scaffolding
 - [How it handles failure](#how-it-handles-failure) — archived, renamed, deleted, transient, permanent
-- [How it's distributed](#how-its-distributed) — plugin install, hand-rolled, Claude Desktop
+- [How it's distributed](#how-its-distributed) — two surfaces (plugin marketplace, Desktop zip) plus the optional hand-rolled pattern
 - [How human review fits](#how-human-review-fits) — propose–review–promote, gates, SHA audit trail
 - [Appendix — Command reference](#appendix--command-reference) — every slash command and what it does
 
@@ -526,10 +526,13 @@ freshness staircase the failure modes live inside).
 
 ## How it's distributed
 
-Skill-engine ships through three paths, each suited to a different reader.
-The artifact a contextualizer produces is itself distributable — a `.zip`
-into Claude Desktop, a clone-and-install for Claude Code, a published
-plugin for the marketplace.
+Skill-engine ships through two surfaces — a published plugin for the
+marketplace (the recommended path) and the Claude Desktop zip — with the
+hand-rolled activation below as an optional pattern for builders who want a
+route the engine does not generate (see the optional CLI pattern in
+[04-delivery.md](plugin/skill-engine/docs/04-delivery.md)). The artifact a
+contextualizer produces is itself distributable the same two ways: a `.zip`
+into Claude Desktop or a published plugin for the marketplace.
 
 ### Plugin install (recommended)
 
