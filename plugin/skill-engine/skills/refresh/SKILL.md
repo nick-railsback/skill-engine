@@ -297,7 +297,7 @@ pre-flight. Run them in order; each phase's outputs feed the next.
 
 | Kind | Probe command | Records to lifecycle |
 |---|---|---|
-| `git-managed` | `git ls-remote --heads <url> <branch>` | `last_checked_sha` = first column |
+| `git-managed` | `git ls-remote --heads -- <url> <branch>` | `last_checked_sha` = first column |
 | `web-doc` | `HTTP HEAD <url>` | `last_checked` = now; if redirect → `state: "moved"`, `proposed_url` set; if 4xx → `state: "removed"` |
 | `external-doc` | n/a (local content) | n/a |
 | `local-path` | n/a (local content) | n/a |
@@ -393,18 +393,22 @@ command-line tools over WebFetch:
 
 - `gh repo view <owner>/<repo>`,
 - `gh api repos/<owner>/<repo>/commits/<ref>`,
-- `git ls-remote <url> <ref>`, `git ls-tree --recursive <ref>`,
+- `git ls-remote -- <url> <ref>`, `git ls-tree --recursive <ref>`,
 - `git show <ref>:<path>`.
 
 The CLIs return clean structured output; WebFetch returns rendered HTML
 that consumes roughly 10× more tokens to parse. Reserve WebFetch for
 `kind: external-doc` or git sources where CLI access fails.
 
+The `--` in the `git ls-remote` probes terminates option parsing so a `url`
+beginning with `-` cannot be read as a flag (e.g. `--upload-pack=…`) — the same
+argument-injection guard the engine-bootstrap and DISCOVER clone flows use.
+
 **Which `<ref>` to use.** If the source entry carries a `branch` field,
 that branch is `<ref>` everywhere above (e.g., `gh api
-repos/<owner>/<repo>/commits/dev`, `git ls-remote <url> dev`). If the
+repos/<owner>/<repo>/commits/dev`, `git ls-remote -- <url> dev`). If the
 `branch` field is absent, fall back to `HEAD` — `gh api
-repos/<owner>/<repo>/commits/HEAD`, `git ls-remote <url> HEAD`. A branch
+repos/<owner>/<repo>/commits/HEAD`, `git ls-remote -- <url> HEAD`. A branch
 that no longer exists upstream is a permanent error: surface a
 diagnostic naming the branch and the source, transition
 `lifecycle.state` to `unknown`, and skip the source for this run (do
