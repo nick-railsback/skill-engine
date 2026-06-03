@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [Unreleased]
+## [0.4.0] - 2026-06-03
 
 - add: a JSON Schema for `source-paths.json` plus a `check-jsonschema` CI gate that meta-validates the schema and validates the bootstrap template and every bundled example against it. The schema transcribes the contract `verify.sh` Check 1/2 enforce, including its null/empty-string-as-absent reading of optional cross-axis fields (`plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json`, `.github/workflows/lint.yml`).
 - add: a grounded-citation eval corpus for the MCP example and a keyless `grounded_rate.py --dry-run` CI gate that validates each example's `eval-prompts.json` without calling the API (`examples/modelcontextprotocol-python-sdk-context/research/{eval-prompts.json,eval-results.md}`, `.github/workflows/lint.yml`).
