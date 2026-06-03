@@ -27,6 +27,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Provide a managed Python so `pip install` does not depend on the
+      # hosted runner image happening to permit installs into the system
+      # interpreter (PEP 668 / externally-managed-environment). Mirrors
+      # security.yml so both workflows resolve Python the same way.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Validate production JSON files
@@ -59,10 +66,10 @@ jobs:
           for f in examples/*/research/source-paths.json; do
             [ -f "$f" ] && targets+=( "$f" )
           done
-          for f in "${targets[@]}"; do
-            echo "Validating $f against schema"
-            check-jsonschema --schemafile "$schema" "$f"
-          done
+          # One invocation validates every target — avoids a cold start and a
+          # schema recompile per file.
+          echo "Validating ${#targets[@]} file(s) against the schema in one pass"
+          check-jsonschema --schemafile "$schema" "${targets[@]}"
 
   doctrine:
     runs-on: ubuntu-latest
