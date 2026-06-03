@@ -9,7 +9,18 @@ overrides both. The unit of value is not "a skill that knows your repo." It is
 one source, assembled into a single skill that holds their disagreements as
 output, stays accurate against its upstreams, and audits itself when it drifts.
 The [README](./README.md) makes the one-paragraph case for that; the rest of
-this document is the proof.
+this document is the detail behind it.
+
+**Where this earns its keep.** The contextualizer's value is *grounded,
+auditable, offline* answers over a chosen corpus — one local read, every
+load-bearing claim pinned to a reviewed snapshot at a fixed commit, no per-query
+web fetch. On a large, well-documented *public* library, a web-enabled frontier
+model is already competitive on correctness, so the edge there is provenance and
+reproducibility rather than raw accuracy. The leverage is highest where the web
+can't help at all: **private code and internal docs** the model has never seen,
+and **air-gapped or cost-controlled deployments** where live search isn't an
+option. The bundled `examples/` use public libraries because a stranger can
+verify them — they demonstrate the mechanism, not the ceiling of its value.
 
 ## Contents
 
@@ -19,7 +30,7 @@ this document is the proof.
 - [How you evaluate it](#how-you-evaluate-it) — three runs, 70/30 split, three-persona stratification, drop-in templates
 - [How it gets built](#how-it-gets-built) — DISCOVER, source-paths.json, bootstrap scaffolding
 - [How it handles failure](#how-it-handles-failure) — archived, renamed, deleted, transient, permanent
-- [How it's distributed](#how-its-distributed) — plugin install, hand-rolled, per-contextualizer CLI
+- [How it's distributed](#how-its-distributed) — two surfaces (plugin marketplace, Desktop zip) plus the optional hand-rolled pattern
 - [How human review fits](#how-human-review-fits) — propose–review–promote, gates, SHA audit trail
 - [Appendix — Command reference](#appendix--command-reference) — every slash command and what it does
 
@@ -134,6 +145,12 @@ context isolation is warranted. The 8-character `source_id` value space is
 safe to about a thousand sources; the design includes a future widening to
 16 characters when contextualizers approach the ten-thousand-source band.
 
+To be precise about the boundary between design and demonstration: the
+"hundreds" figure is a design target the linear index and batched operations
+are built for, not a benchmarked result. Demonstrated scale today is the
+bundled examples (up to eight sources in `langchain-context`); the headroom
+above that rests on the architecture, not on a run at that size.
+
 ### What this is *not*
 
 Skill-engine doesn't enforce naming conventions across forks. It doesn't
@@ -182,29 +199,36 @@ detect:
 
 ### The four reference invariants
 
-Every reference file in `references/` must satisfy four shape invariants
-enforced by the contextualizer-bundled `verify.sh`:
+Every reference file in `references/` is authored to four shape invariants.
+They differ in *how* — and *whether* — each is mechanically enforced; the
+annotations below are exact:
 
 - **first-5K** — the navigator's standing instructions (invariants, critical
   rules, dispatch logic) fit in the first 5 KB of `SKILL.md` so the platform's
   auto-compaction never silently truncates them mid-conversation.
+  *(Authoring discipline — not yet machine-checked.)*
 - **depth-1** — every reference is reachable from `SKILL.md` in exactly one
   link traversal; nested reference subdirectories are forbidden so Claude
   never shallow-probes a partial file.
+  *(Enforced by `verify.sh`, inside its `catalog-bijection` check.)*
 - **max-100-line-TOC** — any reference body over 100 lines carries a `##
   Contents` marker within the first 30 lines, so Claude lands at the right
   section instead of reading top-to-bottom.
+  *(Authoring discipline — not yet machine-checked.)*
 - **SHA-pin** — source-repo URLs in reference bodies are pinned to a 40-char
   commit SHA, not a branch. Branch-pinned URLs rot at 38-66% over a one-to-
   two-year horizon; SHA-pinning makes them immutable.
+  *(Enforced by the `permalink_density.py` CI lint — SELF-AUDIT Check 7 — not
+  by `verify.sh`.)*
 
 ### The bijection invariant
 
 The navigator's catalog table and the set of primary references form a
 bijection: every catalog row points to a real primary, and every primary
 appears as a catalog row. An orphaned file is invisible to the AI; a phantom
-row makes the AI try to read a missing file mid-conversation. The skill is
-provably complete, or it doesn't ship.
+row makes the AI try to read a missing file mid-conversation. The
+correspondence is checked mechanically by `verify.sh`, or the skill doesn't
+ship.
 
 ### Pre-approval validation
 
@@ -364,15 +388,16 @@ See also: [How it synthesizes across sources](#how-it-synthesizes-across-sources
 
 Two questions every adopter has: *what do I point this at*, and *how does it
 decide what to write*. Skill-engine answers both with explicit, reviewable
-primitives — never magic, never opaque.
+primitives rather than opaque automation.
 
 ### Goal-given DISCOVER
 
 The planning engine. `/skill-engine:discover` hands the model a task —
 *"discover the essence of the registered sources; write references for the
 parts that matter; satisfy the four reference invariants (first-5K, depth-1,
-max-100-line-TOC, SHA-pin)"* — and validates the output via `verify.sh` rather
-than prescribing a step-by-step pipeline. The model decides how to spend its
+max-100-line-TOC, SHA-pin)"* — and validates the structural output via
+`verify.sh` (with SHA-pinning checked by the `permalink_density.py` lint)
+rather than prescribing a step-by-step pipeline. The model decides how to spend its
 context, what to read, what to skip, what to propose.
 
 A `--hint` flag lets you steer the run with one sentence of intent — *"I'm
@@ -501,10 +526,13 @@ freshness staircase the failure modes live inside).
 
 ## How it's distributed
 
-Skill-engine ships through three paths, each suited to a different reader.
-The artifact a contextualizer produces is itself distributable — a `.zip`
-into Claude Desktop, a clone-and-install for Claude Code, a published
-plugin for the marketplace.
+Skill-engine ships through two surfaces — a published plugin for the
+marketplace (the recommended path) and the Claude Desktop zip — with the
+hand-rolled activation below as an optional pattern for builders who want a
+route the engine does not generate (see the optional CLI pattern in
+[04-delivery.md](plugin/skill-engine/docs/04-delivery.md)). The artifact a
+contextualizer produces is itself distributable the same two ways: a `.zip`
+into Claude Desktop or a published plugin for the marketplace.
 
 ### Plugin install (recommended)
 
@@ -528,45 +556,49 @@ special CLI, no SDK boilerplate. The engine's "infrastructure" is the
 model's ability to follow a system prompt; anything fancier is something
 else to maintain.
 
-### Per-contextualizer CLI installer
+### Use a contextualizer in Claude Desktop
 
-Each contextualizer ships its own bash CLI at `bin/<area-domain>-context`
-that copies the navigator skill plus references into `.claude/skills/`,
-writes a `.<area-domain>-metadata.json` file recording exactly what was
-installed, and supports `install`, `update`, `package`, and `clean` verbs.
-The CLI is the reliable path when plugin-marketplace flakiness (Issue
-#46594) leaves users on stale versions with no in-product signal. It is
-scriptable, has explicit error codes, and surfaces what it did to the user
-on every invocation. Desktop zips ship two artifacts per release: a
-version-stamped one and a stable-named `<area-domain>-context.zip` for
-`/releases/latest/download/` URLs that survive versioning.
+A contextualizer is a self-contained skill directory — the navigator
+`SKILL.md` plus its `references/` — so it runs anywhere Claude Code skills
+do, including Claude Desktop. There is no separate installer to build: to add
+one to Desktop, zip the skill directory and upload it.
 
-### Version sync across surfaces
+1. Zip the contextualizer's skill directory so the **top-level entry inside
+   the zip is the skill folder itself** (`<slug>-context/`), not a nested
+   path — Desktop's upload rejects nested-path zips. From the directory that
+   contains it: `zip -r <slug>-context.zip <slug>-context -x '*.DS_Store'`.
+2. In Claude Desktop, open the skill upload (Settings → Capabilities →
+   Skills) and add the zip.
+3. The skill is then available the same way it is in Claude Code.
 
-The version string lives in three places per contextualizer — the CLI
-script's header comment, the CLI's `VERSION` variable, and
-`.claude-plugin/plugin.json` — and the release checklist in
-[06-release-doctrine.md](plugin/skill-engine/docs/06-release-doctrine.md)
-bumps all three together. The pre-fixture-harness state relies on eyeball-review of the bump diff
-to catch a missed surface; a fourth surface — a `verify.sh`
-version-consistency check that would enforce match automatically — is
-fixture-harness planned. When a contextualizer depends on a specific skill-engine
-engine version, the artifact contract surfaces the mismatch rather than
-letting a maintainer see one version in the CLI and a different one in the
-navigator.
+Once installed, the contextualizer **answers entirely from its bundled
+references** — the navigator reads `references/*.md` on demand. No engine
+install, no clone cache, and no network are needed at answer time: the
+`~/.cache/skill-engine/` clones and the engine workflows are authoring- and
+refresh-time only. (The exact Desktop menu path can shift between releases;
+confirm the current upload flow in Desktop's settings if it has moved.)
+
+### Version pinning across surfaces
+
+A published contextualizer carries one version string, in its
+`.claude-plugin/plugin.json`; bump it per the release checklist in
+[06-release-doctrine.md](plugin/skill-engine/docs/06-release-doctrine.md).
+Content freshness is tracked separately and more granularly: every source in
+`source-paths.json` pins to the reviewed upstream SHA it was last checked
+against (`lifecycle.last_checked_sha`), so "what revision of the upstream
+does this reference reflect" is answerable per source, not just per release.
+A refresh that finds drift surfaces the SHA delta in the proposed diff for
+review.
 
 ### What's deliberately not built
 
 No SaaS distribution. No hosted service. No auto-update beyond what the
-plugin marketplace itself offers. The engine has no telemetry — the CLI is
-fully offline. Code-signing the Desktop zip is out of scope; organizations
-that require it layer that on top. The constraint stack stays bash +
-markdown + JSON with `jq` as the only non-shell dependency, so the engine
-works the same way on every Tier 1 platform (macOS, Linux, WSL2) without a
-portability matrix.
-
-See also: [How it handles failure](#how-it-handles-failure) (for the
-plugin-update silent-failure mode the CLI is the workaround for).
+plugin marketplace itself offers. The engine has no telemetry, and makes no
+network calls beyond the source fetches you explicitly confirm. Code-signing
+the Desktop zip is out of scope; organizations that require it layer that on
+top. The constraint stack stays bash + markdown + JSON with `jq` as the only
+non-shell dependency, so the engine works the same way on every Tier 1
+platform (macOS, Linux, WSL2) without a portability matrix.
 
 ---
 
@@ -626,19 +658,23 @@ per-session `research/sessions/<session-id>.json` files record what the
 agent proposed and what the human approved. Together they form a de facto
 audit trail — every line of every reference is traceable to a specific
 upstream snapshot, and every change to a reference is traceable to a
-specific approval. Nothing about a contextualizer's history is opaque.
+specific approval. A contextualizer's history is traceable, not opaque.
 
 ### Citation discipline
 
 Reference bodies cite source-repo URLs as SHA-pinned permalinks —
 `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` —
 rather than branch-pinned ones. Branch-pinned URLs rot at 38-66% over a
-one-to-two-year horizon; SHA-pinned URLs are immutable. Claude can't cite
-"the docs" as a vague gesture from a reference body; it cites a specific
-snapshot at a specific line range. The verify gate enforces SHA-pinning
-on reference bodies; navigator prose and README pointers may carry
-unpinned URLs because they are *intentional latest* — meant to track the
-current state of an upstream, not freeze.
+one-to-two-year horizon; SHA-pinned URLs are immutable. The discipline holds
+at two points: the permalink-density lint (SELF-AUDIT Check 7) enforces
+SHA-pinning in reference *bodies*, and the navigator's Claims policy tells
+Claude to *surface* those permalinks when it answers — so the reader lands on a specific
+snapshot at a specific line range, not a vague gesture at "the docs." The
+grounded-citation eval (SELF-AUDIT Check 8) measures the second: the worked
+result in [`eval-results.md`](examples/modelcontextprotocol-python-sdk-context/research/eval-results.md)
+went from 30% to 90% once the Claims policy instructed permalink citation.
+Navigator prose and README pointers may carry unpinned URLs because they are
+*intentional latest* — meant to track the current state of an upstream, not freeze.
 
 ### Future direction: opt-in autonomy flags
 

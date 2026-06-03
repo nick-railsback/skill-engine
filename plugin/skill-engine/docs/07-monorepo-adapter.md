@@ -64,7 +64,7 @@ The schema is documented in full at `monorepo-config.json.template` (find at `pl
 
 Optional documentation fields (`owner_team`, `notes`, `weight`) are recognized by the schema and ignored by the engine in v1; they exist for the maintainer's own audit trail and for future importance-scoring work.
 
-**Validation rules** (enforced by the `monorepo-schema` named check in the contextualizer-side `verify.sh` the plugin stamps at bootstrap; template source: `plugin/skill-engine/engine-bootstrap-templates/verify.sh`):
+**Validation rules** (the schema `monorepo-config.json` must satisfy — these are **not** currently enforced by the shipped `verify.sh`. The only monorepo-aware check it ships is the `monorepo-coverage` *heuristic* (Check 6), which warns when a workspace member is uncited — a different concern, not a schema validator. Treat the rules below as the config contract the maintainer and reviewer uphold; template source: `plugin/skill-engine/engine-bootstrap-templates/verify.sh`):
 
 - Top-level `monorepos[]` is an array.
 - Each `monorepos[].url` is unique within the file.
@@ -196,6 +196,6 @@ The adapter adds a slice abstraction; it does not redesign anything else.
 
 ## 7.11 Forward pointers
 
-The adapter is **read** by the `maintenance-agent.md.template` (find at `plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template` in your installed plugin, or at <https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template>). The adapter is **constrained** by the `monorepo-schema` named check in the consumer-stamped `verify.sh` (Check 16). The adapter is **bootstrapped** by `bootstrap-monorepo-config.sh.template`. The adapter is **shaped** by per-slice `CLAUDE.md` files the maintainer authors in their monorepo.
+The adapter is **read** by the `maintenance-agent.md.template` (find at `plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template` in your installed plugin, or at <https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template>). The adapter's config schema is **not** machine-validated by the consumer-stamped `verify.sh`; the engine's only monorepo-aware check is the `monorepo-coverage` heuristic (Check 6), which warns on uncited workspace members. Schema conformance for `monorepo-config.json` is upheld by the maintainer and reviewer. The adapter is **bootstrapped** by `bootstrap-monorepo-config.sh.template`. The adapter is **shaped** by per-slice `CLAUDE.md` files the maintainer authors in their monorepo.
 
 For the freshness model the adapter extends, see chapter `08-discover-pipeline.md`. For the discovery configuration that the adapter sits alongside, see chapter `09-discover-config.md`. For end-to-end usage, see the walkthrough chapter `11-walkthrough.md`.

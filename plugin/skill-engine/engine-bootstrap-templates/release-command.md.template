@@ -81,9 +81,9 @@ Compute `NEW_VERSION` per the arg parsing above. Display:
 
 Pause for confirmation. On no/abort, stop cleanly.
 
-## Phase 3 - Bump the three version surfaces
+## Phase 3 - Bump the version surfaces
 
-Edit each file; show a diff summary after each edit. The three surfaces are documented in `skill-engine/docs/04-delivery.md` (3-place version sync). A fixture-harness enhancement will add a `verify.sh` version-consistency check; until then, run Phase 5 to catch drift.
+Edit each file; show a diff summary after each edit. `.claude-plugin/plugin.json` is the one version surface every contextualizer carries; the `# Version:` / `VERSION=` lines in `bin/<area-domain>-context` — and the test suite's version assertion — belong to the optional CLI pattern this release flow assumes (see the 4-place version sync section in `skill-engine/docs/04-delivery.md#4-place-version-sync`). This Phase bumps the three file-resident surfaces below; a fixture-harness enhancement will add a `verify.sh` version-consistency check, so until then run Phase 5 and eyeball the Phase 6 diff to catch drift.
 
 1. **`bin/<area-domain>-context`** (two places):
    * Header comment: `# Version: X.Y.Z` -> `# Version: <NEW_VERSION>`
@@ -182,13 +182,13 @@ Verify both files exist and their sizes match. The versioned zip is the canonica
 ## Failure modes and recovery
 
 * **Phase 1 preflight fails:** fix the underlying issue (install tool, authenticate, clean working tree) and re-run.
-* **Phase 5 validator fails after version bump:** if a check fails, halt and show the failing check name(s). Fix the file, re-run `./verify.sh`; once green, continue with Phase 6. (A v0.2 enhancement will add a version-consistency check; until then, eyeball-review the diff in Phase 6.)
+* **Phase 5 validator fails after version bump:** if a check fails, halt and show the failing check name(s). Fix the file, re-run `./verify.sh`; once green, continue with Phase 6. (A future fixture-harness enhancement will add a version-consistency check; until then, eyeball-review the diff in Phase 6.)
 * **Phase 9 release create fails:** common causes are (a) tag already exists (someone else created vX.Y.Z already - delete with `<host-cli> release delete` or pick a new version), or (b) auth scope too narrow (re-run `<host-cli> auth refresh -h <your-git-host> -s repo`).
 * **Bad release shipped:** see your `RELEASING.md` > "Rollback" - delete the release (or mark as pre-release), upload the previous good zip, cut a patch release with the fix.
 
 ## Guardrails
 
-* **Never skip Phase 5** (post-bump validator). Until v0.2 adds a version-consistency check to `verify.sh`, the Phase 6 diff review is the only line of defense against shipping a mismatched `plugin.json`.
+* **Never skip Phase 5** (post-bump validator). Until a future fixture-harness enhancement adds a version-consistency check to `verify.sh`, the Phase 6 diff review is the only line of defense against shipping a mismatched `plugin.json`.
 * **Never commit `--no-verify`** in this flow. If a hook fails, investigate.
 * **Never force-push** the release branch.
 * **Pause before pushing** (Phase 6-7) and before creating the host release (Phase 9). Those are the two points of no return for this session.

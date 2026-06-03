@@ -254,6 +254,12 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--min-paragraphs", type=int, default=5,
                         help="Skip with N/A when corpus has fewer than this "
                         "many in-scope paragraphs. Default 5.")
+    parser.add_argument("--require-min-paragraphs", action="store_true",
+                        help="Fail (instead of N/A pass) when the corpus has "
+                        "fewer than --min-paragraphs in-scope paragraphs. Use for "
+                        "curated corpora expected to clear the bar (e.g. the "
+                        "bundled examples) so an unexpectedly thin corpus cannot "
+                        "pass the gate vacuously.")
     args = parser.parse_args(argv)
 
     refs = args.references_dir
@@ -276,6 +282,11 @@ def main(argv: list[str]) -> int:
         total_covered += covered
 
     if total_paragraphs < args.min_paragraphs:
+        if args.require_min_paragraphs:
+            print(f"[FAIL] permalink-density: only {total_paragraphs} paragraphs "
+                  f"in scope (need ≥{args.min_paragraphs}); --require-min-paragraphs "
+                  f"is set, so a corpus this thin fails rather than passing N/A")
+            return 1
         print(f"[N/A]  permalink-density: only {total_paragraphs} paragraphs "
               f"in scope (need ≥{args.min_paragraphs} for a meaningful ratio)")
         return 0

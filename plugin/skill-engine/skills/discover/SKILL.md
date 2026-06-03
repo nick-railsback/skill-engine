@@ -6,9 +6,11 @@ description: Propose new reference files for registered sources.
 # Discover
 
 You receive a task: **discover the essence of the registered sources,
-then write reference files for the parts that matter**. The engine
-validates your output via the four reference invariants and the named
-checks in `verify.sh`. How you reason about the corpus is your call —
+then write reference files for the parts that matter**. The named
+checks in `verify.sh` (plus the permalink-density lint for SHA-pinning)
+validate your output; the four reference invariants are your authoring
+targets — not all are machine-checked (see § Output contract). How you
+reason about the corpus is your call —
 there is no Stage 0/1/2 prescription, no fixed keystroke menu, no
 required worker dispatch. Vary your approach by what the corpus
 rewards.
@@ -124,9 +126,12 @@ Two things, both load-bearing:
      branch or tag.
 2. **A post-run summary** for the author (see "Post-run summary" below).
 
-`verify.sh` is the trust mechanism. Variance below the invariant floor
-is acceptable and expected — two sessions on the same corpus may
-produce different reference counts, different topical partitions,
+`verify.sh` — plus the permalink-density lint and the reviewer — is the
+trust mechanism. Of the four invariants above, `verify.sh` mechanically
+checks depth-1 (inside its `catalog-bijection` check) and the lint checks
+SHA-pinning; first-5K and the TOC are reviewer-backstopped. Variance below
+the invariant floor is acceptable and expected — two sessions on the same
+corpus may produce different reference counts, different topical partitions,
 different prose styles. The invariants plus the named checks are what
 bind quality.
 
@@ -260,21 +265,38 @@ When `/skill-engine:discover` is invoked:
 
    ```bash
    # ref = source entry's "branch" if present, else HEAD
-   sha=$(git ls-remote "<url>" "<ref>" | cut -f1)
-   mkdir -p ~/.cache/skill-engine/git-managed/
-   dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
-   tmpdir="${dest}.tmp.$$"
-   if [ "<ref>" = "HEAD" ]; then
-     git clone --depth=1 --filter=blob:none "<url>" "$tmpdir"
-   else
-     git clone --depth=1 --filter=blob:none --branch "<ref>" "<url>" "$tmpdir"
-   fi && mv "$tmpdir" "$dest" || rm -rf "$tmpdir"
+   # Refuse an unsafe source_id before it becomes a cache path component
+   # (mirrors engine-bootstrap Step 3.5). Skip this source on a bad id — do
+   # not exit, so a multi-source DISCOVER keeps pre-flighting the rest.
+   case "<source_id>" in
+     ""|-*|*[!a-z0-9-]*)
+       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2 ;;
+     *)
+       # `--` terminates git option parsing so a '-'-leading url is not read as a flag.
+       sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
+       if [ -z "$sha" ]; then
+         # Empty SHA: the ref does not exist upstream (or ls-remote failed).
+         # Building `<source_id>-` would land a cache path no lookup matches —
+         # decline to clone this source and use the CLI fallback for it.
+         echo "skill-engine: <source_id> @ <ref> not found upstream (empty ls-remote) — declining to clone; using CLI fallback" >&2
+       else
+         mkdir -p ~/.cache/skill-engine/git-managed/
+         dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
+         tmpdir="${dest}.tmp.$$"
+         if [ "<ref>" = "HEAD" ]; then
+           git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"
+         else
+           git clone --depth=1 --filter=blob:none --branch "<ref>" -- "<url>" "$tmpdir"
+         fi && mv "$tmpdir" "$dest" || rm -rf "$tmpdir"
+       fi ;;
+   esac
    ```
 
-   A `git ls-remote` that returns an empty SHA for an explicitly-named
-   branch means the branch does not exist upstream — surface a one-line
-   diagnostic naming the source and the branch, decline to clone, and
-   fall back to the CLI path for the remainder of this DISCOVER run.
+   The empty-SHA branch above handles a `git ls-remote` that returns nothing
+   for an explicitly-named ref (the ref does not exist upstream, or the probe
+   failed): it surfaces a one-line diagnostic naming the source and ref,
+   declines to clone that source, and falls back to the CLI path for it — it
+   does not abort DISCOVER.
 
    On success, prefer local reads under the new cache directory for the
    rest of this DISCOVER run. On clone failure, emit one line ("Couldn't

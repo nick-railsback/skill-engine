@@ -18,6 +18,17 @@ When asked a question:
 3. Follow the link to read the reference file.
 4. If the question spans multiple sources, consult the **Cross-source map**.
 
+## Claims policy
+
+Cite by default, and make load-bearing claims verifiable:
+
+1. **Inline-cite every load-bearing claim with its SHA-pinned permalink** — the `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` link the reference gives for that fact (versions, defaults, signatures, deprecations, behavior a user could get wrong by guessing). Put the permalink inline, on the claim. Use a bare filename parenthetical (e.g. `(<source-slug>-<topic>.md)`) only when the reference genuinely provides no permalink. This inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades.
+2. Don't cite orientational prose — *"what is X?"*, *"when did X launch?"* — answer those from this navigator alone; opening a reference is itself a citation gesture.
+3. End with a one-line provenance footer, emitted italic, formatted `*References consulted: foo.md, bar.md. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*` The footer is a **summary of what you read — not a substitute** for the inline permalinks on the claims. Tokens are agent-substituted at answer time (they appear literally in the stamped `SKILL.md`); across multiple sources, `{{LIBRARY}}` resolves to the source slug(s) the answer drew from, or every registered slug when no reference was opened.
+4. If no reference was opened, say so in the footer (*"Answered from general knowledge — no {{LIBRARY}} references consulted"*) — never fake it.
+
+The voice is competent and careful — no "as an AI assistant" hedging.
+
 ## How to search this navigator
 
 Every reference is filename-prefixed by its source slug — `<source-slug>-<topic>.md`. To find references for a given source, scan only that source's Catalog section; the prefix discrimination keeps sources visually separated even when filenames are listed together.
@@ -29,10 +40,6 @@ See [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/b
 ## How to follow source links
 
 References pin source URLs to specific commit SHAs (for git-managed sources), crawl dates (for external-doc and web-doc sources), or content hashes (for web-doc). Follow links as written — the SHA, crawl date, or content hash is the version the reference was authored against. If a reference needs "current state" instead of "authored state," its prose says so explicitly. Stable version tags (`vN.M`, `vN.M.P`) are accepted equivalently to commit SHAs.
-
-## Markdown style for generated references
-
-Reference files use **soft wrapping**: one paragraph per line, no hard line breaks at fixed column widths. Editors and rendered Markdown reflow at viewport width. Do not insert manual line breaks within a paragraph to keep lines under ~80 columns — that produces mid-sentence breaks in rendered output and makes diffs noisier. Code blocks, tables, bullet lists, and headings follow their own rules; this directive applies to prose paragraphs only.
 
 ## Cross-source map
 
@@ -52,21 +59,6 @@ Loading rules:
 * If the primary reference doesn't fully answer the question, follow any source URL pointers it provides for deeper detail.
 * Do not eagerly load companion files; only follow companion links when the primary reference says to.
 * If the user's question is clearly out of scope for any registered source, don't invoke this skill at all.
-
-## Progressive disclosure
-
-References prioritize curated insight over re-specifying upstream sources:
-
-* **Gotchas, cross-system patterns, and "why" context** are kept in the reference (curation value).
-* **Exact schemas, API signatures, and parameter lists** are summarized in the reference and linked to their authoritative source via source URLs.
-
-When a reference includes a source URL pointer, follow it only when the reference's own summary didn't cover the question. The contextualizer is optimized for the common case; the upstream source is the long tail.
-
-## Optional SKILL.json sibling
-
-This navigator MAY ship an optional `SKILL.json` sibling alongside this `SKILL.md` for machine-readable consumers (opt-in additive — contextualizers without it pass verification unchanged). When present, per-source `## Catalog: <source-slug>` rows below, SKILL.json `catalog[]` entries, and `references/<source-slug>-*.md` files must stay in three-way correspondence. Entries carrying `"draft": true` in SKILL.json are excluded from the trijection and surface as a one-line summary at verify time. The `skill-json-trijection` named check fires only when SKILL.json is present; absence is a silent-skip pass.
-
-Full schema: see [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §"SKILL.json".
 
 ## Catalog
 
@@ -95,3 +87,22 @@ Full schema: see [`02-artifact-contract.md`](https://github.com/nick-railsback/s
 | [inspect-aisi-org-uk-docs-portal](references/inspect-aisi-org-uk-docs-portal.md) | Orientation to the rendered docs portal at inspect.aisi.org.uk — what is unique to the portal (auto-generated Python API reference, CLI reference, and evals catalog) versus the backing repo, and the top-level navigation across User Guide, Reference, Extensions, and Evals sections. | `cross-cutting` |
 | [inspect-aisi-org-uk-api-reference](references/inspect-aisi-org-uk-api-reference.md) | Per-module summary of the 13 inspect_ai.* Python API pages at inspect.aisi.org.uk/reference/ — exact signatures, headline exports, and return types, with SHA-pinned source links; read this file to answer 'what does this function take' / 'what does this class hold' questions before fetching a full reference page. |  |
 | [inspect-aisi-org-uk-cli-reference](references/inspect-aisi-org-uk-cli-reference.md) | Per-subcommand summary of the 11 inspect <cmd> CLI pages — flag groups, defaults, sub-subcommands, with links to the canonical reference URLs and the backing _cli source files. Each subcommand maps to a Click command defined in src/inspect_ai/_cli/ at pinned SHA 033745ddbc. |  |
+
+## Markdown style for generated references
+
+Reference files use **soft wrapping**: one paragraph per line, no hard line breaks at fixed column widths. Editors and rendered Markdown reflow at viewport width. Do not insert manual line breaks within a paragraph to keep lines under ~80 columns — that produces mid-sentence breaks in rendered output and makes diffs noisier. Code blocks, tables, bullet lists, and headings follow their own rules; this directive applies to prose paragraphs only.
+
+## Progressive disclosure
+
+References prioritize curated insight over re-specifying upstream sources:
+
+* **Gotchas, cross-system patterns, and "why" context** are kept in the reference (curation value).
+* **Exact schemas, API signatures, and parameter lists** are summarized in the reference and linked to their authoritative source via source URLs.
+
+When a reference includes a source URL pointer, follow it only when the reference's own summary didn't cover the question. The contextualizer is optimized for the common case; the upstream source is the long tail.
+
+## Optional SKILL.json sibling
+
+This navigator MAY ship an optional `SKILL.json` sibling alongside this `SKILL.md` for machine-readable consumers (opt-in additive — contextualizers without it pass verification unchanged). When present, per-source `## Catalog: <source-slug>` rows above, SKILL.json `catalog[]` entries, and `references/<source-slug>-*.md` files must stay in three-way correspondence. Entries carrying `"draft": true` in SKILL.json are excluded from the trijection and surface as a one-line summary at verify time. The `skill-json-trijection` named check fires only when SKILL.json is present; absence is a silent-skip pass.
+
+Full schema: see [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §"SKILL.json".

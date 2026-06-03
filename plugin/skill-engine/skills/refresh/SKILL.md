@@ -7,9 +7,10 @@ description: Refresh a contextualizer's references against current upstream stat
 
 You receive a task: **bring the contextualizer's existing references
 into agreement with the current upstream state of every registered
-source**. The engine validates your output via the four reference
-invariants and the named checks in `verify.sh`. How you reason about
-drift is your call — there is no Stage -1/1/2/3 prescription, no
+source**. The named checks in `verify.sh` (plus the permalink-density
+lint for SHA-pinning) validate your output; the four reference
+invariants are your authoring targets — not all are machine-checked
+(see § Output contract). How you reason about drift is your call — there is no Stage -1/1/2/3 prescription, no
 fixed keystroke menu, no required worker dispatch.
 
 ## Contextualizer root
@@ -86,9 +87,12 @@ Two things, both load-bearing:
    timestamps). The four-state field on `source-paths.json` is the
    single source of truth for upstream state.
 
-`verify.sh` is the trust mechanism. Variance below the invariant floor
-is acceptable and expected — two REFRESH runs against the same corpus
-may differ in which references were rewritten or which sources
+`verify.sh` — plus the permalink-density lint and the reviewer — is the
+trust mechanism. Of the four invariants above, `verify.sh` mechanically
+checks depth-1 (inside its `catalog-bijection` check) and the lint checks
+SHA-pinning; first-5K and the TOC are reviewer-backstopped. Variance below
+the invariant floor is acceptable and expected — two REFRESH runs against
+the same corpus may differ in which references were rewritten or which sources
 transitioned. The invariants plus the named checks are what bind
 quality.
 
@@ -293,7 +297,7 @@ pre-flight. Run them in order; each phase's outputs feed the next.
 
 | Kind | Probe command | Records to lifecycle |
 |---|---|---|
-| `git-managed` | `git ls-remote --heads <url> <branch>` | `last_checked_sha` = first column |
+| `git-managed` | `git ls-remote --heads -- <url> <branch>` | `last_checked_sha` = first column |
 | `web-doc` | `HTTP HEAD <url>` | `last_checked` = now; if redirect → `state: "moved"`, `proposed_url` set; if 4xx → `state: "removed"` |
 | `external-doc` | n/a (local content) | n/a |
 | `local-path` | n/a (local content) | n/a |
@@ -389,18 +393,22 @@ command-line tools over WebFetch:
 
 - `gh repo view <owner>/<repo>`,
 - `gh api repos/<owner>/<repo>/commits/<ref>`,
-- `git ls-remote <url> <ref>`, `git ls-tree --recursive <ref>`,
+- `git ls-remote -- <url> <ref>`, `git ls-tree --recursive <ref>`,
 - `git show <ref>:<path>`.
 
 The CLIs return clean structured output; WebFetch returns rendered HTML
 that consumes roughly 10× more tokens to parse. Reserve WebFetch for
 `kind: external-doc` or git sources where CLI access fails.
 
+The `--` in the `git ls-remote` probes terminates option parsing so a `url`
+beginning with `-` cannot be read as a flag (e.g. `--upload-pack=…`) — the same
+argument-injection guard the engine-bootstrap and DISCOVER clone flows use.
+
 **Which `<ref>` to use.** If the source entry carries a `branch` field,
 that branch is `<ref>` everywhere above (e.g., `gh api
-repos/<owner>/<repo>/commits/dev`, `git ls-remote <url> dev`). If the
+repos/<owner>/<repo>/commits/dev`, `git ls-remote -- <url> dev`). If the
 `branch` field is absent, fall back to `HEAD` — `gh api
-repos/<owner>/<repo>/commits/HEAD`, `git ls-remote <url> HEAD`. A branch
+repos/<owner>/<repo>/commits/HEAD`, `git ls-remote -- <url> HEAD`. A branch
 that no longer exists upstream is a permanent error: surface a
 diagnostic naming the branch and the source, transition
 `lifecycle.state` to `unknown`, and skip the source for this run (do

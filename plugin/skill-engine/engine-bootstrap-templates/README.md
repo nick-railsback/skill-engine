@@ -8,10 +8,10 @@ The repository ships **two `verify.sh` programs** in different directories. They
 
 | File | Audience | Surface |
 |---|---|---|
-| [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](./verify.sh) | **Contextualizer authoring** | 9 named checks against a stamped `.claude/skills/<slug>-context/` directory (frontmatter, soft-wrap, catalog bijection, SHA-pinned permalinks, optional SKILL.json trijection, etc.) |
+| [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](./verify.sh) | **Contextualizer authoring** | 11 named checks against a stamped `.claude/skills/<slug>-context/` directory (source-paths shape, navigator frontmatter, catalog↔references bijection, reference frontmatter, web-doc provenance, optional SKILL.json trijection, etc.). SHA-pinned-permalink density is **not** here — that is the separate `permalink_density.py` CI lint. |
 | [`templates/verify.sh`](https://github.com/nick-railsback/skill-engine/blob/main/templates/verify.sh) | **Engine authoring** | 27 named checks against the engine-authoring repo root (chapter shape, navigator-template invariants, source-paths schema, persona-leak gates, monorepo invariants, etc.) |
 
-The contextualizer-side check counts 1–9; the engine-authoring-side check counts 1–27. The two surfaces are independent — a future change to one is **not** auto-mirrored to the other. The `skill-json-trijection` check appears in both (Check 9 contextualizer-side / Check 27 engine-authoring-side); the predicate is the same, the numbering differs because the audit surfaces are independent.
+The contextualizer-side checks are numbered 1–9, with two sub-checks (5.5 `external-doc-frontmatter` and 5.6 `web-doc-snapshot-present`) for **11 named checks** total; the engine-authoring-side check counts 1–27. The two surfaces are independent — a future change to one is **not** auto-mirrored to the other. The `skill-json-trijection` check appears in both (Check 9 contextualizer-side / Check 27 engine-authoring-side); the predicate is the same, the numbering differs because the audit surfaces are independent.
 
 ## What lives here
 
@@ -21,7 +21,7 @@ The contextualizer-side check counts 1–9; the engine-authoring-side check coun
 | `navigator-multi-domain.md.template` | Multi-source-root navigator skeleton (per-source `## Catalog: <slug>` blocks, `## Cross-source map`) |
 | `maintenance-agent.md.template` | The engine's maintenance-agent system prompt — what the model reads when activated |
 | `monorepo-config.json.template` | Slice-config skeleton for monorepo adapters ([07-monorepo-adapter.md](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/07-monorepo-adapter.md)) |
-| `verify.sh` | Contextualizer-side audit (9 named checks) |
+| `verify.sh` | Contextualizer-side audit (11 named checks) |
 
 ## Editing convention
 

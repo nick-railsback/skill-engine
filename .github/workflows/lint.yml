@@ -27,6 +27,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Provide a managed Python so `pip install` does not depend on the
+      # hosted runner image happening to permit installs into the system
+      # interpreter (PEP 668 / externally-managed-environment). Mirrors
+      # security.yml so both workflows resolve Python the same way.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Validate production JSON files
@@ -48,6 +55,21 @@ jobs:
               echo "Skipping $f (not present)"
             fi
           done
+      - name: Validate source-paths.json against its schema
+        run: |
+          set -e
+          python3 -m pip install --quiet check-jsonschema
+          schema="plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json"
+          echo "Meta-validating the schema"
+          check-jsonschema --check-metaschema "$schema"
+          targets=( "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template" )
+          for f in examples/*/research/source-paths.json; do
+            [ -f "$f" ] && targets+=( "$f" )
+          done
+          # One invocation validates every target — avoids a cold start and a
+          # schema recompile per file.
+          echo "Validating ${#targets[@]} file(s) against the schema in one pass"
+          check-jsonschema --schemafile "$schema" "${targets[@]}"
 
   doctrine:
     runs-on: ubuntu-latest
@@ -72,3 +94,28 @@ jobs:
         run: bash plugin/skill-engine/tests/permalink-density/run.sh
       - name: Run grounded-rate tests
         run: bash plugin/skill-engine/tests/grounded-rate/run.sh
+      - name: Run verify-bijection tests
+        run: bash plugin/skill-engine/tests/verify-bijection/run.sh
+      - name: Verify bundled example contextualizers
+        run: |
+          set -e
+          for v in examples/*/verify.sh; do
+            echo "== $v =="
+            bash "$v"
+          done
+      - name: Permalink density on example references
+        run: |
+          set -e
+          for refs in examples/*/references; do
+            [ -d "$refs" ] || continue
+            echo "== $refs =="
+            python3 plugin/skill-engine/tests/permalink_density.py "$refs" --threshold 0.80 --min-paragraphs 5 --require-min-paragraphs
+          done
+      - name: Validate example eval corpora (grounded-rate dry-run)
+        run: |
+          set -e
+          for ctx in examples/*/; do
+            [ -f "$ctx/research/eval-prompts.json" ] || continue
+            echo "== $ctx =="
+            python3 plugin/skill-engine/tests/grounded_rate.py "$ctx" --dry-run
+          done

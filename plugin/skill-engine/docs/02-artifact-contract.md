@@ -200,7 +200,9 @@ Beyond the `kind` discriminator and the external-doc-specific provenance frontma
 
 **Two state-machine axes — load-bearing.** `status` (curation) and `lifecycle.state` (upstream) describe distinct things and must not be conflated. A `confirmed` source can become `removed` upstream without invalidating the curation; a `rejected` companion can still have its upstream reach `moved`. The engine surfaces both axes separately — directly in `source-paths.json` and in each workflow's post-run summary — so the two states are never collapsed into one. Conflating them would lose information at the moment the user most needs it.
 
-### Body - five sections in this order
+### Body - the core sections, in order
+
+These are the navigator body's core sections, in the order a single-domain navigator uses them. The navigator templates (`engine-bootstrap-templates/navigator*.md.template`) are canonical for the exact section set: alongside the six below they also carry a `## Markdown style for generated references` style guide and a closing `## Optional SKILL.json sibling` note, and the **multi-domain** template reorders the body (see the note after section 6).
 
 **1. Overview** - two or three paragraphs: what the domain is, what this navigator catalogs, how the AI is meant to use it.
 
@@ -218,7 +220,31 @@ matching topic, follow the link to read the reference, then consult
 the Cross-reference map if the question spans multiple subsystems.
 ```
 
-**2. Catalog** - a markdown table. One row per primary reference. Two columns:
+**2. Claims policy** - how the navigator instructs the model to cite. Every load-bearing claim carries the reference's SHA-pinned source permalink *inline, on the claim* — this is what the grounded-citation eval (SELF-AUDIT Check 8) grades; a bare `(<reference>.md)` filename parenthetical is the fallback only when the reference provides no permalink. Orientational prose is not decorated with citations, and every answer ends with a one-line provenance footer.
+
+```markdown
+## Claims policy
+
+Cite by default, and make load-bearing claims verifiable:
+
+1. Inline-cite every load-bearing claim with its SHA-pinned permalink
+   (`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>`) —
+   inline, on the claim. Fall back to a bare `(<reference>.md)` filename
+   parenthetical only when the reference genuinely provides no permalink. This
+   inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades.
+2. Don't cite orientational prose — answer "what is X?" / "when did X launch?"
+   from this navigator alone.
+3. End with a one-line provenance footer, emitted italic:
+   *References consulted: …. Grounded in {{LIBRARY}}@{{VERSION}} — [reference index]({{INDEX_URL}}).*
+   The footer summarizes what you read; it does not replace the inline permalinks.
+   The `{{LIBRARY}}` / `{{VERSION}}` / `{{INDEX_URL}}` tokens are agent-substituted
+   at answer time, so they appear literally in the stamped SKILL.md.
+4. If no reference was opened, say so in the footer — never fake it.
+```
+
+The full Claims policy lives in the navigator templates (`engine-bootstrap-templates/navigator*.md.template`); the block above is the contract summary. The provenance footer is rule 3 of that policy, not a separate subsection. The grounded-citation eval (Check 8) measures whether the model actually emits the permalink when it answers — see [13-coverage-testing.md](13-coverage-testing.md).
+
+**3. Catalog** - a markdown table. One row per primary reference. Two columns:
 
 ```markdown
 ## Catalog
@@ -232,7 +258,7 @@ the Cross-reference map if the question spans multiple subsystems.
 
 The first column is a markdown link to the reference file. The second is a one-line factual summary that helps the AI route correctly. The catalog is bijective with `references/<area-domain>-*.md` - `verify.sh` enforces this (catalog-bijection check); see "The bijection invariant" below.
 
-**3. Cross-reference map** - a bullet list of multi-domain query patterns: when does a question naturally span two or more references?
+**4. Cross-reference map** - a bullet list of multi-domain query patterns: when does a question naturally span two or more references?
 
 ```markdown
 ## Cross-reference map
@@ -246,7 +272,7 @@ The first column is a markdown link to the reference file. The second is a one-l
   client-side cookie behavior lives in the companion file `session-cookie-deep-dive.md`.
 ```
 
-**4. Instructions to Claude** - the load-syntax contract. Path syntax differs by platform:
+**5. Instructions to Claude** - the load-syntax contract. Path syntax differs by platform:
 
 ```markdown
 ## Instructions to Claude
@@ -271,7 +297,7 @@ Loading rules:
 
 Keeping the syntax explicit prevents the AI from guessing the path (which it will get wrong on at least one platform).
 
-**5. Progressive Disclosure note** - a short closing section stating that references curate and point; they don't re-specify upstream sources.
+**6. Progressive Disclosure note** - a short closing section stating that references curate and point; they don't re-specify upstream sources.
 
 ```markdown
 ## Progressive Disclosure
@@ -285,9 +311,11 @@ itself doesn't answer the question.
 
 The full keep/replace decision framework lives in the [Progressive disclosure](#progressive-disclosure-the-keepreplace-framework) section below.
 
+**Multi-domain navigators reorder this.** The multi-domain template (`navigator-multi-domain.md.template`) covers several sources, so it replaces the Cross-reference map with a `## Cross-source map`, adds `## How to search this navigator` and `## How to follow source links`, and moves `## Catalog` down below `## Instructions to Claude` — a large sectioned catalog table is a TOC, not standing instructions, so keeping it after the dispatch sections holds those inside the first-5K budget (see "Navigator size budget" below). The templates are the source of truth for the exact section set and order.
+
 ### Navigator size budget
 
-**Hard invariant.** The navigator's **standing instructions** - invariants, critical rules, and dispatch logic - must fit in the first **5K bytes** of `SKILL.md` body, with frontmatter excluded. The verify gate enforces this with the `first-5K` check (see [05-invariants.md](05-invariants.md)).
+**Hard invariant** (by contract, not yet by machine). The navigator's **standing instructions** - invariants, critical rules, and dispatch logic - must fit in the first **5K bytes** of `SKILL.md` body, with frontmatter excluded. This is a contract rule the author and reviewer uphold: the shipped `verify.sh` has **no** `first-5K` check, and no CI lint measures the budget today (see [05-invariants.md](05-invariants.md)).
 
 The platform constraint motivating the rule is auto-compaction. When the orchestrator re-attaches skills mid-conversation, the budget for all attached skills is roughly 25K bytes. Reserving 5K for any one navigator's standing instructions leaves headroom for multi-skill scenarios; a navigator that exceeds it will be silently truncated by the platform.
 
@@ -431,7 +459,7 @@ From `SKILL.md`, every reference is reachable in exactly one link traversal — 
 
 The failure mode this prevents is shallow probes. When references nest, Claude is tempted to `head -100` a reference to "preview" it before deciding whether to follow a deeper link, instead of reading the reference fully. The depth-1 rule keeps every reference a single, complete unit.
 
-Companion files (bare-named, linked from primaries) live in the same `references/` directory and remain depth 1 — the rule constrains directory nesting, not the link graph between siblings. The verify gate enforces this with the `max-ref-depth` check (see [05-invariants.md](05-invariants.md)).
+Companion files (bare-named, linked from primaries) live in the same `references/` directory and remain depth 1 — the rule constrains directory nesting, not the link graph between siblings. The shipped `verify.sh` enforces depth-1 inside its `catalog-bijection` check — a catalog row whose target encodes a nested path fails there; there is no standalone `max-ref-depth` check (see [05-invariants.md](05-invariants.md)).
 
 **Optional directory form for multimodal references.** A reference MAY take a second shape: a directory at `references/<area-domain>-<topic>/` containing a canonical primary `.md` file whose basename matches the directory basename — so a directory `references/billing-refunds/` contains `references/billing-refunds/billing-refunds.md` as its primary. Non-`.md` asset files (architecture diagrams, JSON schemas, SVG flows, screenshots, example payloads) MAY sit alongside the primary at the same depth; there is no extension restriction beyond "not `.md`." Both shapes are first-class. The flat file form `references/<area-domain>-<topic>.md` remains the default for text-only references — it is lighter to maintain (a rename touches one file). The directory form exists for references whose value is genuinely visual or asset-bearing: a diagram explains a flow more vividly than 200 words of prose; a JSON schema is most useful when shipped alongside the prose that describes it. The size budget above is text-token-only; an asset's effect on the model's attention is real even though the asset itself does not count toward Markdown bytes.
 
@@ -452,7 +480,7 @@ references/
 
 Any reference body exceeding 100 lines must contain a Markdown TOC marker — typically `## Contents` — within the first 30 lines of the body. The TOC tells Claude where to land when the reference is loaded, instead of forcing a top-to-bottom read of a long file.
 
-Short references (under 100 lines) do not need a TOC; they are short enough to scan directly. The verify gate enforces this with the `long-ref-toc` check (see [05-invariants.md](05-invariants.md)).
+Short references (under 100 lines) do not need a TOC; they are short enough to scan directly. This is an authoring rule, not yet a machine check — the shipped `verify.sh` has **no** `long-ref-toc` check, so the TOC requirement is upheld by reviewer judgment (see [05-invariants.md](05-invariants.md)).
 
 ### Empowerment prose: where each voice belongs
 
@@ -526,7 +554,7 @@ The canonical URL form for any source pointer in a primary reference is a commit
 https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>
 ```
 
-`<sha>` is a 40-char commit SHA captured at harvest time. The engine captures it during the SHA-comparison phase of the freshness algorithm (see [03-engine.md](03-engine.md)) and persists it in the per-source enrichment cache; the emitter renders it back into the URL at write time. Stable version tags (`v1.2.3`) are accepted equivalently - the verify gate treats them as immutable.
+`<sha>` is a 40-char commit SHA captured at harvest time. The engine captures it during the SHA-comparison phase of the freshness algorithm (see [03-engine.md](03-engine.md)) and persists it in the per-source enrichment cache; the emitter renders it back into the URL at write time. Stable version tags (`v1.2.3`) are accepted equivalently - the SHA-pin lint (Check 7, `permalink_density.py`) treats them as immutable.
 
 **The failure mode this prevents** is link rot. GitHub's own permalink documentation warns that a URL on `blob/main/...` survives only as long as the file is at that path on the default branch; industry estimates place the rot rate on branch-pinned source URLs at 38-66% over a one-to-two-year horizon. The same observation drives the LSP `Location` shape (line-pinned references that survive refactors) and TypeDoc's defaults (commit SHA, not branch, for source-link generation). Branch-pinned URLs in a curated reference are a slow-burn correctness regression: they pass review, then quietly stop pointing at the right code as the source repo evolves.
 
@@ -540,7 +568,7 @@ Pin everything in references corpus content. The exception is **intentional late
 | "Read whatever is current upstream" (e.g., the project README, a stable spec page) | unpinned (`blob/main/...`, `tree/main/...`) | navigator prose, README pointers, "see the project" hints |
 | "Read this exact stable release" | tag-pinned (`blob/v1.2.3/...`) | reference bodies; accepted equivalently to SHA-pinned |
 
-The verify gate enforces this distinction: the SHA-pin invariant scans references corpus only - navigator prose, chapter prose, and READMEs may carry unpinned URLs without flagging.
+The SHA-pin gate enforces this distinction: the Check-7 `permalink_density.py` CI lint (not `verify.sh`) scans the references corpus only - navigator prose, chapter prose, and READMEs may carry unpinned URLs without flagging.
 
 #### Source identifier (`source_id`)
 

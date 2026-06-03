@@ -36,7 +36,7 @@ Measured against the three bundled `examples/` contextualizers at the v0.3.0 emi
 | Contextualizer | Coverage | Paragraphs |
 |---|---:|---:|
 | `modelcontextprotocol-python-sdk-context` | **100.0%** | 174 / 174 |
-| `inspect-ai-context` | **97.6%** | 534 / 547 |
+| `inspect-ai-context` | **97.4%** | 485 / 498 |
 | `langchain-context` | **92.6%** | 187 / 202 |
 
 All three clear the bar. These are live measurements against the shipping corpora, not targets. The figures are pinned to the date in this heading — if the bundled `examples/<slug>/references/` corpora change after that date, the figures here may drift. Reproduce with `python3 plugin/skill-engine/tests/permalink_density.py examples/<slug>/references`.
@@ -45,7 +45,7 @@ All three clear the bar. These are live measurements against the shipping corpor
 
 **GitHub-permalink density is a git-source metric; web-doc / multi-source verifiability is out of scope for this gate.** The lint is flat and source-blind: it walks `references/**/*.md` and counts paragraphs against the same threshold regardless of where those paragraphs originated. The flatness is deliberate — a check that read a self-authored `source-paths.json` field to decide whether to grade you would be gradeable on your own answer key.
 
-`inspect-ai-context` is the multi-source case in the bundled corpus. Its registered sources include the `UKGovernmentBEIS/inspect_ai` git repo *and* the `inspect.aisi.org.uk/` documentation portal, which is web-doc. Web-doc prose has no GitHub permalink to sit near — the metric cannot credit it directly. That `inspect-ai-context` nonetheless clears 97.6% reflects an emission discipline rather than the metric becoming more permissive: every web-doc-side module section in `inspect-aisi-org-uk-api-reference.md` is authored with a SHA-pinned GitHub permalink into the source repo immediately adjacent. A future contextualizer with a pure web-doc source set, and no upstream code repo to cross-reference, could not be credited by this check at all. The ceiling is real; the bundled corpus clears it because its authors put permalinks where the metric would look for them.
+`inspect-ai-context` is the multi-source case in the bundled corpus. Its registered sources include the `UKGovernmentBEIS/inspect_ai` git repo *and* the `inspect.aisi.org.uk/` documentation portal, which is web-doc. Web-doc prose has no GitHub permalink to sit near — the metric cannot credit it directly. That `inspect-ai-context` nonetheless clears 97.4% reflects an emission discipline rather than the metric becoming more permissive: every web-doc-side module section in `inspect-aisi-org-uk-api-reference.md` is authored with a SHA-pinned GitHub permalink into the source repo immediately adjacent. A future contextualizer with a pure web-doc source set, and no upstream code repo to cross-reference, could not be credited by this check at all. The ceiling is real; the bundled corpus clears it because its authors put permalinks where the metric would look for them.
 
 ## Check 8 — grounded-citation rate (answering side)
 
@@ -53,13 +53,13 @@ All three clear the bar. These are live measurements against the shipping corpor
 
 Check 7 measures what the references *contain*. Check 8 measures what the model *says* when it answers. For each `needs_reference` prompt in `research/eval-prompts.json`, the runner invokes the contextualizer's `SKILL.md` as system prompt against Claude Haiku 4.5 with a single `read_reference` tool, and grades whether the model both (a) opened ≥1 reference and (b) emitted a SHA-pinned or tag-pinned GitHub permalink in its final response text. The permalink regex is imported from the Check 7 lint so the two checks share one source of truth.
 
-The test runner at `plugin/skill-engine/tests/grounded-rate/run.sh` exercises the grader against **17/17 mocked cases** with zero API calls — the cases inject pre-recorded model responses (`--mock-responses`) and assert exit-code + stdout substring. The grader runs keyless and deterministically: no environment credentials, no network I/O, identical exit codes on repeat invocations. Coverage spans PASS, FAIL, schema-invalid, opt-in N/A, empty-prompts N/A, error-marker handling, and the per-prompt timeout / tool-turn-cap paths. The fixtures live at `plugin/skill-engine/tests/grounded-rate/fixtures/`.
+The test runner at `plugin/skill-engine/tests/grounded-rate/run.sh` exercises the grader against **18 cases** with zero API calls — the grounded-path cases inject pre-recorded model responses (`--mock-responses`); the rest drive the dry-run, schema-validation, and N/A paths. Each case asserts exit-code + stdout substring. The grader runs keyless and deterministically: no environment credentials, no network I/O, identical exit codes on repeat invocations. Coverage spans PASS, FAIL, schema-invalid, opt-in N/A, empty-prompts N/A, error-marker handling, and the per-prompt timeout / tool-turn-cap paths. The fixtures live at `plugin/skill-engine/tests/grounded-rate/fixtures/`.
 
-***Grader validated (mocked, 17/17 as of 2026-05-28); live rate not yet measured in this repo.***
+***Grader validated (18/18 cases, zero API calls, as of 2026-05-28). First live measurement (2026-06-02, MCP example, Haiku 4.5): 30% → 90% grounded-rate after the navigator's Claims policy began instructing permalink citation — see [`eval-results.md`](../../../examples/modelcontextprotocol-python-sdk-context/research/eval-results.md).***
 
 ### What is not here, and why
 
-There is **no committed `eval-prompts.json`** in this repo. The file is a per-contextualizer downstream artifact: committing one to the engine repo would couple the engine to a single contextualizer's prompt set, invite gaming (the grader sees the prompts), and churn whenever an example is re-snapshotted. Check 8 therefore reports `[N/A]` against this repo by design, and the rate the engine prints for the bundled `examples/` is unmeasured live. The grader being verified deterministically is the engine-side claim; what a forker's contextualizer actually scores is downstream territory.
+The engine ships **no single canonical `eval-prompts.json`**. The prompt set is a per-contextualizer downstream artifact: committing one shared corpus to the engine would couple it to a single contextualizer's prompt set, invite gaming (the grader sees the prompts), and churn whenever an example is re-snapshotted. The bundled MCP example carries its own `research/eval-prompts.json` and a recorded `research/eval-results.md` as a worked demonstrator — that is the 30% → 90% live measurement noted above; the other examples ship none, so Check 8 reports `[N/A]` against them by design. The grader being verified deterministically is the engine-side claim; what a forker's contextualizer actually scores is downstream territory.
 
 ### Live-run recipe (for a forker)
 

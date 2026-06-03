@@ -89,9 +89,12 @@ rules:
   # ---------------------------------------------------------------------------
   # 4. eval of a string or command. Softer (WARNING): eval appears in
   #    teaching/reference docs, but in skill content it is a code-injection
-  #    vector worth a human glance. Scoped to call-like syntax (`eval(` or
-  #    `eval "`/`eval '`/`eval $`/`eval ` + backtick) to avoid matching the
-  #    words "evaluation"/"evals" that pervade this repo.
+  #    vector worth a human glance. Scoped to actual call syntax: the call
+  #    form requires an immediate paren (`eval(`), and the command form is
+  #    `eval "`/`eval '`/`eval $`/`eval ` + backtick. A space before the paren
+  #    ("eval (parenthetical)") is English prose — e.g. "grounded-citation
+  #    eval (SELF-AUDIT Check 8)" — and is intentionally not matched, alongside
+  #    the words "evaluation"/"evals" that pervade this repo.
   - id: skill-content-eval
     languages: [generic]
     severity: WARNING
@@ -99,7 +102,7 @@ rules:
       include: ["*.md"]
       exclude: ["**/.semgrep/README.md", "**/examples/*/references/**"]
     pattern-regex: |-
-      \beval\s*\(|\beval\s+["'`$]
+      \beval\(|\beval\s+["'`$]
     message: >-
       Skill content uses eval on a string or command. eval executes arbitrary
       input and is a code-injection vector; in agent context an agent may

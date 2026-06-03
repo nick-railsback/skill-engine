@@ -2,8 +2,12 @@
 
 DISCOVER scans the sources registered with the engine and writes
 reference files for the parts that matter. The engine hands the model
-a task; the model executes it; `verify.sh` and the four reference
-invariants are the trust mechanism.
+a task; the model executes it; `verify.sh` plus the permalink-density
+lint and the reviewer are the trust mechanism. Of the four reference
+invariants, `verify.sh` mechanically checks depth-1 (inside its
+`catalog-bijection` check) and the lint checks SHA-pinning; first-5K
+and the long-reference TOC are authoring discipline the reviewer
+backstops.
 
 ## The goal
 
@@ -193,7 +197,8 @@ All three emit `[WARN]` (not `[FAIL]`); the reviewer remains the
 backstop trust mechanism. The same three heuristics live in the
 contextualizer-side `verify.sh` the plugin stamps at bootstrap
 (`plugin/skill-engine/engine-bootstrap-templates/verify.sh`), so the
-consumer's contextualizer enforces them on every invocation.
+same heuristics are available in the contextualizer's `verify.sh`, run on
+demand by the user or CI.
 
 ## Cadence
 
