@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json",
+  "$id": "https://raw.githubusercontent.com/nick-railsback/skill-engine/main/plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json",
   "title": "skill-engine source-paths.json",
   "description": "Registry of the upstream sources a contextualizer tracks. This file is the machine-readable transcription of the contract that verify.sh Check 1 (source-paths-shape) and Check 2 (source-entries) enforce at audit time. One semantic rule is not expressible in JSON Schema and remains enforced only by verify.sh: web-doc page_list URLs must share an origin with the source url. Schema evolution is additive — unknown keys are tolerated (additionalProperties is open) so older and newer files validate against the same contract. Optional cross-axis fields (url/path/sitemap_url on the kinds where they are not required) accept an explicit null or an empty string as equivalent to absent, matching verify.sh's `.field // \"\"` defaulting plus its non-empty-string (`[ -n ... ]`) reading; the page_list array likewise treats null or an empty array as absent. The required field for each kind must still be a non-empty value (minLength 1).",
   "type": "object",
