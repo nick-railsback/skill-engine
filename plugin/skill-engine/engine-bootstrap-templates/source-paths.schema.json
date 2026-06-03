@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json",
   "title": "skill-engine source-paths.json",
-  "description": "Registry of the upstream sources a contextualizer tracks. This file is the machine-readable transcription of the contract that verify.sh Check 1 (source-paths-shape) and Check 2 (source-entries) enforce at audit time. One semantic rule is not expressible in JSON Schema and remains enforced only by verify.sh: web-doc page_list URLs must share an origin with the source url. Schema evolution is additive — unknown keys are tolerated (additionalProperties is open) so older and newer files validate against the same contract. Optional cross-axis fields (url/path/sitemap_url/page_list on the kinds where they are not required) accept an explicit null as equivalent to absent, matching verify.sh's `.field // \"\"` reading; the required field for each kind must still be a non-null value.",
+  "description": "Registry of the upstream sources a contextualizer tracks. This file is the machine-readable transcription of the contract that verify.sh Check 1 (source-paths-shape) and Check 2 (source-entries) enforce at audit time. One semantic rule is not expressible in JSON Schema and remains enforced only by verify.sh: web-doc page_list URLs must share an origin with the source url. Schema evolution is additive — unknown keys are tolerated (additionalProperties is open) so older and newer files validate against the same contract. Optional cross-axis fields (url/path/sitemap_url on the kinds where they are not required) accept an explicit null or an empty string as equivalent to absent, matching verify.sh's `.field // \"\"` defaulting plus its non-empty-string (`[ -n ... ]`) reading; the page_list array likewise treats null or an empty array as absent. The required field for each kind must still be a non-empty value (minLength 1).",
   "type": "object",
   "required": ["schema_version", "sources"],
   "additionalProperties": true,
@@ -38,16 +38,16 @@
         },
         "url": {
           "type": ["string", "null"],
-          "description": "Source URL. Required (non-null) for git-managed and web-doc; absent or explicit null for external-doc and local-path. An explicit null is treated as absent, matching verify.sh's `.url // \"\"` reading."
+          "description": "Source URL. Required (non-empty) for git-managed and web-doc; absent, explicit null, or empty string for external-doc and local-path. A null or empty string is treated as absent, matching verify.sh's `.url // \"\"` reading."
         },
         "path": {
           "type": ["string", "null"],
-          "description": "Filesystem path. Required (non-null) for external-doc and local-path; absent or explicit null for web-doc. An explicit null is treated as absent, matching verify.sh's `.path // \"\"` reading."
+          "description": "Filesystem path. Required (non-empty) for external-doc and local-path; absent, explicit null, or empty string for web-doc. A null or empty string is treated as absent, matching verify.sh's `.path // \"\"` reading."
         },
         "branch": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9._/-]+$",
-          "description": "git-managed only; must be git-ref-safe. Absent ⇒ downstream code uses HEAD."
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z0-9._/-]*$",
+          "description": "git-managed only; must be git-ref-safe. Absent, null, or empty string ⇒ downstream code uses HEAD. verify.sh validates branch only when it is a non-empty string, so null/empty are accepted as 'unset' (and the git-managed-only rule below likewise fires only for a non-empty branch)."
         },
         "lifecycle": {
           "type": "object",
@@ -71,12 +71,12 @@
         },
         "sitemap_url": {
           "type": ["string", "null"],
-          "description": "web-doc crawl_mode 'sitemap' only; absent or explicit null when crawl_mode is 'list'."
+          "description": "web-doc crawl_mode 'sitemap' only; absent, explicit null, or empty string when crawl_mode is 'list'."
         },
         "page_list": {
           "type": ["array", "null"],
           "items": { "type": "string" },
-          "description": "web-doc crawl_mode 'list' only. Absent or explicit null when crawl_mode is 'sitemap'. Each URL must share an origin with the source url (origin equality is enforced by verify.sh, not this schema)."
+          "description": "web-doc crawl_mode 'list' only. Absent, explicit null, or empty array when crawl_mode is 'sitemap'. Each URL must share an origin with the source url (origin equality is enforced by verify.sh, not this schema)."
         }
       },
       "allOf": [
@@ -88,25 +88,25 @@
           "if": { "required": ["kind"], "properties": { "kind": { "const": "web-doc" } } },
           "then": {
             "required": ["url", "crawl_mode"],
-            "properties": { "url": { "type": "string", "minLength": 1 }, "path": { "type": "null" } }
+            "properties": { "url": { "type": "string", "minLength": 1 }, "path": { "enum": [null, ""] } }
           }
         },
         {
           "if": { "required": ["kind"], "properties": { "kind": { "const": "external-doc" } } },
           "then": {
             "required": ["path"],
-            "properties": { "path": { "type": "string", "minLength": 1 }, "url": { "type": "null" } }
+            "properties": { "path": { "type": "string", "minLength": 1 }, "url": { "enum": [null, ""] } }
           }
         },
         {
           "if": { "required": ["kind"], "properties": { "kind": { "const": "local-path" } } },
           "then": {
             "required": ["path"],
-            "properties": { "path": { "type": "string", "minLength": 1 }, "url": { "type": "null" } }
+            "properties": { "path": { "type": "string", "minLength": 1 }, "url": { "enum": [null, ""] } }
           }
         },
         {
-          "if": { "required": ["branch"] },
+          "if": { "required": ["branch"], "properties": { "branch": { "type": "string", "minLength": 1 } } },
           "then": { "properties": { "kind": { "const": "git-managed" } } }
         },
         {
@@ -117,12 +117,12 @@
           "if": { "required": ["crawl_mode"], "properties": { "crawl_mode": { "const": "list" } } },
           "then": {
             "required": ["page_list"],
-            "properties": { "page_list": { "type": "array", "minItems": 1 }, "sitemap_url": { "type": "null" } }
+            "properties": { "page_list": { "type": "array", "minItems": 1 }, "sitemap_url": { "enum": [null, ""] } }
           }
         },
         {
           "if": { "required": ["crawl_mode"], "properties": { "crawl_mode": { "const": "sitemap" } } },
-          "then": { "properties": { "page_list": { "type": "null" } } }
+          "then": { "properties": { "page_list": { "type": ["array", "null"], "maxItems": 0 } } }
         }
       ]
     }
