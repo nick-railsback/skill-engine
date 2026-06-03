@@ -200,7 +200,9 @@ Beyond the `kind` discriminator and the external-doc-specific provenance frontma
 
 **Two state-machine axes — load-bearing.** `status` (curation) and `lifecycle.state` (upstream) describe distinct things and must not be conflated. A `confirmed` source can become `removed` upstream without invalidating the curation; a `rejected` companion can still have its upstream reach `moved`. The engine surfaces both axes separately — directly in `source-paths.json` and in each workflow's post-run summary — so the two states are never collapsed into one. Conflating them would lose information at the moment the user most needs it.
 
-### Body - six sections in this order
+### Body - the core sections, in order
+
+These are the navigator body's core sections, in the order a single-domain navigator uses them. The navigator templates (`engine-bootstrap-templates/navigator*.md.template`) are canonical for the exact section set: alongside the six below they also carry a `## Markdown style for generated references` style guide and a closing `## Optional SKILL.json sibling` note, and the **multi-domain** template reorders the body (see the note after section 6).
 
 **1. Overview** - two or three paragraphs: what the domain is, what this navigator catalogs, how the AI is meant to use it.
 
@@ -308,6 +310,8 @@ itself doesn't answer the question.
 ```
 
 The full keep/replace decision framework lives in the [Progressive disclosure](#progressive-disclosure-the-keepreplace-framework) section below.
+
+**Multi-domain navigators reorder this.** The multi-domain template (`navigator-multi-domain.md.template`) covers several sources, so it replaces the Cross-reference map with a `## Cross-source map`, adds `## How to search this navigator` and `## How to follow source links`, and moves `## Catalog` down below `## Instructions to Claude` — a large sectioned catalog table is a TOC, not standing instructions, so keeping it after the dispatch sections holds those inside the first-5K budget (see "Navigator size budget" below). The templates are the source of truth for the exact section set and order.
 
 ### Navigator size budget
 
