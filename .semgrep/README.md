@@ -63,9 +63,12 @@ documentation are `WARNING`.
 - **`skill-content-eval`** (`WARNING`) — `eval` on a string or command
   (`eval(`, `eval "..."`). `eval` executes arbitrary input and is a
   code-injection vector, but it also turns up in teaching and reference
-  material, so this warns rather than fails. The regex is scoped to call-like
-  syntax to avoid matching the words "evaluation" and "evals", which are common
-  here.
+  material, so this warns rather than fails. The regex is scoped to actual call
+  syntax: the call form requires an **immediate** paren (`eval(`), and the
+  command form is `eval ` + a quote/backtick/`$`. A space before the paren —
+  "eval (parenthetical)", as in the Claims-policy phrase "grounded-citation eval
+  (SELF-AUDIT Check 8)" — is English prose and is not matched, alongside the
+  words "evaluation"/"evals" that are common here.
 
   **Documented carve-out (inline `nosemgrep`).** `examples/inspect-ai-context/SKILL.md`
   carries `<!-- nosemgrep: skill-content-eval -->` on a catalog row that
