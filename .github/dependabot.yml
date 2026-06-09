@@ -1,12 +1,14 @@
 version: 2
 updates:
   # Keeps the action pins current across every workflow in .github/workflows/
-  # — actions/checkout, actions/setup-python, github/codeql-action. Gitleaks
-  # is CLI-installed in security.yml (the gitleaks/gitleaks-action is
-  # excluded by this repo's allowed_actions: "selected" policy), so its
-  # version is hand-bumped in that workflow rather than tracked here.
-  # Grouping all three workflows under one ecosystem entry means a single
-  # coherent bump set.
+  # — actions/checkout, actions/setup-python, github/codeql-action. Each is
+  # pinned to a full commit SHA with a trailing `# vX.Y.Z` comment (immutable
+  # supply-chain pin, not a movable major tag); dependabot bumps the SHA and
+  # rewrites that comment in lockstep. Gitleaks is CLI-installed in
+  # security.yml (the gitleaks/gitleaks-action is excluded by this repo's
+  # allowed_actions: "selected" policy), so its version is hand-bumped in that
+  # workflow rather than tracked here. Grouping all three workflows under one
+  # ecosystem entry means a single coherent bump set.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -20,5 +22,7 @@ updates:
   # (no requirements.txt / pyproject.toml / setup.py / Pipfile) — the tracked
   # Python is a pair of stdlib-only test helpers. A pip ecosystem entry with no
   # manifest makes dependabot raise a recurring "dependency file not found"
-  # error on every run. Add a pip entry here if and when a manifest lands for
-  # the test scripts.
+  # error on every run. The pip tools that CI does install are pinned by hand
+  # in their workflows instead: bandit + semgrep in security.yml,
+  # check-jsonschema in lint.yml. Add a pip entry here if and when a manifest
+  # lands for the test scripts.

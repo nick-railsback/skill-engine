@@ -9,7 +9,7 @@ jobs:
   hooks-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       # ubuntu-latest already ships jq, so no apt install is needed (the
       # sibling security.yml avoids apt for the same reason — it keeps a flaky
       # network step out of CI).
