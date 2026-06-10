@@ -69,7 +69,8 @@ SELF-AUDIT is **read-only by default**. It surfaces findings and exits unless
 the human explicitly opts in to applying the deterministic fixes among them
 (see "Optional fix flow" below). Two HARD-GATEs remain in force at all times:
 no write without explicit human approval, and pre-approval validation must
-pass via `worker-verify`. Neither gate has an override.
+pass via the contextualizer's `verify.sh` run against the sandbox copy.
+Neither gate has an override.
 
 When no human-approval gesture occurs (default path), the audit does not
 auto-rewrite catalog rows, does not fetch upstream beyond a HEAD probe, and
@@ -395,7 +396,8 @@ Empty input is `n`. On `y` or `select`, follow the REFRESH propose →
 validate → approve gate documented in [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) §"Optional fix flow":
 
 1. Draft the edits on the sandbox copy at `/tmp/skill-engine-validate-<session-id>/`.
-2. Run `worker-verify` against the sandbox (four pre-approval checks).
+2. Run `bash verify.sh` from the sandbox copy — every check must pass
+   (or report N/A) before the diff is surfaced.
 3. Surface the diff for explicit `APPROVE` / `DEFER` / `REJECT`.
 4. On `APPROVE`, write to the working tree; log to
    `research/sessions/<session-id>.json`; append a

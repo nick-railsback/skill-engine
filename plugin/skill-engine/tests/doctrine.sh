@@ -65,7 +65,8 @@ fi
 #
 # Scope:
 #   plugin/skill-engine/skills/**/*.md
-#   plugin/skill-engine/agents/*.md
+#   plugin/skill-engine/agents/*.md       (directory currently absent;
+#                                          covered again if reintroduced)
 #   plugin/skill-engine/bin/*.sh
 #   plugin/skill-engine/tests/*.sh        (this file is implicitly excluded
 #                                          via the path-equality check below)

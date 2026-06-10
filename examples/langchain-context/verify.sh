@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Contextualizer verify.sh — see ./README.md for the two-tier discipline
-# (this file audits a stamped contextualizer; templates/verify.sh in the
-# engine-authoring repo audits the engine itself; the surfaces don't overlap).
-#
-# Audits the stamped contextualizer's own artifacts — NOT the engine-
-# authoring repo. Stamped by /skill-engine:engine-bootstrap into the
-# contextualizer root; ships with the plugin's engine-bootstrap-templates/
-# bundle.
+# Contextualizer verify.sh — audits a stamped contextualizer's own
+# artifacts. Stamped by /skill-engine:engine-bootstrap into the
+# contextualizer root; the editing copy ships in the plugin's
+# engine-bootstrap-templates/ bundle (see its README.md), with
+# byte-identical copies in each bundled example enforced by
+# doctrine.sh check 7.
 #
 # Invariants audited (when applicable):
 #
@@ -31,10 +29,10 @@
 #   - references/ absent (no references emitted yet — typical between
 #     bootstrap and first DISCOVER emit pass)
 #
-# This script is NOT the engine-authoring verify.sh (which lives in the
-# engine repo's templates/verify.sh and audits engine-development
-# invariants — chapter ordering, template SHA, worker-prompt mirror, etc.).
-# The two scripts have intentionally disjoint scopes.
+# This script audits only the contextualizer it sits in. Engine-repo
+# invariants (doctrine greps, template/example sync, version parity) are
+# audited separately by plugin/skill-engine/tests/doctrine.sh in the
+# engine repo's CI — the two surfaces are intentionally disjoint.
 #
 # Tool surface: bash + jq + standard POSIX utilities. No third-party deps.
 
@@ -1115,8 +1113,7 @@ fi
 # Asserts three-way correspondence between SKILL.md catalog rows, SKILL.json
 # non-draft catalog entries, and `*-*.md` reference files when a
 # contextualizer opts into the structured machine-readable sibling at
-# $CTX_ROOT/SKILL.json. Four states (a/b/c/d) mirror the engine-side
-# implementation in templates/verify.sh Check 27:
+# $CTX_ROOT/SKILL.json. Four states (a/b/c/d):
 #
 #   (a) SKILL.json absent  -> silent-skip pass (the opt-in default state).
 #   (b) invalid JSON       -> fail loud with the path.

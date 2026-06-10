@@ -2,29 +2,35 @@
 
 This directory holds the templates the `engine-bootstrap` workflow stamps into a fresh contextualizer skeleton, plus the contextualizer-side `verify.sh`. The directory is part of the engine plugin install; the templates land in the user's `.claude/skills/<slug>-context/` at scaffold time.
 
-## Two-tier verify discipline
-
-The repository ships **two `verify.sh` programs** in different directories. They cover non-overlapping audit surfaces and are intentionally separate:
-
-| File | Audience | Surface |
-|---|---|---|
-| [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](./verify.sh) | **Contextualizer authoring** | 11 named checks against a stamped `.claude/skills/<slug>-context/` directory (source-paths shape, navigator frontmatter, catalog↔references bijection, reference frontmatter, web-doc provenance, optional SKILL.json trijection, etc.). SHA-pinned-permalink density is **not** here — that is the separate `permalink_density.py` CI lint. |
-| [`templates/verify.sh`](https://github.com/nick-railsback/skill-engine/blob/main/templates/verify.sh) | **Engine authoring** | 27 named checks against the engine-authoring repo root (chapter shape, navigator-template invariants, source-paths schema, persona-leak gates, monorepo invariants, etc.) |
-
-The contextualizer-side checks are numbered 1–9, with two sub-checks (5.5 `external-doc-frontmatter` and 5.6 `web-doc-snapshot-present`) for **11 named checks** total; the engine-authoring-side check counts 1–27. The two surfaces are independent — a future change to one is **not** auto-mirrored to the other. The `skill-json-trijection` check appears in both (Check 9 contextualizer-side / Check 27 engine-authoring-side); the predicate is the same, the numbering differs because the audit surfaces are independent.
-
 ## What lives here
 
 | File | Purpose |
 |---|---|
 | `navigator.md.template` | Single-source-root navigator skeleton (one `## Catalog` block, one `## Cross-reference map`) |
 | `navigator-multi-domain.md.template` | Multi-source-root navigator skeleton (per-source `## Catalog: <slug>` blocks, `## Cross-source map`) |
-| `maintenance-agent.md.template` | The engine's maintenance-agent system prompt — what the model reads when activated |
+| `maintenance-agent.md.template` | System prompt for the hand-rolled (non-plugin) install path documented in `docs/03-engine.md` — **not** stamped by engine-bootstrap |
 | `monorepo-config.json.template` | Slice-config skeleton for monorepo adapters ([07-monorepo-adapter.md](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/07-monorepo-adapter.md)) |
-| `verify.sh` | Contextualizer-side audit (11 named checks) |
+| `bootstrap-monorepo-config.sh.template` | Interactive generator for the monorepo slice config |
+| `source-paths.json.template` | Source-registry skeleton (`research/source-paths.json`) |
+| `source-paths.schema.json` | JSON Schema for the source registry — the machine-readable transcription of the contract `verify.sh` Checks 1–2 enforce |
+| `research-state.json.template` | The 25-byte setup marker (`research/.research-state.json`) |
+| `REVIEW.md.template` | Predict-then-compare review worksheet staged with every proposal |
+| `release-command.md.template` | User-side release skill stamped into the contextualizer repo |
+| `pre-commit.sh.template` | User-side pre-commit hook (runs `verify.sh` before each commit) |
+| `eval/run-eval.sh.template` | Stamped eval harness — runs the contextualizer's `eval-prompts.json` against the navigator |
+| `eval/render-eval-results.sh.template` | Renders accumulated eval results into a report |
+| `eval/eval-viewer.html.template` | Static HTML viewer for eval result files |
+| `verify.sh` | Contextualizer-side audit run against a stamped `.claude/skills/<slug>-context/` directory (source-paths shape, navigator frontmatter, catalog↔references bijection, reference frontmatter, web-doc provenance, optional SKILL.json trijection, etc.). SHA-pinned-permalink density is **not** here — that is the separate `permalink_density.py` CI lint. |
 
 ## Editing convention
 
-The workshop sources at `templates/navigator.md.template` and `templates/navigator-multi-domain.md.template` are the canonical editing copies; the bundled copies here are kept byte-equal to them. A future story will add a `verify.sh` named check that fails on drift; until then, drift is checked manually when changes land.
+The files in this directory are the only editing copies — there is no
+separate workshop or engine-authoring tree to sync against.
 
-The contextualizer-side `verify.sh` and `maintenance-agent.md.template` live only here — there is no separate workshop copy to keep in sync.
+`verify.sh` is the one file that exists in more than one place: each
+bundled example (`examples/<slug>/verify.sh`) carries a byte-identical
+copy so the examples are runnable standalone. When `verify.sh` changes
+here, re-copy it over every example copy in the same commit —
+`doctrine.sh` check 7 (`plugin/skill-engine/tests/doctrine.sh`) fails CI
+on any divergence, and REFRESH additionally SHA-256-compares the stamped
+copy at runtime.
