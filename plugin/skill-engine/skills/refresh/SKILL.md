@@ -516,7 +516,7 @@ directory. A non-zero `verify.sh` exit aborts the proposed-dir write with a
 diagnostic; the user never sees a `REVIEW.md` for a broken proposal.
 
 At end-of-run, produce a paragraph-form summary for the author with
-three components (no multi-column tables, no interactive menus):
+four components (no multi-column tables, no interactive menus):
 
 1. **Coverage report.** What was probed; which sources transitioned;
    which references were rewritten; which were skipped because the

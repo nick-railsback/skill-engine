@@ -25,7 +25,7 @@ verify them — they demonstrate the mechanism, not the ceiling of its value.
 ## Contents
 
 - [How it synthesizes across sources](#how-it-synthesizes-across-sources) — multi-source reasoning, per-domain contextualizers, composition discipline
-- [How it knows it's still right](#how-it-knows-its-still-right) — five self-audit checks, four reference invariants, the bijection
+- [How it knows it's still right](#how-it-knows-its-still-right) — eight self-audit checks, four reference invariants, the bijection
 - [How it stays accurate](#how-it-stays-accurate) — SHA-pinned drift detection, REFRESH, stale-date and circuit breaker
 - [How you evaluate it](#how-you-evaluate-it) — three runs, 70/30 split, three-persona stratification, drop-in templates
 - [How it gets built](#how-it-gets-built) — DISCOVER, source-paths.json, bootstrap scaffolding
@@ -173,9 +173,9 @@ check that catches *drift in the artifact itself*: SELF-AUDIT plus a layered
 invariants regime that runs before any proposed change reaches a human
 reviewer.
 
-### The five drift checks SELF-AUDIT runs
+### The eight drift checks SELF-AUDIT runs
 
-SELF-AUDIT runs five read-only checks against the artifact — navigator,
+SELF-AUDIT runs eight read-only checks against the artifact — navigator,
 references, catalog — for the kinds of drift the freshness checks cannot
 detect:
 
@@ -190,12 +190,25 @@ detect:
    `last_updated` against upstream commit activity; flags references unchanged
    six-plus months while sources show 50+ commits in that window.
 4. **Catalog row vs. reference content.** Diffs each catalog row's one-line
-   description against the reference's frontmatter `description:` field —
-   the canonical, model-readable statement of what the reference is for.
-   Substantive divergence is the case the check is built to catch.
+   description against the reference's body framing — the first paragraph
+   under the H1, or the `## When to Use This Reference` bullets when
+   present (references carry no frontmatter, so the body section is the
+   canonical statement). Substantive divergence is the case the check is
+   built to catch.
 5. **Cross-reference map accuracy.** Verifies the navigator's "questions
    about X → load Y" rules still point where they should after a reference
    has drifted in scope.
+6. **Review-state staleness.** Flags the contextualizer when REFRESH has
+   observed upstream after the user's last attested review (the
+   `review-state.json` ledger is older than a source's
+   `lifecycle.last_checked`).
+7. **Paragraph→permalink density.** Measures the fraction of reference
+   paragraphs carrying a SHA-pinned permalink within a 5-line window;
+   PASS at ≥80% corpus-wide (see Check 7 below).
+8. **Grounded-citation rate.** Opt-in paid eval: runs the navigator
+   against the eval-prompts corpus and grades whether answers open a
+   reference and cite a pinned permalink; PASS at ≥80% (see Check 8
+   below).
 
 ### The four reference invariants
 
@@ -421,7 +434,7 @@ REFRESH, and a cache at `~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/`)
 and `local-path` (filesystem paths). Each kind has its own crawl strategy
 and its own staleness gate; the discriminator routes downstream behavior
 across DISCOVER, REFRESH, and the cache. Each entry also carries two state-machine axes that never collapse:
-`status` (the curation lifecycle: `intake → confirmed | rejected`) and
+`status` (the curation lifecycle: `intake | proposed → confirmed | rejected`) and
 `lifecycle.state` (the upstream lifecycle: `reachable | moved | removed |
 unknown`). A `confirmed` source can become `removed` upstream without
 invalidating the curation, and the engine surfaces both axes separately so
@@ -706,7 +719,7 @@ appendix is the index.
 | `/skill-engine:review` | Inspects a staged proposal (`<slug>-context.proposed/`) and drives the predict-then-compare sign-off in `REVIEW.md` before anything is promoted. | [SKILL.md](./plugin/skill-engine/skills/review/SKILL.md) |
 | `/skill-engine:apply` | Promotes a signed-off proposal into the live contextualizer — atomic per-file rename, preserving the `REVIEW.md` audit trail. | [SKILL.md](./plugin/skill-engine/skills/apply/SKILL.md) |
 | `/skill-engine:discard` | Drops a staged proposal without promoting it, leaving the live contextualizer untouched. | [SKILL.md](./plugin/skill-engine/skills/discard/SKILL.md) |
-| `/skill-engine:self-audit` | Five drift checks on the artifact: stale dates, broken URLs, long-untouched references, catalog drift, cross-reference accuracy. | [SKILL.md](./plugin/skill-engine/skills/self-audit/SKILL.md) |
+| `/skill-engine:self-audit` | Eight drift checks on the artifact: stale dates, broken URLs, long-untouched references, catalog drift, cross-reference accuracy, review-state staleness, permalink density, grounded-citation rate. | [SKILL.md](./plugin/skill-engine/skills/self-audit/SKILL.md) |
 | `/skill-engine:status` | Read-only health report: which references are fresh, stale, or critical. | [SKILL.md](./plugin/skill-engine/skills/status/SKILL.md) |
 | `/skill-engine:clean-cache` | Opt-in deletion of the local clone cache (dry-runs by default). | [SKILL.md](./plugin/skill-engine/skills/clean-cache/SKILL.md) |
 | `/skill-engine:config-set` | Sets an engine-wide config value (currently the `review` diff tool). | [SKILL.md](./plugin/skill-engine/skills/config-set/SKILL.md) |

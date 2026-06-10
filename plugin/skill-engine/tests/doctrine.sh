@@ -138,8 +138,9 @@ git_readonly_scan() {
 # Known git verbs filter: the candidate-match `git <token>` is only a real
 # git invocation when <token> is a recognized git subcommand. Without this
 # filter, prose noun phrases like "no git mutations" or "a git host URL"
-# trip the lint. The union below is allow-list ∪ deny-list (AC5.2 ∪ AC5.3)
-# plus a few additional known verbs seen in docs / templates.
+# trip the lint. The union below is the read-only allow-list plus the
+# mutating deny-list, plus a few additional known verbs seen in docs /
+# templates.
 readonly_violations=$(
   {
     find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
@@ -149,7 +150,7 @@ readonly_violations=$(
     find "$PLUGIN_ROOT/engine-bootstrap-templates" -type f 2>/dev/null
   } | git_readonly_scan | awk -F: '
     BEGIN {
-      # Allow-list (AC5.2): read-only relative to user repo state.
+      # Allow-list: read-only relative to user repo state.
       allow["diff"]=1; allow["status"]=1; allow["log"]=1; allow["show"]=1
       allow["clone"]=1; allow["ls-remote"]=1; allow["ls-tree"]=1
       allow["ls-files"]=1; allow["rev-parse"]=1; allow["cat-file"]=1

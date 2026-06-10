@@ -175,7 +175,7 @@ EOF
 run_case "exclusions handled, all covered PASS" 0 "[PASS] permalink-density" fx_exclusions
 
 # HTML comments (single-line and multi-line) are excluded from paragraph
-# detection per AC1.3. If the script counted them, this fixture's 5 prose
+# detection by contract. If the script counted them, this fixture's 5 prose
 # paragraphs would be inflated and might still PASS — the key signal is
 # that the count stays at 5 and all 5 are covered.
 fx_html_comments() {
@@ -208,7 +208,7 @@ EOF
 run_case "html comments excluded PASS" 0 "[PASS] permalink-density" fx_html_comments
 
 # Leading frontmatter block (--- ... ---) is excluded from paragraph
-# detection per AC1.3. Same signal as the HTML-comment case: count of
+# detection by contract. Same signal as the HTML-comment case: count of
 # in-scope paragraphs should be exactly 5 and all covered.
 fx_frontmatter() {
   local dir="$1"

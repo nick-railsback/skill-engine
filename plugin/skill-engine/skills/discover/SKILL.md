@@ -596,7 +596,7 @@ and its empty-proposed-tree cleanup (apply § Promotion Step 4) are
 unaffected.
 
 At end-of-run, produce a paragraph-form summary for the author with
-four components (no multi-column tables, no interactive menus):
+five components (no multi-column tables, no interactive menus):
 
 1. **Coverage report.** Explicit enumeration of what you covered:
    "I read N files. The codebase's essence is X. I wrote Y references

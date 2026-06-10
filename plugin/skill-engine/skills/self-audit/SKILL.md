@@ -207,7 +207,7 @@ what it deliberately does not measure, and the live numbers across the
 bundled `examples/` — is documented in [chapter 13](../../docs/13-coverage-testing.md).
 
 **Threshold.** ≥80% corpus-wide coverage required to PASS. The threshold
-was sourced from the AI-1 measurement that motivated the check: 46.9%
+was sourced from the measurement that motivated the check: 46.9%
 corpus-wide coverage across the MCP contextualizer's references, with a
 7%–87% by-file range. 80% leaves a ≤20% remainder that is reviewable in a
 single read and makes the structural-honesty disclaimer — *"where a
@@ -292,7 +292,7 @@ GitHub permalink in its final response text? The check is the empirical
 counterpart to Check 7's corpus-side density: Check 7 asks whether the
 references *contain* permalinks near load-bearing prose; Check 8 asks
 whether the model *emits* one when it answers. The grader runs keyless
-and deterministically — verified against 17/17 mocked cases with no
+and deterministically — verified against 18/18 mocked cases with no
 API calls; the live rate is per-contextualizer and downstream. See [chapter 13](../../docs/13-coverage-testing.md)
 for the methodology, mocked-vs-live distinction, and the live-run recipe
 for a forker supplying their own `eval-prompts.json`.
@@ -340,9 +340,8 @@ lint's documented carve-out — see `.semgrep/README.md`
 On `ImportError`, Check 8 exits 3 (distinct from FAIL exit 1 and
 runner-failure exit 2) and prints an install hint.
 
-**Tool-surface caveat.** Check 8 uses a custom `read_reference` tool
-(the AI-4 harness shape), not the generic `Read` tool real Claude Code
-agents see. The choice gives a cleaner signal on citation behavior given
+**Tool-surface caveat.** Check 8 uses a custom `read_reference` tool,
+not the generic `Read` tool real Claude Code agents see. The choice gives a cleaner signal on citation behavior given
 the agent has chosen to open, at the cost of not measuring over-opening
 on doesn't-need prompts. Comparing scores across a future tool-surface
 change would be invalid — re-baseline rather than compare.

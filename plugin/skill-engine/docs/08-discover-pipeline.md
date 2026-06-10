@@ -146,7 +146,7 @@ runs the documented `git clone --depth=1 --filter=blob:none` itself; on
 back to the `gh`/`git` tool preference above. The user may also clone
 manually at any time, or choose a different cache location — the
 prompts are a convenience over manual `git clone`, not a replacement
-for it (see [`plugin/skill-engine/skills/engine-bootstrap/SKILL.md`](plugin/skill-engine/skills/engine-bootstrap/SKILL.md)
+for it (see [`plugin/skill-engine/skills/engine-bootstrap/SKILL.md`](../skills/engine-bootstrap/SKILL.md)
 for the per-source clone shape).
 
 For `kind: web-doc` sources, the same pre-flight Step 6 dispatches
@@ -162,7 +162,7 @@ on decline the source is sticky-skipped for this DISCOVER session
 post-run summary records an explicit "no cache, no read" notice
 naming the source). The canonical wording for both prompts and the
 full kind-dispatch flow lives in
-[`plugin/skill-engine/skills/discover/SKILL.md`](plugin/skill-engine/skills/discover/SKILL.md)
+[`plugin/skill-engine/skills/discover/SKILL.md`](../skills/discover/SKILL.md)
 pre-flight step 6; this chapter summarizes rather than duplicates.
 
 The clone cache persists across runs; REFRESH garbage-collects stale

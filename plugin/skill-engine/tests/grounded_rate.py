@@ -47,7 +47,7 @@ DEFAULT_PER_PROMPT_TIMEOUT_S = 60.0
 # lockstep from one constant rather than 8 scattered literals.
 DEFAULT_THRESHOLD = DEFAULT_COVERAGE_THRESHOLD
 
-# Haiku 4.5 pricing as of 2026-01 (per AI-4 prototype).
+# Haiku 4.5 pricing as of 2026-01.
 PRICE_INPUT_PER_MTOK = 1.0
 PRICE_OUTPUT_PER_MTOK = 5.0
 
@@ -343,8 +343,8 @@ def grade_record(record: dict) -> tuple[bool, str | None]:
         "no-reference-opened"        -> didn't open any reference
         "no-permalink-in-response"   -> opened ≥1 ref but final text had no permalink
 
-    Spec AC2.8 reads "timeout precedes grading; api-error precedes timeout."
-    The two parts are not in tension here: `run_prompt` sets exactly one
+    Marker precedence is "timeout precedes grading; api-error precedes
+    timeout" — by design. The two parts are not in tension here: `run_prompt` sets exactly one
     `error` value per record (timeout, turn-cap, or an exception string),
     so each record maps to a single marker via direct string match.
     """
@@ -482,8 +482,8 @@ def main(argv: list[str]) -> int:
             )
             records.append(rec)
 
-    # All-errored runner-failure path. Spec AC2.9 wording is "no prompts
-    # gradable" — implement as: every record carries an `error`. An outage
+    # All-errored runner-failure path: "no prompts gradable" — implemented
+    # as: every record carries an `error`. An outage
     # where each prompt opens a reference and *then* errors (timeout / turn-cap
     # / APIError) is still a runner failure; the prior `not references_opened`
     # conjunct mis-reported it as a content FAIL (exit 1). Token counts don't

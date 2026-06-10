@@ -72,8 +72,8 @@ lesson lands, the trial has served. Polishing it for public consumption
 is a different job — case-study writing — that requires re-doing the work
 to a higher standard than a trial deserves.
 
-What lives under `examples/` is one worked example built from the start
-as a worked example: opinionated about what it's teaching, scoped to make
-the teaching land. If the engine works on your codebase the way it works
+What lives under `examples/` is a set of worked examples built from the
+start as worked examples: opinionated about what each is teaching, scoped
+to make the teaching land. If the engine works on your codebase the way it works
 there, you've adopted the right tool. If the engine fights you in ways
 the example didn't predict, that's a real signal — file an issue.

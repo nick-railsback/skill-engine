@@ -6,7 +6,10 @@
 # byte-identical copies in each bundled example enforced by
 # doctrine.sh check 7.
 #
-# Invariants audited (when applicable):
+# Core invariants audited (when applicable) — the first five named
+# checks; the full set is whatever the run_check calls below enumerate
+# (web-doc provenance, snapshot presence, the optional SKILL.json
+# trijection, and friends), so trust the run summary, not this list:
 #
 #   1. research/source-paths.json parses with schema_version: 1
 #   2. Each sources[i] entry has the expected shape (object, with string
@@ -193,7 +196,7 @@ fi
 # transparently by REFRESH.
 #
 # Enum constraints:
-#   kind             ∈ {git-managed, external-doc, local-path}
+#   kind             ∈ {git-managed, web-doc, external-doc, local-path}
 #   lifecycle.state  ∈ {reachable, moved, removed, unknown}
 #   status           ∈ {intake, proposed, confirmed, rejected}
 #

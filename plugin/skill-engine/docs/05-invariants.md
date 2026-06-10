@@ -4,7 +4,7 @@ The conventions in [02-artifact-contract.md](02-artifact-contract.md) are useles
 This chapter is the test suite that turns those conventions into checkable invariants - tests-as-spec, where each test is a single-paragraph executable definition of a rule the contextualizer must always satisfy.
 
 The source project's test suite has on the order of 50 tests in 1,600 lines of plain bash.
-You don't need that much surface area on day one. Start with the seven core invariants below.
+You don't need that much surface area on day one. Start with the core invariants below.
 They cover the failure modes that actually corrupt the contextualizer in practice - drift between catalog and filesystem, accidental frontmatter, version-string skew, oversized references, reference content silently changing without notice.
 
 Once those are in place, add invariants as you discover new failure modes.
@@ -13,7 +13,7 @@ The engine runs the suite before surfacing changes for review.
 
 **On this page:**
 * [Test framework primitives](#test-framework-primitives)
-* [The seven core invariants](#the-seven-core-invariants)
+* [The core invariants](#the-core-invariants)
 * [Invariant 1: Byte-equality (with reverse-direction check)](#invariant-1-byte-equality-with-reverse-direction-check)
 * [Invariant 2: Catalog bijection](#invariant-2-catalog-bijection)
 * [Invariant 3: No frontmatter on references](#invariant-3-no-frontmatter-on-references)
@@ -80,7 +80,7 @@ run_test() {
 
 Six assertions plus a `run_test` runner. That's the whole framework. Add more assertion functions only when you have a specific test pattern that needs one.
 
-## The seven core invariants
+## The core invariants
 
 | Invariant | What it catches |
 |---|---|
@@ -492,9 +492,11 @@ If you display freshness counters (or any state-driven content) in your main REA
 ```markdown
 ## Maintenance status
 
+<!-- maintenance-status:start -->
 | Workflow | Last run | Status | Cadence |
 |---|---|---|---|
 | REFRESH | 2026-04-27 (1 day ago) | 🟢 Fresh | Manual; weekly |
+<!-- maintenance-status:end -->
 > Counters reflect `research/.research-state.json` as of the last engine run.
 ```
 
@@ -502,14 +504,14 @@ The agent regenerates *only* the content between the `start` and `end` markers -
 
 ```bash
 test_readme_maintenance_markers() {
-  grep -q "" README.md || \
+  grep -q "<!-- maintenance-status:start -->" README.md || \
     { echo "[FAIL] README missing maintenance-status:start marker"; return 1; }
-    
-  grep -q "" README.md || \
+
+  grep -q "<!-- maintenance-status:end -->" README.md || \
     { echo "[FAIL] README missing maintenance-status:end marker"; return 1; }
 
   # Content between fences is a valid 4-column markdown table
-  awk '//,//' README.md | \
+  awk '/<!-- maintenance-status:start -->/,/<!-- maintenance-status:end -->/' README.md | \
     grep -E '^\|' | head -1 | awk -F'|' 'NF!=6 {exit 1}' || \
     { echo "[FAIL] marker block does not contain a 4-column table"; return 1; }
 
@@ -535,12 +537,12 @@ trap 'rm -rf /tmp/<area-domain>-test-*' EXIT
 
 ## Suggested adoption order
 
-If you're starting from zero, you don't need all seven invariants on day one. The order that captures the most value soonest:
+If you're starting from zero, you don't need every invariant on day one. The order that captures the most value soonest:
 
 1. **Catalog bijection:** the most common drift; trivial to write.
 2. **No frontmatter on references:** cheap and prevents a load-bearing failure mode.
 3. **Version consistency:** the moment you have a release process, you need this.
-4. **Byte-equality with reverse-direction:** the moment you have a engine, you need this.
+4. **Byte-equality with reverse-direction:** the moment you have an engine, you need this.
 5. **Reference size constraints:** once you have 5+ references and start worrying about budget.
 6. **Metadata schema:** when your install logic gets non-trivial.
 7. **Package zip hygiene:** when you start producing Desktop zips.
