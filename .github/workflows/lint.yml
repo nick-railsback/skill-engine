@@ -16,12 +16,16 @@ jobs:
         run: |
           set -e
           shopt -s globstar nullglob
-          files=( **/*.sh )
+          # *.sh.template covers the scripts stamped into user repos —
+          # without it the stamped bundle escapes the lint entirely.
+          # -s bash because shellcheck cannot infer a dialect from the
+          # .template extension.
+          files=( **/*.sh **/*.sh.template )
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "No .sh files found."
+            echo "No shell files found."
             exit 0
           fi
-          shellcheck --severity=warning "${files[@]}"
+          shellcheck -s bash --severity=warning "${files[@]}"
 
   json-validate:
     runs-on: ubuntu-latest
@@ -73,6 +77,35 @@ jobs:
           # schema recompile per file.
           echo "Validating ${#targets[@]} file(s) against the schema in one pass"
           check-jsonschema --schemafile "$schema" "${targets[@]}"
+      - name: Invalid fixtures must fail the schema (verify.sh equivalence)
+        run: |
+          set -e
+          # The schema header claims to transcribe the contract verify.sh
+          # enforces. The invalid fixtures already run through verify.sh
+          # (tests/web-doc); running them through the schema too, expecting
+          # rejection, makes the equivalence a tested property instead of a
+          # prose claim — the crawl_budget kind-scoping divergence existed
+          # precisely because nothing exercised this direction.
+          schema="plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json"
+          status=0
+          for f in plugin/skill-engine/tests/web-doc/fixtures/schema/invalid/*.json; do
+            case "$(basename "$f")" in
+              # The schema's single declared gap: page_list same-origin is
+              # not expressible in JSON Schema (see the schema's $comment);
+              # only verify.sh enforces it, so this fixture legitimately
+              # passes here.
+              invalid--page-list-cross-origin.json)
+                echo "skipped (declared schema gap): $f"
+                continue ;;
+            esac
+            if check-jsonschema --schemafile "$schema" "$f" >/dev/null 2>&1; then
+              echo "FAIL: invalid fixture passed schema validation: $f"
+              status=1
+            else
+              echo "rejected as expected: $f"
+            fi
+          done
+          exit "$status"
 
   doctrine:
     runs-on: ubuntu-latest

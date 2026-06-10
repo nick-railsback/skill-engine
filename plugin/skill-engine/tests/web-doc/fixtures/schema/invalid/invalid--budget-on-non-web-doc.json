@@ -1,0 +1,4 @@
+{ "schema_version": 1, "sources": [
+  { "id": "x", "kind": "git-managed", "url": "https://github.com/example/repo",
+    "crawl_budget": 9999, "status": "intake", "lifecycle": {"state":"reachable"} }
+]}

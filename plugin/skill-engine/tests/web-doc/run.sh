@@ -194,6 +194,17 @@ else
   printf '  PASS  symlink-escape: Check 5.5 declined to walk outside CTX_ROOT\n'
   pass_count=$((pass_count + 1))
 fi
+# Positive control: the absence assertion above passes vacuously if the
+# containment guard is deleted or its failure message reworded — so also
+# assert Check 5.5 actually ran and counted exactly the one in-tree file
+# (inside.md), proving the walk happened and stopped at the boundary.
+if printf '%s' "$escape_out" | grep -qF '1 provenance file(s) with valid frontmatter'; then
+  printf '  PASS  symlink-escape positive control: Check 5.5 counted the in-tree file\n'
+  pass_count=$((pass_count + 1))
+else
+  printf '  FAIL  symlink-escape positive control: expected exactly 1 provenance file counted\n%s\n' "$escape_out"
+  fail_count=$((fail_count + 1))
+fi
 rm -rf "$escape_root"
 
 # Manifest schema assertion: the expected-snapshot fixture's

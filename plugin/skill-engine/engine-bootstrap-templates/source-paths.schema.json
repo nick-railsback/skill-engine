@@ -67,7 +67,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 5000,
-          "description": "web-doc only; max pages to crawl."
+          "description": "Max pages to crawl. Meaningful for web-doc only, but the [1, 5000] bounds apply whenever the key is present on any kind — verify.sh enforces the same rule, keeping the two enforcers equivalent."
         },
         "sitemap_url": {
           "type": ["string", "null"],

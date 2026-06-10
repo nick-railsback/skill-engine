@@ -361,19 +361,24 @@ else
               entries_ok=0
             fi
           fi
-          if jq -e ".sources[$idx] | has(\"crawl_budget\")" "$sp_file" >/dev/null 2>&1; then
-            budget_raw="$(jq -r ".sources[$idx].crawl_budget" "$sp_file" 2>/dev/null)"
-            if ! printf '%s' "$budget_raw" | grep -qE '^[0-9]+$'; then
-              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not an integer"
-              entries_ok=0
-            elif [ "$budget_raw" -lt 1 ] || [ "$budget_raw" -gt 5000 ]; then
-              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not in [1, 5000]"
-              entries_ok=0
-            fi
-          fi
         elif [ -n "$crawl_mode" ]; then
           fail "sources[$idx] ($id): crawl_mode '$crawl_mode' set on kind '$kind' — crawl_mode is web-doc only"
           entries_ok=0
+        fi
+        # crawl_budget bounds apply whenever the key is present, on ANY
+        # kind — matching the schema, which bounds the property globally.
+        # (Only meaningful for web-doc, but a 9999 budget on a git-managed
+        # entry must not pass here while failing schema validation; the two
+        # enforcers stay equivalent.)
+        if jq -e ".sources[$idx] | has(\"crawl_budget\")" "$sp_file" >/dev/null 2>&1; then
+          budget_raw="$(jq -r ".sources[$idx].crawl_budget" "$sp_file" 2>/dev/null)"
+          if ! printf '%s' "$budget_raw" | grep -qE '^[0-9]+$'; then
+            fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not an integer"
+            entries_ok=0
+          elif [ "$budget_raw" -lt 1 ] || [ "$budget_raw" -gt 5000 ]; then
+            fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not in [1, 5000]"
+            entries_ok=0
+          fi
         fi
       done < <(jq -r '
         .sources

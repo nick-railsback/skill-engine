@@ -20,7 +20,7 @@ fail=0
 # "engine does not perform HTTP itself" stance below.
 if grep -rE 'turndown|pandoc|html2markdown|readability|cheerio' \
    "$PLUGIN_ROOT/skills" "$PLUGIN_ROOT/engine-bootstrap-templates" \
-   --include='*.sh' --include='*.md' 2>/dev/null \
+   --include='*.sh' --include='*.md' --include='*.template' 2>/dev/null \
    | grep -v -F "$PLUGIN_ROOT/tests/doctrine.sh"; then
   echo "FAIL: html-to-markdown library reference found in engine code."
   fail=1
@@ -28,14 +28,22 @@ fi
 
 # 2. Engine code does not perform HTTP GETs itself.
 # Doctrine: only the model (via WebFetch or MCP fetch) performs content
-# fetches. Engine shell scripts may use `git`, `gh`, and `curl --head`
-# (HEAD probes for reachability) only. A non-HEAD curl in any
-# engine-bootstrap-templates/*.sh would mean the engine is silently
-# taking on the fetch role.
-if grep -rE '\bcurl\s+[^-]' "$PLUGIN_ROOT/engine-bootstrap-templates" \
-   --include='*.sh' 2>/dev/null \
-   | grep -v 'curl --head\|curl -I'; then
-  echo "FAIL: non-HEAD curl invocation in engine shell scripts."
+# fetches. Engine shell scripts may use `git`, `gh`, and `curl --head`/-I
+# (HEAD probes for reachability) only. A non-HEAD curl in any stamped
+# shell script would mean the engine is silently taking on the fetch role.
+# Allowlist shape, not GET-recognition: the previous pattern required a
+# non-dash character right after `curl `, which never matches the dominant
+# real-world GET forms (`curl -fsSL URL`, `curl -s URL`) — so it caught
+# only invocations nobody writes. Now ANY curl invocation is flagged
+# unless its argument list carries --head or -I (alone or in a combined
+# short-flag cluster like -sI).
+# Scope includes *.sh.template: those files stamp into every user repo
+# and previously escaped this check entirely.
+if grep -rEn '(^|[^A-Za-z0-9_-])curl([[:space:]]|$)' \
+   "$PLUGIN_ROOT/engine-bootstrap-templates" \
+   --include='*.sh' --include='*.sh.template' 2>/dev/null \
+   | grep -vE '(--head|[[:space:]]-[A-Za-z]*I)([[:space:]]|$)'; then
+  echo "FAIL: non-HEAD curl invocation in engine shell scripts (only curl --head / -I reachability probes are permitted)."
   fail=1
 fi
 
@@ -45,9 +53,13 @@ fi
 # git/gh config). Any `Authorization: Bearer ...` or `GITHUB_TOKEN`
 # reference in engine shell scripts would mean the engine is silently
 # taking on auth.
+# Scope includes *.sh.template (stamped into user repos) but deliberately
+# NOT *.md.template: prose templates narrate doctrine and would
+# false-positive on sentences about tokens; checks 2-3 police executable
+# shell only.
 if grep -rE 'BEARER|Authorization:\s*Bearer|GITHUB_TOKEN' \
    "$PLUGIN_ROOT/engine-bootstrap-templates" \
-   --include='*.sh' 2>/dev/null; then
+   --include='*.sh' --include='*.sh.template' 2>/dev/null; then
   echo "FAIL: auth-token plumbing detected in engine shell scripts."
   fail=1
 fi
