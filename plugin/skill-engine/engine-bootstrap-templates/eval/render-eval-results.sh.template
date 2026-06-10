@@ -23,11 +23,16 @@ export LC_ALL
 # Output:
 #   Aggregated text on stdout. Sections (in order):
 #     1. Header (navigator, run timestamps).
-#     2. Per-persona pass rates AND overall pass rate.
-#     3. Per-entry results: query, expected reference, runs, majority vote,
-#        flicker flag.
+#     2. Per-persona pass rates AND overall pass rate. Runs recorded as
+#        "error" (infra failure in run-eval.sh, not a navigator verdict) are
+#        excluded from the pass-vs-fail vote; an entry whose runs ALL errored
+#        is excluded from the pass-rate denominator and counted on its own
+#        "errored entries" line instead.
+#     3. Per-entry results: query, expected reference, runs, majority vote
+#        (pass, fail, or error), flicker flag.
 #     4. (If baseline provided) Delta section: regressions, gains, stabilised,
-#        newly flickering.
+#        newly flickering. Entries voting "error" on either side are listed
+#        as [ERRORED] and excluded from the comparison.
 #
 # Determinism:
 #   Same input file -> identical output bytes on rerun. LC_ALL=C is pinned at
@@ -155,18 +160,28 @@ emit_records() {
 
 # Decide majority vote and flicker flag from a list of run outcomes.
 # Inputs: $1 = comma-separated outcomes (e.g., "pass,pass,fail").
-# Outputs: "<vote>:<flicker>" on stdout (vote = pass|fail, flicker = yes|no).
-# The colon separator avoids the editor-fragility of a literal tab.
+# Outputs: "<vote>:<flicker>" on stdout (vote = pass|fail|error,
+# flicker = yes|no). "error" runs are infra outcomes: they never count
+# toward the pass-vs-fail vote, and an entry votes "error" only when NO
+# run produced a real verdict. The colon separator avoids the
+# editor-fragility of a literal tab.
 decide() {
   local outcomes="$1"
-  local pass=0 fail=0
+  local pass=0 fail=0 err=0
   local IFS=','
   for o in $outcomes; do
     [ "$o" = "pass" ] && pass=$((pass + 1))
     [ "$o" = "fail" ] && fail=$((fail + 1))
+    [ "$o" = "error" ] && err=$((err + 1))
   done
   local vote flicker
-  if [ "$pass" -gt "$fail" ]; then vote=pass; else vote=fail; fi
+  if [ "$pass" -eq 0 ] && [ "$fail" -eq 0 ] && [ "$err" -gt 0 ]; then
+    vote=error
+  elif [ "$pass" -gt "$fail" ]; then
+    vote=pass
+  else
+    vote=fail
+  fi
   if [ "$pass" -gt 0 ] && [ "$fail" -gt 0 ]; then flicker=yes; else flicker=no; fi
   printf '%s:%s\n' "$vote" "$flicker"
 }
@@ -180,8 +195,21 @@ decide() {
 # sorts them deterministically.
 aggregate() {
   local records="$1"
-  local total_overall=0 pass_overall=0 persona_lines
-  total_overall=$(awk -v US="$US" 'BEGIN{FS=US} { c++ } END{print c+0}' "$records")
+  local total_overall=0 pass_overall=0 error_overall=0
+  # Denominator: entries with at least one real (pass/fail) verdict.
+  # All-error entries are excluded and reported on their own line.
+  total_overall=$(awk -v US="$US" '
+    BEGIN{FS=US}
+    {
+      pass = 0; fail = 0
+      for (i = 4; i <= NF; i++) {
+        if ($i == "pass") pass++
+        if ($i == "fail") fail++
+      }
+      if (pass + fail > 0) c++
+    }
+    END{print c+0}
+  ' "$records")
   pass_overall=$(awk -v US="$US" '
     BEGIN{FS=US}
     {
@@ -194,7 +222,23 @@ aggregate() {
     }
     END{print c+0}
   ' "$records")
+  error_overall=$(awk -v US="$US" '
+    BEGIN{FS=US}
+    {
+      pass = 0; fail = 0; err = 0
+      for (i = 4; i <= NF; i++) {
+        if ($i == "pass") pass++
+        if ($i == "fail") fail++
+        if ($i == "error") err++
+      }
+      if (pass + fail == 0 && err > 0) c++
+    }
+    END{print c+0}
+  ' "$records")
   printf '  overall: %d / %d\n' "$pass_overall" "$total_overall"
+  if [ "$error_overall" -gt 0 ]; then
+    printf '  errored entries (excluded from pass rate): %d\n' "$error_overall"
+  fi
 
   awk -v US="$US" '
     BEGIN{FS=US}
@@ -205,6 +249,7 @@ aggregate() {
         if ($i == "pass") pass++
         if ($i == "fail") fail++
       }
+      if (pass + fail == 0) next
       total[persona]++
       if (pass > fail) ok[persona]++
     }
@@ -230,6 +275,7 @@ echo "Pass rates (majority vote of three runs):"
 aggregate "$TMP_RECORDS"
 echo
 echo "Per-entry detail:"
+# shellcheck disable=SC2034 # persona consumes its US-delimited field so r1-r3 land correctly; the per-entry lines don't print it
 while IFS="$US" read -r query expected persona r1 r2 r3; do
   [ -z "$query" ] && continue
   decision=$(decide "$r1,$r2,$r3")
@@ -255,12 +301,15 @@ if [ -n "$BASELINE_PATH" ]; then
   echo "Deltas vs. baseline ($BASELINE_PATH):"
   awk -v US="$US" '
     BEGIN{FS=US}
-    function vote_of(r1, r2, r3,    pass) {
-      pass = 0
-      if (r1 == "pass") pass++
-      if (r2 == "pass") pass++
-      if (r3 == "pass") pass++
-      return (pass >= 2) ? "pass" : "fail"
+    function vote_of(r1, r2, r3,    p, f) {
+      # Mirrors decide(): error runs carry no verdict; an all-error entry
+      # votes "error" and is excluded from delta comparison below.
+      p = 0; f = 0
+      if (r1 == "pass") p++; else if (r1 == "fail") f++
+      if (r2 == "pass") p++; else if (r2 == "fail") f++
+      if (r3 == "pass") p++; else if (r3 == "fail") f++
+      if (p == 0 && f == 0) return "error"
+      return (p > f) ? "pass" : "fail"
     }
     function flicker_of(r1, r2, r3,    p, f) {
       p = 0; f = 0
@@ -279,6 +328,10 @@ if [ -n "$BASELINE_PATH" ]; then
       fl = flicker_of($4, $5, $6)
       if (!($1 in base_vote)) {
         printf "  [NEW] %s -> %s (vote=%s, flicker=%s)\n", $1, $2, v, fl
+        next
+      }
+      if (v == "error" || base_vote[$1] == "error") {
+        printf "  [ERRORED] %s -> %s (excluded from delta; rerun after fixing the runner)\n", $1, $2
         next
       }
       if (base_vote[$1] == "pass" && v == "fail") {
