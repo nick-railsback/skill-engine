@@ -403,7 +403,7 @@ After stamping completes, iterate over the intaken sources filtered to
 `kind: git-managed`. For each such source, prompt the user **once**:
 
 ```
-Pre-clone <source_id> from <url> into ~/.cache/skill-engine/?
+Pre-clone <source_id> from <url> into ~/.cache/skill-engine/git-managed/?
 This speeds up later DISCOVER runs. Skip if unsure. [y/N]
 ```
 
@@ -436,8 +436,8 @@ case "<source_id>" in
       # Skip the seed for this source instead.
       echo "skill-engine: couldn't resolve <source_id> HEAD (empty ls-remote) — skipping cache seed for this source" >&2
     else
-      mkdir -p ~/.cache/skill-engine/
-      dest="$HOME/.cache/skill-engine/<source_id>-$sha"
+      mkdir -p ~/.cache/skill-engine/git-managed/
+      dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
       tmpdir="${dest}.tmp.$$"
       if git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"; then
         mv "$tmpdir" "$dest"
@@ -460,7 +460,7 @@ Substitute `<url>` and `<source_id>` from the source entry. On success,
 emit one line naming the resulting path:
 
 ```
-Cloned <source_id> → ~/.cache/skill-engine/<source_id>-<sha>/
+Cloned <source_id> → ~/.cache/skill-engine/git-managed/<source_id>-<sha>/
 ```
 
 On clone failure (network error, auth failure, missing repo, `git
@@ -485,7 +485,8 @@ it runs only with explicit per-source consent. The "engine does not
 crawl, fetch, or probe upstream" stance is preserved for *content*:
 bootstrap reads no source content here, validates no source's
 reachability, and probes no lifecycle state. It writes only to
-`~/.cache/skill-engine/<source_id>-<sha>/`, the user-consented path.
+`~/.cache/skill-engine/git-managed/<source_id>-<sha>/`, the
+user-consented path.
 
 ## Step 3.6 — Offer to seed local cache for web-doc sources
 
@@ -663,7 +664,7 @@ from a local clone than from remote `gh`/`git` calls. The recommended
 cache location is:
 
 ```
-~/.cache/skill-engine/<source_id>-<sha>/
+~/.cache/skill-engine/git-managed/<source_id>-<sha>/
 ```
 
 This follows the XDG cache-directory convention (`~/.cache/<tool>/`)
@@ -697,7 +698,7 @@ the cache explicitly via `/skill-engine:clean-cache`.
 - It does not crawl, fetch, or probe upstream for content. The only
   network operation bootstrap performs is the explicit user-consented
   `git clone` in Step 3.5, and it writes solely to
-  `~/.cache/skill-engine/<source_id>-<sha>/`. Lifecycle probes and
+  `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`. Lifecycle probes and
   content crawls belong to DISCOVER and REFRESH (see
   [`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md)).
 - It does not propose additional sources or expand source coverage —

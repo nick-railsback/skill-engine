@@ -352,7 +352,7 @@ The engine facilitates a local cache; the author orchestrates the
 clone. The recommended cache location is:
 
 ```
-~/.cache/skill-engine/<source_id>-<sha>/
+~/.cache/skill-engine/git-managed/<source_id>-<sha>/
 ```
 
 This follows the XDG cache-directory convention (`~/.cache/<tool>/`)
@@ -365,7 +365,7 @@ The engine does not clone without consent. Pre-flight step 6 above is
 the consent point at DISCOVER time; `engine-bootstrap` Step 3.5 is the
 consent point at scaffold time. When the user replies `y` to either
 prompt, the skill itself runs the documented
-`git clone --depth=1 --filter=blob:none <url> ~/.cache/skill-engine/<source_id>-<sha>/`
+`git clone --depth=1 --filter=blob:none <url> ~/.cache/skill-engine/git-managed/<source_id>-<sha>/`
 on the user's behalf; otherwise the cache directory simply remains
 absent and reads fall back to the CLI tools above. The user may also
 clone manually at any time (or choose a different cache location) —
@@ -552,8 +552,9 @@ four components (no multi-column tables, no interactive menus):
    path; cite content by path+content-hash. If this run populated or
    read from a local clone cache, point at the location once at the end
    of the Coverage report (e.g., `Cached source clones at
-   ~/.cache/skill-engine/<source_id>-<sha>/; run /skill-engine:status to
-   inspect, /skill-engine:clean-cache to free disk.`).
+   ~/.cache/skill-engine/git-managed/<source_id>-<sha>/; run
+   /skill-engine:status to inspect, /skill-engine:clean-cache to free
+   disk.`).
 2. **Skip-reasoning.** For files and companion sources you
    considered but excluded: "I deliberately skipped Z because… I
    considered companions P, Q and excluded them because…" Empty-skip

@@ -105,7 +105,7 @@ returning to a contextualizer after a gap.
 ## Cache surface
 
 The on-demand DISCOVER/REFRESH local clone cache lives at
-`~/.cache/skill-engine/<source_id>-<sha>/` (see
+`~/.cache/skill-engine/git-managed/<source_id>-<sha>/` (see
 `engine-bootstrap/SKILL.md` for the convention). The cache is persistent
 and not auto-cleaned at end of a workflow, so it can accumulate disk
 usage as upstream SHAs advance.
@@ -155,7 +155,7 @@ them as a hint in the Cache section, but do not delete.
 Old flat-layout entries (if present):
 | dir | last_modified |
 |---|---|
-| ~/.cache/skill-engine/<source_id>-<sha>/ | ... |
+| ~/.cache/skill-engine/<source_id>-<sha>/ | ... | <!-- doctrine:legacy-cache-layout -->
 
 (The old-layout listing exists until the user runs the REFRESH migration
 prompt or `clean-cache`.)

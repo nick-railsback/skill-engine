@@ -123,7 +123,8 @@ When `/skill-engine:refresh` is invoked:
 
 1.5. **Cache layout migration (one-time).** Earlier engine versions
    stored git-managed clones flat at
-   `~/.cache/skill-engine/<source_id>-<sha>/`. The current layout is
+   `~/.cache/skill-engine/<source_id>-<sha>/`. <!-- doctrine:legacy-cache-layout -->
+   The current layout is
    `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`. On every
    REFRESH invocation, check for flat-layout entries:
 
@@ -416,15 +417,16 @@ not silently fall back to HEAD when a branch was explicitly named).
 
 For large `kind: git-managed` sources, REFRESH reads more efficiently
 from a local clone than from remote `gh`/`git` calls. The recommended
-cache location is `~/.cache/skill-engine/<source_id>-<sha>/` (see
-`engine-bootstrap/SKILL.md` for the convention). If the cache directory
-exists, prefer a local read; otherwise fall back to CLI calls.
+cache location is `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`
+(see `engine-bootstrap/SKILL.md` for the convention). If the cache
+directory exists, prefer a local read; otherwise fall back to CLI calls.
 
 ### Cache garbage collection
 
-After REFRESH successfully populates a new `~/.cache/skill-engine/<source_id>-<new-sha>/`
-for a source whose SHA advanced, delete any sibling directories
-matching `~/.cache/skill-engine/<source_id>-*/` whose suffix is NOT
+After REFRESH successfully populates a new
+`~/.cache/skill-engine/git-managed/<source_id>-<new-sha>/` for a source
+whose SHA advanced, delete any sibling directories matching
+`~/.cache/skill-engine/git-managed/<source_id>-*/` whose suffix is NOT
 the new SHA. Old SHA directories are by definition stale: their
 contents reflect an upstream state that REFRESH has already replaced.
 

@@ -341,6 +341,26 @@ elif [ "$plugin_ver" != "$market_ver" ] || [ "$plugin_ver" != "$readme_badge_ver
   fail=1
 fi
 
+# 9. Skills reference only the kind-partitioned cache layout.
+# Doctrine: the clone cache is partitioned by source kind —
+# ~/.cache/skill-engine/git-managed/<source_id>-<sha>/ for git-backed
+# sources and ~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/ for
+# crawl snapshots. The flat layout (~/.cache/skill-engine/<source_id>-…/)
+# is legacy, mentioned only in migration and cleanup prose. An unmarked
+# flat-layout path in a skill means the layout has forked again — the
+# failure mode that once left engine-bootstrap seeding a cache DISCOVER
+# could not see, double-cloning every source. Deliberate legacy mentions
+# carry a per-line <!-- doctrine:legacy-cache-layout --> marker.
+flat_cache_refs=$(grep -rn -F 'cache/skill-engine/<source_id>' \
+  "$PLUGIN_ROOT/skills" --include='*.md' 2>/dev/null \
+  | grep -v -F '<!-- doctrine:legacy-cache-layout -->')
+if [ -n "$flat_cache_refs" ]; then
+  echo "FAIL: flat cache-layout path in a skill — the kind-partitioned layout (git-managed/, web-doc/) is the only current layout."
+  echo "$flat_cache_refs" | sed "s|^$PLUGIN_ROOT/|  |"
+  echo "  Use ~/.cache/skill-engine/git-managed/<source_id>-<sha>/ (or web-doc/), or mark a deliberate legacy mention with <!-- doctrine:legacy-cache-layout -->."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
