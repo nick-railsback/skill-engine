@@ -20,7 +20,7 @@ report `Added marketplace: skill-engine-marketplace`.
 /plugin install skill-engine@skill-engine-marketplace
 ```
 
-After the install completes, the plugin's eight skills are loaded — they
+After the install completes, the plugin's twelve skills are loaded — they
 activate when Claude detects the matching intent in your session.
 
 ## 3. Bootstrap a contextualizer
@@ -48,18 +48,43 @@ In the same directory:
 
 > Run discover.
 
-The `discover` skill reads your source, writes the curated index, and
-proposes reference files. Review the proposals before they land — the engine
-pauses for your approval; reviewer-in-the-loop is the contract.
+The `discover` skill reads your source, then **stages** a proposal — the
+curated navigator plus reference files — at a sibling
+`<slug>-context.proposed/` directory. Nothing lands in the live
+contextualizer yet; promotion is a separate, explicit step.
+
+## 4.5 Review and promote
+
+Reviewer-in-the-loop is the contract, so the staged proposal waits for
+your sign-off:
+
+```
+/skill-engine:review <slug>
+```
+
+The first pass prints the proposal manifest, a diff command, and the
+path to `REVIEW.md`; fill its Step 1 predictions and re-run the command
+to generate the disagreement set. When you have signed off in Step 3,
+promote the proposal:
+
+```
+/skill-engine:apply <slug>
+```
+
+(or `/skill-engine:discard <slug>` to drop it without promoting). Only
+`apply` writes to the live contextualizer.
 
 ## 5. Keep it taught
 
 When the upstream shifts, run `refresh`. The engine re-derives sources whose
-content-hash changed and proposes updated references for review.
+content-hash changed and stages updated references the same way — through a
+proposal that waits for `review` and `apply`. A refresh invoked while an
+earlier proposal is still staged halts until you apply or discard it.
 
 Run `status` any time to see what is on disk. Run `clean-cache` when you want
 to free the local clone cache (dry-run is the default; type `yes` to delete).
 
-That's the loop: discover once, refresh on change, review every proposal.
+That's the loop: discover once, refresh on change, review-and-apply every
+proposal.
 See [the doctrine](./doctrine.md) for the load-bearing decisions behind
 these workflows.
