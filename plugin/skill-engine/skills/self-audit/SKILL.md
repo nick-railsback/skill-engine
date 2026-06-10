@@ -28,24 +28,51 @@ resolves relative to whichever directory matches. Before reading
 anything, locate the root by searching all three install levels in
 order:
 
+<!-- doctrine:locator-block:start -->
 ```bash
+set -euo pipefail
+# <name> resolves per this skill's "Selecting a contextualizer" section;
+# substitute the empty string when no contextualizer was named.
+name="<name>"
 ctx_roots=$(
   for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
     [ -d "$root" ] || continue
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    if [ -n "$name" ]; then
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name}-context" 2>/dev/null
+    else
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    fi
   done
 )
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
-if [ "$n" -eq 0 ]; then
+if [ "$n" -eq 0 ] && [ -n "$name" ]; then
+  echo "No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed."
+  exit 1
+elif [ "$n" -eq 0 ]; then
   echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
+elif [ "$n" -gt 1 ] && [ -n "$name" ]; then
+  # Same slug installed at more than one level: the first root in the
+  # search order above wins (user, then local-user, then project).
+  CTX_ROOT=$(printf '%s\n' "$ctx_roots" | head -n1)
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers found; specify one:"
+  echo "Multiple contextualizers found; rerun naming one (see 'Selecting a contextualizer' in this skill):"
   printf '%s\n' "$ctx_roots"
   exit 1
+else
+  CTX_ROOT="$ctx_roots"
 fi
-CTX_ROOT="$ctx_roots"
 ```
+<!-- doctrine:locator-block:end -->
+
+### Selecting a contextualizer
+
+`/skill-engine:self-audit <name>` names the contextualizer to audit:
+`<name>` is the directory name without the `-context` suffix, the same
+grammar `review`/`apply`/`discard` use. Substitute it (or the empty
+string) for `<name>` in the locator above. With no argument,
+auto-detection applies — it succeeds when exactly one contextualizer is
+installed and lists the matches and exits when more than one is.
 
 Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
 every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as

@@ -27,26 +27,55 @@ resolves relative to whichever directory matches. Before reading or
 writing anything, locate the root by searching all three install
 levels in order:
 
+<!-- doctrine:locator-block:start -->
 ```bash
 set -euo pipefail
+# <name> resolves per this skill's "Selecting a contextualizer" section;
+# substitute the empty string when no contextualizer was named.
+name="<name>"
 ctx_roots=$(
   for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
     [ -d "$root" ] || continue
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    if [ -n "$name" ]; then
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name}-context" 2>/dev/null
+    else
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    fi
   done
 )
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
-if [ "$n" -eq 0 ]; then
+if [ "$n" -eq 0 ] && [ -n "$name" ]; then
+  echo "No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed."
+  exit 1
+elif [ "$n" -eq 0 ]; then
   echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
+elif [ "$n" -gt 1 ] && [ -n "$name" ]; then
+  # Same slug installed at more than one level: the first root in the
+  # search order above wins (user, then local-user, then project).
+  CTX_ROOT=$(printf '%s\n' "$ctx_roots" | head -n1)
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers found; specify one:"
+  echo "Multiple contextualizers found; rerun naming one (see 'Selecting a contextualizer' in this skill):"
   printf '%s\n' "$ctx_roots"
   exit 1
+else
+  CTX_ROOT="$ctx_roots"
 fi
-CTX_ROOT="$ctx_roots"
+```
+<!-- doctrine:locator-block:end -->
+
+```bash
 CTX_PROPOSED="${CTX_ROOT}.proposed"
 ```
+
+### Selecting a contextualizer
+
+`/skill-engine:refresh <name>` names the contextualizer to refresh:
+`<name>` is the directory name without the `-context` suffix, the same
+grammar `review`/`apply`/`discard` use. Substitute it (or the empty
+string) for `<name>` in the locator above. With no argument,
+auto-detection applies — it succeeds when exactly one contextualizer is
+installed and lists the matches and exits when more than one is.
 
 `$CTX_PROPOSED` is the **staging directory** that mirrors the live
 contextualizer's structure. REFRESH writes to it instead of
@@ -219,13 +248,24 @@ When `/skill-engine:refresh` is invoked:
    `Migrated N sources[] entries to thin schema (chunks[] dropped).`
    No user prompt; continue.
 
+2.5. **Hint passthrough.** A `--hint='<hint>'` argument provides extra
+   context for the current session (e.g., `--hint='I think
+   packages/foo's reference is stale even though SHA matched'`,
+   `--hint='re-check the migration guide pages'`). Treat hints as
+   authoritative author input that shapes this run's refresh emphasis —
+   the same contract as `discover/SKILL.md` § Hint passthrough.
+
 3. **Idempotency check (no-op gate).** Before re-reading any source,
    check `research/.discover-cache.json` (gitignored runtime state)
    against current upstream SHAs. If every in-scope source's SHA is
    unchanged since its last cache entry AND every source still has
-   `lifecycle.state ∈ {reachable, unknown}` since last run, summarize
-   "no work to do" in the post-run summary and exit cleanly. Repeated
-   REFRESH invocations against an unchanged corpus should not churn.
+   `lifecycle.state ∈ {reachable, unknown}` since last run AND no
+   `--hint` argument was supplied this run, summarize "no work to do"
+   in the post-run summary and exit cleanly. Repeated REFRESH
+   invocations against an unchanged corpus should not churn. (A hint
+   always overrides the gate — it signals the author wants a re-look
+   at fixed inputs, which is exactly the rerun this skill's post-run
+   summary invites.)
 
 4. **Identify in-scope sources.** A source is in-scope if all hold:
    - `archived: false` (or field absent — defaults to false),

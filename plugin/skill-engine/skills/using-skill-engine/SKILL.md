@@ -43,9 +43,10 @@ proposed_dirs=$(
 )
 ```
 
-If any proposed dirs exist, surface a one-line note naming each one and
-the three commands that gate its disposition, then exit without
-dispatching to any workflow (the note is the entire output):
+If any proposed dirs exist and the requested workflow is a **mutating**
+one (`discover`, `refresh`, `new-reference`), surface a one-line note
+naming each proposal and the three commands that gate its disposition,
+then exit without dispatching (the note is the entire output):
 
 ```
 Pending proposal at <path>. Run /skill-engine:review <slug>, /skill-engine:apply <slug>, or /skill-engine:discard <slug> before re-running discover/refresh.
@@ -58,12 +59,15 @@ promote, discard, or keep iterating; the router refuses to choose for
 them. The pre-step short-circuits before any case-1/case-2/case-3/case-4
 branch fires.
 
-Bootstrap (`engine-bootstrap`) is exempt from this gate — it is
-explicitly invoked to scaffold a new contextualizer and writes
-directly to the live tree, not through the staging model. The router
-only short-circuits the workflows that operate on an already-stamped
-contextualizer (`discover`, `refresh`, `status`, `self-audit`,
-`new-reference`).
+The **read-only** workflows (`status`, `self-audit`) are exempt: a
+pending proposal is precisely the state STATUS exists to surface ("how
+far has its review progressed"), and SELF-AUDIT's default path writes
+nothing. Dispatch them normally, prepending the pending-proposal note
+above to the dispatch so the user still sees it.
+
+Bootstrap (`engine-bootstrap`) is also exempt — it is explicitly
+invoked to scaffold a new contextualizer and writes directly to the
+live tree, not through the staging model.
 
 1. **No contextualizer installed.** `ctx_count == 0` ⇒ this is a fresh
    project with no contextualizer yet. Route to **engine-bootstrap**:

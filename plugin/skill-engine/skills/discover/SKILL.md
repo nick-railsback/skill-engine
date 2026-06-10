@@ -29,26 +29,70 @@ resolves relative to whichever directory matches. Before reading or
 writing anything, locate the root by searching all three install
 levels in order:
 
+<!-- doctrine:locator-block:start -->
 ```bash
 set -euo pipefail
+# <name> resolves per this skill's "Selecting a contextualizer" section;
+# substitute the empty string when no contextualizer was named.
+name="<name>"
 ctx_roots=$(
   for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
     [ -d "$root" ] || continue
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    if [ -n "$name" ]; then
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name}-context" 2>/dev/null
+    else
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    fi
   done
 )
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
-if [ "$n" -eq 0 ]; then
+if [ "$n" -eq 0 ] && [ -n "$name" ]; then
+  echo "No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed."
+  exit 1
+elif [ "$n" -eq 0 ]; then
   echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
+elif [ "$n" -gt 1 ] && [ -n "$name" ]; then
+  # Same slug installed at more than one level: the first root in the
+  # search order above wins (user, then local-user, then project).
+  CTX_ROOT=$(printf '%s\n' "$ctx_roots" | head -n1)
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers found; specify one:"
+  echo "Multiple contextualizers found; rerun naming one (see 'Selecting a contextualizer' in this skill):"
   printf '%s\n' "$ctx_roots"
   exit 1
+else
+  CTX_ROOT="$ctx_roots"
 fi
-CTX_ROOT="$ctx_roots"
+```
+<!-- doctrine:locator-block:end -->
+
+```bash
 CTX_PROPOSED="${CTX_ROOT}.proposed"
 ```
+
+### Selecting a contextualizer
+
+A positional argument to `discover` primarily names a **registered
+source id** (see "Targeted invocation" under Pre-flight below), so
+contextualizer selection resolves in this order:
+
+1. Run the locator above with `name` empty. If exactly one
+   contextualizer is found, the positional argument keeps its primary
+   meaning — a source-id filter inside that contextualizer.
+2. If the locator lists multiple contextualizers and the positional
+   argument matches one of the listed slugs (the directory name without
+   `-context`), rerun the locator with that slug as `name` — the
+   argument selected a contextualizer, and source scope stays
+   unnarrowed. If the selected contextualizer then also registers a
+   source id equal to the same argument, ask the user which they meant;
+   do not guess.
+3. If the locator lists multiple contextualizers and the argument
+   matches none of their slugs, surface both namespaces — the
+   contextualizer list and a note that the argument matched no slug —
+   and exit.
+
+The slug grammar matches `review`/`apply`/`discard`: `<name>` is the
+contextualizer directory name without the `-context` suffix.
 
 `$CTX_PROPOSED` is the **staging directory** that mirrors the live
 contextualizer's structure. DISCOVER and REFRESH write to it instead

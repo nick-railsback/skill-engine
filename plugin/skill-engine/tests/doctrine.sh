@@ -362,6 +362,53 @@ if [ -n "$flat_cache_refs" ]; then
   fail=1
 fi
 
+# 10. The shared contextualizer-locator block stays byte-identical across
+# the five locator skills.
+# Doctrine: discover, refresh, status, self-audit, and new-reference share
+# one root-resolution bash block, fenced by doctrine:locator-block
+# sentinels; discover/SKILL.md is the designated master. The
+# using-skill-engine router deliberately ships a different variant (it
+# lists and asks instead of exiting) and is NOT in the identity set.
+# Same enforcement idea as check 7's verify.sh byte-compare: shared prompt
+# logic that relied on discipline alone has already forked once (the
+# cache-layout split this file's check 9 now pins).
+locator_master="$PLUGIN_ROOT/skills/discover/SKILL.md"
+extract_locator() {
+  awk '
+    /<!-- doctrine:locator-block:start -->/ { inblock=1; next }
+    /<!-- doctrine:locator-block:end -->/   { inblock=0 }
+    inblock { print }
+  ' "$1"
+}
+locator_master_block=$(extract_locator "$locator_master")
+if [ -z "$locator_master_block" ]; then
+  echo "FAIL: no doctrine:locator-block sentinels in skills/discover/SKILL.md (the locator master) — cannot check the copies."
+  fail=1
+else
+  for locator_skill in refresh status self-audit new-reference; do
+    if [ "$(extract_locator "$PLUGIN_ROOT/skills/$locator_skill/SKILL.md")" != "$locator_master_block" ]; then
+      echo "FAIL: skills/$locator_skill/SKILL.md locator block diverges from skills/discover/SKILL.md — re-sync the fenced doctrine:locator-block region."
+      fail=1
+    fi
+  done
+fi
+
+# 10b. Sentinel-balance guard for check 10 (mirrors check 5b): an
+# unterminated :start would swallow the rest of the file into the
+# extracted block, making the byte-compare meaningless rather than loud.
+locator_imbalance=$(awk -v root="$PLUGIN_ROOT/" '
+  function flush() { if (prev != "" && s != e) printf "%s: %d start / %d end\n", prev, s, e }
+  FNR == 1 { flush(); prev = substr(FILENAME, length(root) + 1); s = 0; e = 0 }
+  /<!-- doctrine:locator-block:start -->/ { s++ }
+  /<!-- doctrine:locator-block:end -->/   { e++ }
+  END { flush() }
+' "$PLUGIN_ROOT"/skills/*/SKILL.md)
+if [ -n "$locator_imbalance" ]; then
+  echo "FAIL: unbalanced doctrine:locator-block sentinels (would blind check 10)."
+  echo "$locator_imbalance" | awk '{ print "  " $0 }'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
