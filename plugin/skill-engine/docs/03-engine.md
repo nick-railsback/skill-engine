@@ -398,7 +398,7 @@ After the findings table prints, if total findings > 0 the workflow classifies e
 | 1 — Stale `as of YYYY-MM-DD` >180 days | ✅ Yes | Deterministic: refresh to today's UTC date. |
 | 2 — Broken source URL | ❌ No | Requires intent: replace, remove, link archive snapshot? |
 | 3 — Long-untouched reference on active source | ❌ No | The fix is REFRESH against the source, not a self-audit mutation. |
-| 4 — Catalog row vs frontmatter `description` | ✅ Yes | Deterministic: sync catalog row to the frontmatter canonical. |
+| 4 — Catalog row vs reference body framing | ✅ Yes | Deterministic: sync catalog row to the body framing (first paragraph under the H1, or the `## When to Use This Reference` bullets). |
 | 5 — Cross-reference map accuracy | ❌ No | Requires routing judgment. |
 | 6 — Review-state staleness | ✅ Yes | Deterministic: rewrite `research/review-state.json` so `review_state: "stale"`. |
 | 7 — Paragraph→permalink density | ❌ No | No mechanical permalink-insertion; the right citation depends on the paragraph's claim. |

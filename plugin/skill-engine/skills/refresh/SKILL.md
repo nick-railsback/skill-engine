@@ -74,11 +74,15 @@ Two things, both load-bearing:
 1. **Updated reference files in `references/`** (where applicable),
    each still citing its source by path plus content-hash (see
    [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md)). Each still satisfies the four
-   reference invariants:
-   - **first-5K** — the first 5K bytes of every reference are
-     self-contained enough to anchor a follow-up search.
+   reference invariants (definitions owned by
+   [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §Navigator size budget and
+   §Long references — do not restate them elsewhere):
+   - **first-5K** — the navigator's standing instructions (invariants,
+     critical rules, dispatch logic) fit in the first 5K bytes of
+     `SKILL.md` body; the catalog table is a TOC and is exempt.
    - **depth-1** — no more than one level of pointer indirection.
-   - **max-100-line-TOC** — the navigator catalog stays under 100 lines.
+   - **max-100-line-TOC** — any reference body over 100 lines carries a
+     TOC marker within its first 30 lines.
    - **SHA-pin** — every citation pins to a specific SHA, not a moving
      branch or tag.
 2. **Updates to `research/source-paths.json`** reflecting upstream
@@ -299,14 +303,18 @@ pre-flight. Run them in order; each phase's outputs feed the next.
 | Kind | Probe command | Records to lifecycle |
 |---|---|---|
 | `git-managed` | `git ls-remote --heads -- <url> <branch>` | `last_checked_sha` = first column |
-| `web-doc` | `HTTP HEAD <url>` | `last_checked` = now; if redirect → `state: "moved"`, `proposed_url` set; if 4xx → `state: "removed"` |
+| `web-doc` | `HTTP HEAD <url>` | `last_checked` = now; if redirect → `state: "moved"`, `proposed_url` set; if 404/410 → `state: "removed"`; any other 4xx (401/403/429…) → `state: "unknown"` |
 | `external-doc` | n/a (local content) | n/a |
 | `local-path` | n/a (local content) | n/a |
 
 For `web-doc`, use WebFetch or the available MCP fetch tool with HTTP
 HEAD if supported; fall back to GET with body discarded if the tool
 doesn't expose HEAD. Conservative default: any non-zero probe exit maps
-to `lifecycle.state: "unknown"`, NOT `"removed"`.
+to `lifecycle.state: "unknown"`, NOT `"removed"`. The conservative
+default takes precedence over the probe table above: only 404 and 410 —
+the statuses that assert the resource is gone — map to `removed`. An
+auth wall (401/403) or rate limit (429) is a transient condition, and
+`removed` permanently drops the source from refresh scope.
 
 For `git-managed` probes, the tool-choice guidance in "Tool preference
 for git-managed sources" below (gh/git CLI over WebFetch; how to pick

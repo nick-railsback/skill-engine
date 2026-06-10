@@ -117,11 +117,15 @@ Two things, both load-bearing:
 
 1. **Reference files in `references/`.** Each cites its source by path
    plus content-hash (see [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md)). Each
-   satisfies the four reference invariants:
-   - **first-5K** — the first 5K bytes of every reference are
-     self-contained enough to anchor a follow-up search.
+   satisfies the four reference invariants (definitions owned by
+   [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §Navigator size budget and
+   §Long references — do not restate them elsewhere):
+   - **first-5K** — the navigator's standing instructions (invariants,
+     critical rules, dispatch logic) fit in the first 5K bytes of
+     `SKILL.md` body; the catalog table is a TOC and is exempt.
    - **depth-1** — no more than one level of pointer indirection.
-   - **max-100-line-TOC** — the navigator catalog stays under 100 lines.
+   - **max-100-line-TOC** — any reference body over 100 lines carries a
+     TOC marker within its first 30 lines.
    - **SHA-pin** — every citation pins to a specific SHA, not a moving
      branch or tag.
 2. **A post-run summary** for the author (see "Post-run summary" below).

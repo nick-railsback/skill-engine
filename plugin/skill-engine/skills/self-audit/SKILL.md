@@ -374,9 +374,14 @@ auto-fixable (Checks 1, 4, and 6) or judgment-required (Checks 2, 3, 5, 7, 8).
 The three auto-fixable checks have a single correct mutation:
 
 - **Check 1 (stale `as of` dates):** refresh the date to today's UTC date.
-- **Check 4 (catalog row vs frontmatter `description`):** sync the catalog
-  row's one-line description to the reference frontmatter's `description:`
-  field (the canonical statement).
+- **Check 4 (catalog row vs reference body framing):** sync the catalog
+  row's one-line description to the reference's body framing — the first
+  paragraph under the H1, or the bullets under a `## When to Use This
+  Reference` section if one is present. References carry no frontmatter,
+  so the body-section heuristic is the canonical statement (see
+  [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) §SELF-AUDIT check 4). If neither
+  yields a usable one-line statement, demote the finding to
+  judgment-required rather than inventing content.
 - **Check 6 (review-state staleness):** rewrite
   `research/review-state.json` so `review_state: "stale"` (other fields
   unchanged).
