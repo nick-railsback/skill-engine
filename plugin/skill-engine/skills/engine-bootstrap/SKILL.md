@@ -44,12 +44,15 @@ This skill assumes no contextualizer is installed under
    find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
    ```
 
-   If any match has a parseable `research/.research-state.json`, surface a
-   one-line warning naming the path, list the files that would be
-   overwritten, and pause for explicit confirmation before continuing. The
-   `using-skill-engine` router only sends new and corrupt directories here;
-   an existing setup reaching this skill means the maintainer overrode the
-   router on purpose.
+   If any match is a non-empty directory, surface a one-line warning
+   naming the path, list the files that would be overwritten, and pause
+   for explicit confirmation before continuing. The condition is
+   files-present, NOT a parseable `research/.research-state.json`: a
+   corrupted state marker must not bypass this guard, because the
+   directory may still hold a curated `SKILL.md` and a populated
+   `research/source-paths.json` that stamping would overwrite. The
+   `using-skill-engine` router sends both new and corrupt-marker
+   directories here; either way, existing files pause for confirmation.
 
 2. Otherwise, proceed.
 

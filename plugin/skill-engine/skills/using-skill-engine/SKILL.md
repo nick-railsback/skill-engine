@@ -76,9 +76,9 @@ contextualizer (`discover`, `refresh`, `status`, `self-audit`,
    `jq empty "$ctx_root/research/.research-state.json"` exits non-zero ⇒
    the state file is missing or corrupt. Surface a one-line diagnostic
    naming the path and the parse error, then route to
-   **engine-bootstrap** so the maintainer can re-scaffold over the broken
-   substrate (the bootstrap workflow surfaces an existing-files warning
-   before overwriting).
+   **engine-bootstrap**, which pauses for explicit confirmation before
+   overwriting any existing contextualizer files (its activation guard
+   triggers on files-present, so a corrupt marker cannot bypass it).
 
 3. **Multiple contextualizer roots present.** `ctx_count > 1` ⇒ surface
    the list and ask the user which contextualizer to operate on. Do not
