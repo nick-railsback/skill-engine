@@ -355,6 +355,35 @@ elif [ "$plugin_ver" != "$market_ver" ] || [ "$plugin_ver" != "$readme_badge_ver
   fail=1
 fi
 
+# 8 (continued) — the two hand-edited release surfaces the four-way check
+# above does not see. Only the prompt-guided /release skill touches
+# SECURITY.md's supported line and the CHANGELOG heading, so a hand-rolled
+# release could keep CI green while SECURITY.md advertises the wrong
+# supported line.
+#   SECURITY.md: the supported-versions table row `| X.Y.x |` must carry
+#   plugin.json's major.minor (pre-1.0 policy: latest minor line only).
+#   CHANGELOG.md: the top release heading `## [X.Y.Z]` must equal
+#   plugin.json's version exactly.
+if [ -n "$plugin_ver" ]; then
+  plugin_minor="${plugin_ver%.*}"
+  security_line=$(grep -oE '^\| [0-9]+\.[0-9]+\.x ' "$REPO_ROOT/SECURITY.md" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+')
+  changelog_ver=$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$REPO_ROOT/CHANGELOG.md" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+  if [ -z "$security_line" ]; then
+    echo "FAIL: version-parity could not read SECURITY.md's supported-line row ('| X.Y.x |' shape expected)."
+    fail=1
+  elif [ "$security_line" != "$plugin_minor" ]; then
+    echo "FAIL: SECURITY.md supports $security_line.x but plugin.json is $plugin_ver — update the supported-versions table."
+    fail=1
+  fi
+  if [ -z "$changelog_ver" ]; then
+    echo "FAIL: version-parity could not read CHANGELOG.md's top release heading ('## [X.Y.Z]' shape expected)."
+    fail=1
+  elif [ "$changelog_ver" != "$plugin_ver" ]; then
+    echo "FAIL: CHANGELOG.md's top release heading is $changelog_ver but plugin.json is $plugin_ver — add or fix the release entry."
+    fail=1
+  fi
+fi
+
 # 9. Skills reference only the kind-partitioned cache layout.
 # Doctrine: the clone cache is partitioned by source kind —
 # ~/.cache/skill-engine/git-managed/<source_id>-<sha>/ for git-backed
@@ -421,6 +450,26 @@ if [ -n "$locator_imbalance" ]; then
   echo "$locator_imbalance" | awk '{ print "  " $0 }'
   fail=1
 fi
+
+# 11. Every bundled example's Claims policy carries the load-bearing
+# sentences from the navigator template.
+# Doctrine: examples legitimately customize their Claims-policy prose
+# (concrete permalink shapes, multi-source footer rules), so a whole-
+# section byte-compare would false-positive. What must NOT drift are the
+# two sentences other machinery depends on: the Check-8 grading contract
+# on item 1 (the v0.4.0 propagation missed exactly this sentence in one
+# example) and the footer-is-not-a-substitute contract on item 3.
+claims_sentence_1="This inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades."
+claims_sentence_2="summary of what you read — not a substitute"
+while IFS= read -r ex_skill; do
+  [ -n "$ex_skill" ] || continue
+  for sentence in "$claims_sentence_1" "$claims_sentence_2"; do
+    if ! grep -qF -- "$sentence" "$ex_skill"; then
+      echo "FAIL: ${ex_skill#"$REPO_ROOT/"} Claims policy is missing the load-bearing sentence: \"$sentence\" — re-propagate from navigator.md.template."
+      fail=1
+    fi
+  done
+done < <(find "$REPO_ROOT/examples" -mindepth 2 -maxdepth 2 -name SKILL.md -not -path '*/.*' 2>/dev/null)
 
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
