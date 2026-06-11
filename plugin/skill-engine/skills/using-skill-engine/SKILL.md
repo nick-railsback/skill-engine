@@ -25,7 +25,9 @@ ctx_roots=$(
     find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
   done
 )
-ctx_count=$(printf '%s\n' "$ctx_roots" | grep -c .)
+# `|| true`: grep -c prints 0 but exits 1 on zero matches — without the
+# guard a pipefail/errexit shell dies here instead of reaching case 1.
+ctx_count=$(printf '%s\n' "$ctx_roots" | grep -c . || true)
 ```
 
 ### Pending-proposal pre-step (runs before case dispatch)

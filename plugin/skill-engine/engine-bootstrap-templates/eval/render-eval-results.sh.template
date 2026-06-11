@@ -275,16 +275,21 @@ echo "Pass rates (majority vote of three runs):"
 aggregate "$TMP_RECORDS"
 echo
 echo "Per-entry detail:"
-# shellcheck disable=SC2034 # persona consumes its US-delimited field so r1-r3 land correctly; the per-entry lines don't print it
-while IFS="$US" read -r query expected persona r1 r2 r3; do
+# `runs` is the rest-field: read packs fields 4..N into it US-separated,
+# so the loop handles any runs_per_query — N-generic like emit_records
+# and aggregate() (a hardcoded r1 r2 r3 read would glue runs 3..N into
+# one token that matches no outcome and silently drops them from the vote).
+# shellcheck disable=SC2034 # persona consumes its US-delimited field so runs lands correctly; the per-entry lines don't print it
+while IFS="$US" read -r query expected persona runs; do
   [ -z "$query" ] && continue
-  decision=$(decide "$r1,$r2,$r3")
+  outcomes=$(printf '%s' "$runs" | tr "$US" ',')
+  decision=$(decide "$outcomes")
   vote="${decision%%:*}"
   flicker="${decision##*:}"
   if [ "$flicker" = "yes" ]; then
-    printf '  [%s] [FLICKER] %s -> %s | %s,%s,%s\n' "$vote" "$query" "$expected" "$r1" "$r2" "$r3"
+    printf '  [%s] [FLICKER] %s -> %s | %s\n' "$vote" "$query" "$expected" "$outcomes"
   else
-    printf '  [%s] %s -> %s | %s,%s,%s\n' "$vote" "$query" "$expected" "$r1" "$r2" "$r3"
+    printf '  [%s] %s -> %s | %s\n' "$vote" "$query" "$expected" "$outcomes"
   fi
 done < "$TMP_RECORDS"
 
@@ -301,31 +306,35 @@ if [ -n "$BASELINE_PATH" ]; then
   echo "Deltas vs. baseline ($BASELINE_PATH):"
   awk -v US="$US" '
     BEGIN{FS=US}
-    function vote_of(r1, r2, r3,    p, f) {
+    # Both helpers read run fields 4..NF of the record in flight directly,
+    # so they stay N-generic alongside emit_records and aggregate().
+    function vote_of(    p, f, i) {
       # Mirrors decide(): error runs carry no verdict; an all-error entry
       # votes "error" and is excluded from delta comparison below.
       p = 0; f = 0
-      if (r1 == "pass") p++; else if (r1 == "fail") f++
-      if (r2 == "pass") p++; else if (r2 == "fail") f++
-      if (r3 == "pass") p++; else if (r3 == "fail") f++
+      for (i = 4; i <= NF; i++) {
+        if ($i == "pass") p++
+        else if ($i == "fail") f++
+      }
       if (p == 0 && f == 0) return "error"
       return (p > f) ? "pass" : "fail"
     }
-    function flicker_of(r1, r2, r3,    p, f) {
+    function flicker_of(    p, f, i) {
       p = 0; f = 0
-      if (r1 == "pass") p++; else if (r1 == "fail") f++
-      if (r2 == "pass") p++; else if (r2 == "fail") f++
-      if (r3 == "pass") p++; else if (r3 == "fail") f++
+      for (i = 4; i <= NF; i++) {
+        if ($i == "pass") p++
+        else if ($i == "fail") f++
+      }
       return (p > 0 && f > 0) ? "yes" : "no"
     }
     NR == FNR {
-      base_vote[$1] = vote_of($4, $5, $6)
-      base_flicker[$1] = flicker_of($4, $5, $6)
+      base_vote[$1] = vote_of()
+      base_flicker[$1] = flicker_of()
       next
     }
     {
-      v = vote_of($4, $5, $6)
-      fl = flicker_of($4, $5, $6)
+      v = vote_of()
+      fl = flicker_of()
       if (!($1 in base_vote)) {
         printf "  [NEW] %s -> %s (vote=%s, flicker=%s)\n", $1, $2, v, fl
         next

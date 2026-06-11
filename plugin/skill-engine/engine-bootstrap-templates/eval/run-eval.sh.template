@@ -154,12 +154,20 @@ run_one() {
   fi
   rm -f "$err_tmp"
   # Parse stream-json line by line; fromjson? makes non-JSON lines a no-op.
-  if printf '%s\n' "$out" \
+  # Two stages, not one pipeline into grep -q: under pipefail, grep -q's
+  # exit-at-first-match can SIGPIPE the upstream jq (status 141) on a
+  # Read-heavy transcript and record a false "fail" for a passing run.
+  # Capturing jq's output first, then counting with grep -c (which always
+  # reads its whole input), leaves no early-exiting pipe reader anywhere.
+  local read_paths hits
+  read_paths=$(printf '%s\n' "$out" \
     | jq -Rr 'fromjson? | select(.type == "assistant")
               | .message.content[]?
               | select(.type == "tool_use" and .name == "Read")
-              | (.input.file_path // empty)' 2>/dev/null \
-    | grep -qE "(^|/)references/${exp_re}\\.md\$"; then
+              | (.input.file_path // empty)' 2>/dev/null) || read_paths=""
+  hits=$(printf '%s\n' "$read_paths" \
+    | grep -cE "(^|/)references/${exp_re}\\.md\$") || true
+  if [ "${hits:-0}" -gt 0 ]; then
     echo "pass"
   else
     echo "fail"
