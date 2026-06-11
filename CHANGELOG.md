@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [0.5.0] - 2026-06-11
+
+- add: contextualizer selection for the locator skills — `/skill-engine:{discover,refresh,status,self-audit,new-reference} <name>` names which contextualizer to operate on, unblocking multi-contextualizer installs that previously hard-stopped on ambiguity (`plugin/skill-engine/skills/*/SKILL.md`).
+- add: an `error` run outcome in the eval harness for CLI-invocation failures, excluded from the pass-vs-fail vote in both the renderer and the HTML viewer so an expired token reads as runner trouble rather than a routing regression; the harness exits 70 when every run errored, and pass detection is scoped to Read tool_use so catalog text flowing through a transcript cannot false-pass (`plugin/skill-engine/engine-bootstrap-templates/eval/`).
+- add: a live-tree gate in `apply` — promotion halts when a live file's hash no longer matches the manifest's `sha_before`, so a stale proposal cannot silently revert edits that landed after staging, such as approved self-audit fixes (`plugin/skill-engine/skills/apply/SKILL.md`).
+- add: `make ci-local` (`scripts/ci-local.sh`) as the single validator entry point shared by CI, the Makefile, and `/release` — one check inventory with no transcribed job lists to drift; in CI a missing `check-jsonschema` fails loud instead of green-skipping the schema gates (`scripts/ci-local.sh`, `.github/workflows/{lint,security}.yml`, `Makefile`).
+- change: the clone cache is unified on the kind-partitioned layout everywhere it is taught, with the doctrine lint extended from skills to docs and the README so the flat path cannot reappear unmarked (`plugin/skill-engine/docs/`, `plugin/skill-engine/tests/doctrine.sh`).
+- change: stamped `*.sh.template` files are now covered by shellcheck and the doctrine curl lint; the curl allowlist is comment-safe and accepts `-I` anywhere in a flag cluster, and the source-paths schema is tested against `verify.sh` for equivalence via negative fixtures (`plugin/skill-engine/tests/doctrine.sh`, `scripts/ci-local.sh`).
+- change: CI toolchain versions are pinned for reproducible runs (`.github/workflows/`).
+- fix: the shared locator block no longer dies silently under pipefail when no contextualizer matches — the zero-match diagnostics ("Run /skill-engine:engine-bootstrap first.") actually print (`plugin/skill-engine/skills/{discover,refresh,status,self-audit,new-reference,using-skill-engine}/SKILL.md`).
+- fix: eval-pipeline robustness — an interrupted harness run exits 130 instead of publishing a corrupt results file, pass detection cannot record a SIGPIPE false fail on Read-heavy transcripts, and the renderer handles any runs-per-query count instead of silently dropping runs past the third (`plugin/skill-engine/engine-bootstrap-templates/eval/`).
+- fix: the engine-bootstrap overwrite guard triggers on any existing contextualizer files, not only a parseable state marker, so a corrupt marker cannot bypass it (`plugin/skill-engine/skills/engine-bootstrap/SKILL.md`).
+- fix: docs reconciled to shipped behavior — the quickstart gained the review/apply promotion step required since the v0.3.0 staging gate, `12-evaluation.md` documents the error outcome and the jq requirement, issue templates and broken links repaired, and prose counts swept (`plugin/skill-engine/docs/`, `.github/ISSUE_TEMPLATE/`).
+- remove: the stale worker-agent stratum (`agents/worker-{refresh,verify}.md`) retired in favor of goal-given delegation, with the templates README rewritten to match what actually ships (`plugin/skill-engine/agents/`, `plugin/skill-engine/engine-bootstrap-templates/README.md`).
+
 ## [0.4.0] - 2026-06-03
 
 - add: a JSON Schema for `source-paths.json` plus a `check-jsonschema` CI gate that meta-validates the schema and validates the bootstrap template and every bundled example against it. The schema transcribes the contract `verify.sh` Check 1/2 enforce, including its null/empty-string-as-absent reading of optional cross-axis fields (`plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json`, `.github/workflows/lint.yml`).

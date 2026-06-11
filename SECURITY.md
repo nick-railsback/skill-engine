@@ -59,9 +59,9 @@ If your threat model requires any of these, this plugin does not meet it yet. Ve
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.4.x   | :white_check_mark: |
+| 0.5.x   | :white_check_mark: |
 
-`skill-engine` is pre-1.0. Only the latest pre-1.0 minor line (currently `0.4.x`) receives security fixes; prior minor lines are end-of-life. When `1.0` ships, this table will expand to cover the most recent minor line plus a backport window.
+`skill-engine` is pre-1.0. Only the latest pre-1.0 minor line (currently `0.5.x`) receives security fixes; prior minor lines are end-of-life. When `1.0` ships, this table will expand to cover the most recent minor line plus a backport window.
 
 ## Reporting a vulnerability
 

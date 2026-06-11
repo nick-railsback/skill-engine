@@ -2,7 +2,7 @@
 
 > Teach Claude your codebase. Keep it taught.
 
-[![CI](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml) [![Hooks Audit](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml) [![Version](https://img.shields.io/badge/version-v0.4.0-blue)](https://github.com/nick-railsback/skill-engine/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Scans: bandit · semgrep · shellcheck](https://img.shields.io/badge/scans-bandit%20%C2%B7%20semgrep%20%C2%B7%20shellcheck-475569)](https://github.com/nick-railsback/skill-engine/blob/main/.github/workflows/security.yml)
+[![CI](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/lint.yml) [![Hooks Audit](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml/badge.svg)](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml) [![Version](https://img.shields.io/badge/version-v0.5.0-blue)](https://github.com/nick-railsback/skill-engine/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Scans: bandit · semgrep · shellcheck](https://img.shields.io/badge/scans-bandit%20%C2%B7%20semgrep%20%C2%B7%20shellcheck-475569)](https://github.com/nick-railsback/skill-engine/blob/main/.github/workflows/security.yml)
 
 skill-engine turns the repos and docs of your given domain area into a Claude skill
 you can use elsewhere — registering each source in `source-paths.json`,
@@ -122,7 +122,7 @@ Two ways in, depending on what you want.
 
 ## Where this is in its life
 
-This is v0.4.0. There are three worked examples, one maintainer who built it because
+This is v0.5.0. There are three worked examples, one maintainer who built it because
 he needed it and it did not yet exist.
 
 If you've ever stood in front of a codebase that outlived its authors, or
