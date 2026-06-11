@@ -25,7 +25,9 @@ ctx_roots=$(
     find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
   done
 )
-ctx_count=$(printf '%s\n' "$ctx_roots" | grep -c .)
+# `|| true`: grep -c prints 0 but exits 1 on zero matches — without the
+# guard a pipefail/errexit shell dies here instead of reaching case 1.
+ctx_count=$(printf '%s\n' "$ctx_roots" | grep -c . || true)
 ```
 
 ### Pending-proposal pre-step (runs before case dispatch)
@@ -62,8 +64,13 @@ branch fires.
 The **read-only** workflows (`status`, `self-audit`) are exempt: a
 pending proposal is precisely the state STATUS exists to surface ("how
 far has its review progressed"), and SELF-AUDIT's default path writes
-nothing. Dispatch them normally, prepending the pending-proposal note
-above to the dispatch so the user still sees it.
+nothing. SELF-AUDIT's opt-in fix flow does write to the live tree; the
+hazard that creates — a later `/skill-engine:apply` promoting a
+proposal staged before those fixes landed — is closed on the apply
+side, whose live-tree gate (apply/SKILL.md § Pre-promotion gates)
+refuses to overwrite a live file whose hash no longer matches the
+manifest's `sha_before`. Dispatch them normally, prepending the
+pending-proposal note above to the dispatch so the user still sees it.
 
 Bootstrap (`engine-bootstrap`) is also exempt — it is explicitly
 invoked to scaffold a new contextualizer and writes directly to the

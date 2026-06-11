@@ -190,7 +190,7 @@ Twenty minutes from a fresh Claude Code session to a working contextualizer.
 - Writes per-skill context files under `.claude/skills/<slug>-context/`
   in your project (including a `verify.sh` you or CI run to audit the
   contextualizer's artifacts — see below).
-- Writes cloned source repositories under `~/.cache/skill-engine/<source_id>-<sha>/`,
+- Writes cloned source repositories under `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`,
   only after you confirm at the per-source opt-in prompt (default: no).
 - Reads from paths registered in `source-paths.json` — nothing else on
   disk, nothing over the network beyond those clones.

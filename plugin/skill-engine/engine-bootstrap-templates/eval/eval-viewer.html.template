@@ -17,6 +17,7 @@
   table.entries th { background: #f4f6f8; font-weight: 600; }
   .vote-pass { color: #197d3a; font-weight: 600; }
   .vote-fail { color: #b3261e; font-weight: 600; }
+  .vote-error { color: #8a6d00; font-weight: 600; }
   .flicker { background: #fff4d6; border: 1px solid #f0c040; border-radius: 4px; padding: 0 0.4rem; font-size: 0.85rem; margin-left: 0.5rem; }
   .runs { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9rem; color: #444; }
   .persona-tag { display: inline-block; background: #e6ecf2; border-radius: 4px; padding: 0 0.5rem; font-size: 0.8rem; color: #345; margin-left: 0.5rem; }
@@ -80,12 +81,19 @@
         .replace(/'/g, '&#39;');
     }
 
+    // Mirrors render-eval-results.sh decide(): "error" runs are infra
+    // outcomes (the CLI invocation failed), never navigator verdicts —
+    // they do not count toward the pass-vs-fail vote, and an entry votes
+    // "error" only when no run produced a real verdict.
     function voteOf(runs) {
-      var pass = 0;
+      var pass = 0, fail = 0, err = 0;
       for (var i = 0; i < runs.length; i++) {
         if (runs[i] === 'pass') pass++;
+        else if (runs[i] === 'fail') fail++;
+        else if (runs[i] === 'error') err++;
       }
-      return (pass * 2 > runs.length) ? 'pass' : 'fail';
+      if (pass === 0 && fail === 0 && err > 0) return 'error';
+      return (pass > fail) ? 'pass' : 'fail';
     }
 
     function flickerOf(runs) {
@@ -122,15 +130,22 @@
       // persona value (e.g., the literal string "__overall__") cannot collide
       // with the synthetic overall bucket and double-count.
       var overall = { pass: 0, total: 0 };
+      var erroredEntries = 0;
       var totals = {};
       for (var i = 0; i < entries.length; i++) {
         var entry = entries[i];
         var persona = entry.persona || 'domain-expert';
-        if (!totals[persona]) totals[persona] = { pass: 0, total: 0 };
         var entryRuns = Array.isArray(entry.runs) ? entry.runs : [];
+        var vote = voteOf(entryRuns);
+        // All-error entries are excluded from the pass-rate denominator and
+        // counted on their own line, matching render-eval-results.sh.
+        if (vote === 'error') {
+          erroredEntries++;
+          continue;
+        }
+        if (!totals[persona]) totals[persona] = { pass: 0, total: 0 };
         totals[persona].total++;
         overall.total++;
-        var vote = voteOf(entryRuns);
         if (vote === 'pass') {
           totals[persona].pass++;
           overall.pass++;
@@ -153,6 +168,9 @@
       html += '<h2>Pass rates (majority vote of three runs)</h2>';
       html += '<div class="summary"><table>';
       html += '<tr><td class="label">overall:</td><td>' + overall.pass + ' / ' + overall.total + '</td></tr>';
+      if (erroredEntries > 0) {
+        html += '<tr><td class="label">errored entries (excluded from pass rate):</td><td>' + erroredEntries + '</td></tr>';
+      }
       var personaKeys = Object.keys(totals).sort();
       for (var p = 0; p < personaKeys.length; p++) {
         var pk = personaKeys[p];

@@ -32,14 +32,15 @@ name="<name>"
 ctx_roots=$(
   for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
     [ -d "$root" ] || continue
-    if [ -n "$name" ]; then
-      find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name}-context" 2>/dev/null
-    else
-      find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
-    fi
+    # Quoted "${name:-*}" reaches find unexpanded: a named invocation
+    # matches exactly <name>-context, a bare one globs *-context.
+    find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name:-*}-context" 2>/dev/null
   done
 )
-n=$(printf '%s\n' "$ctx_roots" | grep -c .)
+# `|| true`: grep -c prints 0 but exits 1 on zero matches; without the
+# guard, pipefail+errexit abort the block right here and the zero-match
+# diagnostics below are dead code (a bare exit 1, no message).
+n=$(printf '%s\n' "$ctx_roots" | grep -c . || true)
 if [ "$n" -eq 0 ] && [ -n "$name" ]; then
   echo "No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed."
   exit 1
@@ -179,10 +180,11 @@ them as a hint in the Cache section, but do not delete.
 |---|---|---|---|---|
 | ... | ... | ... | ... | ... |
 
-Old flat-layout entries (if present):
+Old flat-layout entries (if present — directories sitting directly at the
+cache root rather than under `git-managed/` or `web-doc/`):
 | dir | last_modified |
 |---|---|
-| ~/.cache/skill-engine/<source_id>-<sha>/ | ... | <!-- doctrine:legacy-cache-layout -->
+| ... | ... |
 
 (The old-layout listing exists until the user runs the REFRESH migration
 prompt or `clean-cache`.)

@@ -121,20 +121,14 @@ jobs:
           tar -xzf "$tar" gitleaks
           ./gitleaks git . --no-banner
 
-      # shellcheck on all *.sh and stamped *.sh.template — same glob +
-      # severity as lint.yml. ubuntu-latest ships shellcheck preinstalled,
-      # so no apt install here (keeps a flaky network step out of the
-      # security gate).
+      # shellcheck via the same entry point lint.yml uses, so the file
+      # inventory and severity cannot drift between the two workflows. The
+      # redundancy with lint.yml is intentional — this workflow stands alone
+      # on the weekly cron. ubuntu-latest ships shellcheck preinstalled, so
+      # no apt install here (keeps a flaky network step out of the security
+      # gate).
       - name: shellcheck (all *.sh and *.sh.template)
-        run: |
-          set -e
-          shopt -s globstar nullglob
-          files=( **/*.sh **/*.sh.template )
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No shell files found."
-            exit 0
-          fi
-          shellcheck -s bash --severity=warning "${files[@]}"
+        run: bash scripts/ci-local.sh shellcheck
 
       - name: bandit (gate — HIGH)
         run: bandit -r plugin/skill-engine/tests --severity-level high -q

@@ -124,7 +124,7 @@ from a local clone than from remote `gh`/`git` calls. The recommended
 cache location is:
 
 ```
-~/.cache/skill-engine/<source_id>-<sha>/
+~/.cache/skill-engine/git-managed/<source_id>-<sha>/
 ```
 
 This follows the XDG cache-directory convention (`~/.cache/<tool>/`)
@@ -151,10 +151,10 @@ between runs so subsequent passes amortize fetch cost. Three skills
 coordinate its cleanup (seeding is the entry stage, covered above):
 
 * **REFRESH** garbage-collects on SHA advance. After REFRESH
-  successfully populates `~/.cache/skill-engine/<source_id>-<new-sha>/`
+  successfully populates `~/.cache/skill-engine/git-managed/<source_id>-<new-sha>/`
   for a source whose SHA changed, it deletes sibling
-  `~/.cache/skill-engine/<source_id>-*/` directories whose suffix is
-  not the new SHA. Guards: GC runs only when the SHA actually advanced
+  `~/.cache/skill-engine/git-managed/<source_id>-*/` directories whose
+  suffix is not the new SHA. Guards: GC runs only when the SHA actually advanced
   and the new directory is non-empty; never touches anything outside
   the cache root; never follows symlinks; never deletes the cache root
   itself.

@@ -4,7 +4,7 @@
 
 This chapter ships the measurement primitive the engine has been missing. Without it, the navigator's [description](02-artifact-contract.md#description-quality-is-part-of-the-contract) — the field every consuming agent matches against — is tuned by feel. Tuning by feel produces drift: a wording change made on Tuesday to fix one failure mode silently regresses three others by Friday. The drift is invisible until a maintainer sits down to debug a routing complaint and realises they have no signal for the change they made last week.
 
-**Short answer:** every contextualizer carries a small set of `evals/evals.json` queries co-located with its navigator skill; a harness runs each query three times against the navigator and records pass/fail per run; a renderer aggregates the runs, stratifies by persona, and reports deltas between two invocations. The eval set is split 70/30 train/test once and never regenerated. The framework is bash + JSON + a single-file HTML viewer, plus the agent CLI you are already running the navigator through (the engine's runtime — not a third-party dependency on top of it).
+**Short answer:** every contextualizer carries a small set of `evals/evals.json` queries co-located with its navigator skill; a harness runs each query three times against the navigator and records one of three outcomes per run — `pass`, `fail`, or `error` (the CLI invocation itself failed: an infra condition, not a navigator verdict); a renderer aggregates the runs, stratifies by persona, and reports deltas between two invocations. The eval set is split 70/30 train/test once and never regenerated. The framework is bash + jq + JSON + a single-file HTML viewer, plus the agent CLI you are already running the navigator through (the engine's runtime — not a third-party dependency on top of it).
 
 Grounding-side coverage — paragraph→permalink density (Check 7) and grounded-citation rate (Check 8) — is a different question and is documented in [chapter 13](./13-coverage-testing.md). This chapter is about *routing*: did the navigator's description match the query? Chapter 13 is about *grounding*: are the references that got routed actually anchored to upstream, and does the model emit the anchor when it answers?
 
@@ -138,7 +138,7 @@ For eval sets under ten entries, the split is not worth the bookkeeping; keep a 
 
 ### Three runs per query
 
-Every entry runs **three times per evaluation invocation**. The harness records pass/fail per run; the renderer reports both per-run results and the majority-vote outcome.
+Every entry runs **three times per evaluation invocation**. The harness records pass, fail, or error per run; the renderer reports both per-run results and the majority-vote outcome. An `error` run means the CLI invocation itself failed (non-zero exit — expired auth, broken CLI), so it carries no routing verdict: error runs are excluded from the pass-vs-fail vote, an entry whose runs *all* errored votes `error` and is excluded from the pass-rate denominator (counted on its own "errored entries" line instead), and a harness invocation where *every* run errored exits 70 — that report measures the runner, not the navigator.
 
 Why three runs and not one: language-model routing is not deterministic at the matching layer. A description that fires correctly two runs out of three is a different signal from one that fires three out of three. Single-run evaluation hides that distinction.
 
@@ -153,6 +153,8 @@ When comparing two evaluation invocations — typically a "before" and an "after
 * **Flicker stabilisations** — entries that flickered in the before run and are now stable (in either direction).
 * **New flicker** — entries that were stable in the before run and now flicker.
 
+Entries voting `error` on either side of the comparison are listed as `[ERRORED]` and excluded from the delta — an infra failure is not a routing regression, and comparing against one would misattribute runner trouble to the description edit.
+
 Aggregation is the contract surface: the maintainer reads aggregated deltas and decides whether the description edit was a net improvement, a regression, or a wash. The eval JSON itself is the atomic unit; the maintainer does not stare at individual run records.
 
 The renderer is **deterministic**: the same `results-*.json` file produces identical output bytes on rerun. No timestamps in the output, no random ordering. Determinism is what makes the diff between two renderer runs a meaningful artefact to paste into a pull request.
@@ -163,7 +165,7 @@ Three drop-in templates ship with the plugin under `plugin/skill-engine/engine-b
 
 | Template | Role |
 |---|---|
-| `run-eval.sh.template` | The harness. POSIX bash, zero third-party dependencies. Reads `evals/evals.json`, iterates every entry running each query three times against the navigator, writes per-run records to `evals/results-<timestamp>.json`. |
+| `run-eval.sh.template` | The harness. POSIX-flavoured bash plus `jq` (already required by the sibling `verify.sh`, so no new dependency for a contextualizer). Reads `evals/evals.json`, iterates every entry running each query three times against the navigator, records `pass`/`fail`/`error` per run, writes the records to `evals/results-<timestamp>.json`. Exits 69 when the `claude` CLI or `jq` is missing, 70 when every invocation errored (runner failure — the results file is still written, but it measures the runner, not the navigator). |
 | `eval-viewer.html.template` | The browser viewer. Single-file HTML5: inline CSS, inline JS, no external script imports, no fetch. Loads from `file://`. The maintainer opens it and uses the input file picker to load a sibling `results-*.json`. |
 | `render-eval-results.sh.template` | The renderer. POSIX bash. Reads `evals/results-*.json` and produces aggregated text output: per-query pass rates, flicker flags, persona-stratified summaries, optional delta vs. a prior run. Used by the harness for end-of-run summary, and standalone for ad-hoc rendering. |
 

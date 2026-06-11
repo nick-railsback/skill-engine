@@ -66,7 +66,7 @@ The six workflows above are the **agent-side** menu the maintenance agent presen
 The persistent local-clone cache runs through a four-stage **cache lifecycle**:
 
 * **Seed** — `engine-bootstrap` Step 3.5 prompts the user y/N (default N) once per `kind: git-managed` source at scaffold time; DISCOVER pre-flight step 6 re-prompts on cache miss. On `y`, the skill clones via an atomic-rename idiom (`<source_id>-<sha>.tmp.$$/` → `mv` to the canonical name on success). The engine does not clone without consent.
-* **REFRESH GC** — garbage-collects sibling `<source_id>-*/` directories on SHA advance (cache stays current as upstream moves).
+* **REFRESH GC** — garbage-collects sibling `git-managed/<source_id>-*/` directories on SHA advance (cache stays current as upstream moves).
 * **STATUS** — surfaces the cache as a read-only listing (cache stays visible to the author).
 * **`clean-cache`** — the all-at-once opt-in deletion path (cache yields disk on demand).
 
@@ -98,7 +98,7 @@ directory on every content shift.
 ### Migration from old flat layout
 
 Earlier engine versions stored cache directly at
-`~/.cache/skill-engine/<source_id>-<sha>/`. REFRESH's pre-flight detects
+`~/.cache/skill-engine/<source_id>-<sha>/`. <!-- doctrine:legacy-cache-layout --> REFRESH's pre-flight detects
 this layout and offers a one-shot bulk `mv` of all flat entries into
 `~/.cache/skill-engine/git-managed/`, prompted once per session. Decline →
 those entries are re-cloned on the next REFRESH that walks them. See
