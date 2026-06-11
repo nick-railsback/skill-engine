@@ -17,7 +17,7 @@ This directory holds the templates the `engine-bootstrap` workflow stamps into a
 | `REVIEW.md.template` | Predict-then-compare review worksheet staged with every proposal |
 | `release-command.md.template` | User-side release skill stamped into the contextualizer repo |
 | `pre-commit.sh.template` | User-side pre-commit hook (runs `verify.sh` before each commit) |
-| `eval/run-eval.sh.template` | Stamped eval harness — runs the contextualizer's `eval-prompts.json` against the navigator |
+| `eval/run-eval.sh.template` | Eval harness — copied manually into a contextualizer per `docs/12-evaluation.md` (**not** stamped by engine-bootstrap); runs the contextualizer's `evals/evals.json` queries against the navigator |
 | `eval/render-eval-results.sh.template` | Renders accumulated eval results into a report |
 | `eval/eval-viewer.html.template` | Static HTML viewer for eval result files |
 | `verify.sh` | Contextualizer-side audit run against a stamped `.claude/skills/<slug>-context/` directory (source-paths shape, navigator frontmatter, catalog↔references bijection, reference frontmatter, web-doc provenance, optional SKILL.json trijection, etc.). SHA-pinned-permalink density is **not** here — that is the separate `permalink_density.py` CI lint. |

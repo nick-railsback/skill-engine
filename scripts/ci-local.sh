@@ -8,7 +8,9 @@
 #
 # Tool installation is the caller's concern (CI installs in workflow steps);
 # this script asserts presence and fails loud — except check-jsonschema,
-# which degrades to a pointer when absent locally (it is pip-pinned in CI).
+# which degrades to a pointer when absent locally. In CI ($CI set) the
+# degradation is refused: it is pip-pinned there, and a missing binary means
+# the install step regressed, not that skipping is acceptable.
 
 set -euo pipefail
 
@@ -24,11 +26,17 @@ need() {
 
 run_shellcheck() {
   need shellcheck
-  # find, not globstar: macOS ships bash 3.2. *.sh.template covers the
-  # scripts stamped into user repos; -s bash because shellcheck cannot
-  # infer a dialect from the .template extension.
+  need git
+  # git ls-files, not find: a CI checkout and a local working copy must
+  # agree on the inventory, and find would lint local-only files CI never
+  # sees (gitignored or .git/info/exclude'd scratch scripts), breaking
+  # `make ci-local` on files that cannot fail CI. --others --exclude-standard
+  # adds untracked-but-not-ignored files, which WOULD reach CI once
+  # committed. *.sh.template covers the scripts stamped into user repos;
+  # -s bash because shellcheck cannot infer a dialect from the .template
+  # extension.
   local files
-  files=$(find . -path ./.git -prune -o \( -name '*.sh' -o -name '*.sh.template' \) -type f -print | LC_ALL=C sort)
+  files=$(git ls-files --cached --others --exclude-standard -- '*.sh' '*.sh.template' | LC_ALL=C sort)
   if [ -z "$files" ]; then
     echo "No shell files found."
     return 0
@@ -60,6 +68,11 @@ run_json() {
 
   local schema="plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json"
   if ! command -v check-jsonschema >/dev/null 2>&1; then
+    if [ -n "${CI:-}" ]; then
+      echo "ERROR: check-jsonschema not on PATH in CI — the pip install step regressed." >&2
+      echo "       Schema meta-validation, target validation, and the negative-fixture gate must not be skipped here." >&2
+      exit 69
+    fi
     echo "NOTE: check-jsonschema not on PATH — skipping schema validation locally." >&2
     echo "      CI runs it (pip install check-jsonschema==0.37.2); install it to match CI exactly." >&2
     return 0
@@ -121,7 +134,9 @@ run_examples() {
   for refs in examples/*/references; do
     [ -d "$refs" ] || continue
     echo "== permalink density: $refs =="
-    python3 plugin/skill-engine/tests/permalink_density.py "$refs" --threshold 0.80 --min-paragraphs 5 --require-min-paragraphs
+    # No --threshold: the bar is single-sourced as DEFAULT_COVERAGE_THRESHOLD
+    # in permalink_density.py; re-stating it here is where drift would start.
+    python3 plugin/skill-engine/tests/permalink_density.py "$refs" --min-paragraphs 5 --require-min-paragraphs
   done
   for ctx in examples/*/; do
     [ -f "$ctx/research/eval-prompts.json" ] || continue

@@ -39,10 +39,19 @@ fi
 # short-flag cluster like -sI).
 # Scope includes *.sh.template: those files stamp into every user repo
 # and previously escaped this check entirely.
+# Comments are stripped before the allowlist filter (full-line comments,
+# and trailing ones — whitespace before the '#' keeps URL fragments
+# intact), then the curl token is re-required: a trailing "# … --head …"
+# comment must not whitelist a GET on the same line, and a prose comment
+# mentioning curl is not an invocation. The -I allowance accepts the flag
+# anywhere in a short-flag cluster (-I is curl's only capital-I option),
+# so legitimate forms like `curl -Is` pass.
 if grep -rEn '(^|[^A-Za-z0-9_-])curl([[:space:]]|$)' \
    "$PLUGIN_ROOT/engine-bootstrap-templates" \
    --include='*.sh' --include='*.sh.template' 2>/dev/null \
-   | grep -vE '(--head|[[:space:]]-[A-Za-z]*I)([[:space:]]|$)'; then
+   | sed -E 's/^([^:]*:[0-9]+:)[[:space:]]*#.*$/\1/; s/[[:space:]]+#.*$//' \
+   | grep -E '(^|[^A-Za-z0-9_-])curl([[:space:]]|$)' \
+   | grep -vE '(--head|[[:space:]]-[A-Za-z]*I[A-Za-z]*)([[:space:]]|$)'; then
   echo "FAIL: non-HEAD curl invocation in engine shell scripts (only curl --head / -I reachability probes are permitted)."
   fail=1
 fi
@@ -384,22 +393,26 @@ if [ -n "$plugin_ver" ]; then
   fi
 fi
 
-# 9. Skills reference only the kind-partitioned cache layout.
+# 9. Skills, docs, and the README reference only the kind-partitioned
+# cache layout.
 # Doctrine: the clone cache is partitioned by source kind —
 # ~/.cache/skill-engine/git-managed/<source_id>-<sha>/ for git-backed
 # sources and ~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/ for
 # crawl snapshots. The flat layout (~/.cache/skill-engine/<source_id>-…/)
 # is legacy, mentioned only in migration and cleanup prose. An unmarked
-# flat-layout path in a skill means the layout has forked again — the
-# failure mode that once left engine-bootstrap seeding a cache DISCOVER
-# could not see, double-cloning every source. Deliberate legacy mentions
+# flat-layout path means the layout has forked again — the failure mode
+# that once left engine-bootstrap seeding a cache DISCOVER could not see,
+# double-cloning every source. Scope is skills/ AND docs/ AND the repo
+# README: the v0.3.x migration updated skills only and the doc chapters
+# kept teaching the flat path for months. Deliberate legacy mentions
 # carry a per-line <!-- doctrine:legacy-cache-layout --> marker.
 flat_cache_refs=$(grep -rn -F 'cache/skill-engine/<source_id>' \
-  "$PLUGIN_ROOT/skills" --include='*.md' 2>/dev/null \
+  "$PLUGIN_ROOT/skills" "$PLUGIN_ROOT/docs" "$REPO_ROOT/README.md" \
+  --include='*.md' 2>/dev/null \
   | grep -v -F '<!-- doctrine:legacy-cache-layout -->')
 if [ -n "$flat_cache_refs" ]; then
-  echo "FAIL: flat cache-layout path in a skill — the kind-partitioned layout (git-managed/, web-doc/) is the only current layout."
-  echo "$flat_cache_refs" | sed "s|^$PLUGIN_ROOT/|  |"
+  echo "FAIL: flat cache-layout path in a skill/doc/README — the kind-partitioned layout (git-managed/, web-doc/) is the only current layout."
+  echo "$flat_cache_refs" | sed "s|^$PLUGIN_ROOT/|  |;s|^$REPO_ROOT/|  |"
   echo "  Use ~/.cache/skill-engine/git-managed/<source_id>-<sha>/ (or web-doc/), or mark a deliberate legacy mention with <!-- doctrine:legacy-cache-layout -->."
   fail=1
 fi

@@ -179,10 +179,11 @@ them as a hint in the Cache section, but do not delete.
 |---|---|---|---|---|
 | ... | ... | ... | ... | ... |
 
-Old flat-layout entries (if present):
+Old flat-layout entries (if present — directories sitting directly at the
+cache root rather than under `git-managed/` or `web-doc/`):
 | dir | last_modified |
 |---|---|
-| ~/.cache/skill-engine/<source_id>-<sha>/ | ... | <!-- doctrine:legacy-cache-layout -->
+| ... | ... |
 
 (The old-layout listing exists until the user runs the REFRESH migration
 prompt or `clean-cache`.)

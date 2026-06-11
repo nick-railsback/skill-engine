@@ -136,7 +136,7 @@ schema and regex enforcement live in
 [`02-artifact-contract.md` §"source-paths.json entry shape"](02-artifact-contract.md#source-pathsjson-entry-shape).
 
 For large `kind: git-managed` sources, the engine offers to seed a
-local clone at `~/.cache/skill-engine/<source_id>-<sha>/`. The offer is
+local clone at `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`. The offer is
 **consent-gated, not automatic**: `engine-bootstrap` Step 3.5 prompts
 once per git-managed source at scaffold time, and DISCOVER's pre-flight
 step 6 re-prompts on cache miss (declined at bootstrap, deleted via

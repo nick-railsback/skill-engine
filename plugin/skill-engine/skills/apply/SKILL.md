@@ -50,6 +50,19 @@ Run these in order. Any failure halts the apply and exits non-zero without mutat
 
    Exit non-zero. `apply` never promotes a rejected proposal.
 
+6. **The live tree has not changed since staging.** The manifest records each entry's `sha_before` — the live file's content-hash at staging time. Anything that wrote to the live tree after DISCOVER/REFRESH staged the proposal (a SELF-AUDIT fix the user approved, a hand edit) makes the proposal stale for that path: promoting would `mv` the stale proposed file over work that landed after staging, silently reverting it. For each manifest entry, compare the live file's current content-hash against the manifest before any `mv`:
+
+   - `modified` — the live hash must equal `sha_before`, **or** equal `sha_after` (that entry was already promoted by a partial prior pass; the resume check in § Promotion skips it).
+   - `removed` — the live file must be absent (already removed on a prior pass) or its hash must equal `sha_before`.
+   - `added` — the live path must be absent, or match `sha_after` (prior partial pass).
+   - `unchanged` — no check; the entry is a no-op and a post-staging edit to it is not at risk.
+
+   Any other state halts without mutating either tree:
+
+   ```
+   Live tree changed since this proposal was staged: <path> (live hash != manifest sha_before). Promoting would overwrite work that landed after staging (e.g. a SELF-AUDIT fix or a hand edit). Re-run /skill-engine:discover or /skill-engine:refresh to restage against the current live tree, or /skill-engine:discard <name> to drop the proposal.
+   ```
+
 ## Promotion
 
 When the gates pass, promote the proposed tree to the live tree file by file. The unit of promotion is one entry from the manifest.

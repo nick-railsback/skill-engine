@@ -211,8 +211,11 @@ emit_entries() {
 mkdir -p "$(dirname "$RESULTS_PATH")"
 TMP_RESULTS="${RESULTS_PATH}.tmp"
 # Don't strand the half-written .tmp on Ctrl-C / kill; normal completion
-# renames it away before the trap could matter.
-trap 'rm -f "$TMP_RESULTS"' INT TERM
+# renames it away before the trap could matter. The exit is load-bearing:
+# without it bash resumes the script after the trap, the >> appends
+# recreate the deleted file without its JSON header or earlier entries,
+# and the final mv publishes the corrupt results file with exit 0.
+trap 'rm -f "$TMP_RESULTS"; exit 130' INT TERM
 
 start_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 {
