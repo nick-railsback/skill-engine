@@ -194,7 +194,7 @@ sections="$(
 if [ -z "$sections" ]; then
   # No sections -> one default slice with every <pattern> <owner...> line.
   # Tolerate leading whitespace before the path token (some teams indent
-  # path entries under a header for readability).
+  # path entries under a header to make the file easier to scan).
   paths_buf="$(
     printf '%s\n' "$work_buf" \
       | sed -n 's/^[[:space:]]*\([^[:space:]]\{1,\}\)[[:space:]]\{1,\}.*/\1/p'

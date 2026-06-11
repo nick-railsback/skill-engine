@@ -83,9 +83,11 @@ sources, decides what matters, and emits the references — validating its own
 output against four invariants before surfacing it. Autonomous skill construction
 with guardrails.
 
-**[SELF-AUDIT](./CAPABILITIES.md#how-it-knows-its-still-right).** Five drift checks the skill runs against itself: stale dates,
+**[SELF-AUDIT](./CAPABILITIES.md#how-it-knows-its-still-right).** Eight drift checks the skill runs against itself: stale dates,
 broken URLs, long-untouched references, catalog-vs-content divergence,
-cross-reference accuracy. The skill audits itself; you review the findings.
+cross-reference accuracy, review-state staleness, paragraph→permalink
+density, grounded-citation rate. The skill audits itself; you review the
+findings.
 
 **[Reviewer-in-the-loop (by default)](./CAPABILITIES.md#how-human-review-fits).** The engine surfaces every proposed
 change for review before applying it. The contents of a contextualizer become
@@ -214,7 +216,7 @@ defaults are deliberate — and revisable as the project matures.
 
 > **Q: Why reviewer-in-the-loop instead of auto-merge for snapshot updates?**
 >
-> A: Auto-merge is faster, But the trade is different: when a snapshot moves into a contextualizer skill,
+> A: Auto-merge is faster, but the trade is different: when a snapshot moves into a contextualizer skill,
 > it becomes Claude's source of truth for an entire domain. A corrupted
 > snapshot doesn't fail loudly — it propagates. Claude cites the wrong
 > invariant. A team inherits the corruption silently, and by the time a user

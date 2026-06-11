@@ -28,24 +28,51 @@ resolves relative to whichever directory matches. Before reading
 anything, locate the root by searching all three install levels in
 order:
 
+<!-- doctrine:locator-block:start -->
 ```bash
+set -euo pipefail
+# <name> resolves per this skill's "Selecting a contextualizer" section;
+# substitute the empty string when no contextualizer was named.
+name="<name>"
 ctx_roots=$(
   for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
     [ -d "$root" ] || continue
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    if [ -n "$name" ]; then
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name}-context" 2>/dev/null
+    else
+      find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
+    fi
   done
 )
 n=$(printf '%s\n' "$ctx_roots" | grep -c .)
-if [ "$n" -eq 0 ]; then
+if [ "$n" -eq 0 ] && [ -n "$name" ]; then
+  echo "No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed."
+  exit 1
+elif [ "$n" -eq 0 ]; then
   echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
   exit 1
+elif [ "$n" -gt 1 ] && [ -n "$name" ]; then
+  # Same slug installed at more than one level: the first root in the
+  # search order above wins (user, then local-user, then project).
+  CTX_ROOT=$(printf '%s\n' "$ctx_roots" | head -n1)
 elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers found; specify one:"
+  echo "Multiple contextualizers found; rerun naming one (see 'Selecting a contextualizer' in this skill):"
   printf '%s\n' "$ctx_roots"
   exit 1
+else
+  CTX_ROOT="$ctx_roots"
 fi
-CTX_ROOT="$ctx_roots"
 ```
+<!-- doctrine:locator-block:end -->
+
+### Selecting a contextualizer
+
+`/skill-engine:self-audit <name>` names the contextualizer to audit:
+`<name>` is the directory name without the `-context` suffix, the same
+grammar `review`/`apply`/`discard` use. Substitute it (or the empty
+string) for `<name>` in the locator above. With no argument,
+auto-detection applies — it succeeds when exactly one contextualizer is
+installed and lists the matches and exits when more than one is.
 
 Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
 every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
@@ -69,7 +96,8 @@ SELF-AUDIT is **read-only by default**. It surfaces findings and exits unless
 the human explicitly opts in to applying the deterministic fixes among them
 (see "Optional fix flow" below). Two HARD-GATEs remain in force at all times:
 no write without explicit human approval, and pre-approval validation must
-pass via `worker-verify`. Neither gate has an override.
+pass via the contextualizer's `verify.sh` run against the sandbox copy.
+Neither gate has an override.
 
 When no human-approval gesture occurs (default path), the audit does not
 auto-rewrite catalog rows, does not fetch upstream beyond a HEAD probe, and
@@ -179,7 +207,7 @@ what it deliberately does not measure, and the live numbers across the
 bundled `examples/` — is documented in [chapter 13](../../docs/13-coverage-testing.md).
 
 **Threshold.** ≥80% corpus-wide coverage required to PASS. The threshold
-was sourced from the AI-1 measurement that motivated the check: 46.9%
+was sourced from the measurement that motivated the check: 46.9%
 corpus-wide coverage across the MCP contextualizer's references, with a
 7%–87% by-file range. 80% leaves a ≤20% remainder that is reviewable in a
 single read and makes the structural-honesty disclaimer — *"where a
@@ -264,7 +292,7 @@ GitHub permalink in its final response text? The check is the empirical
 counterpart to Check 7's corpus-side density: Check 7 asks whether the
 references *contain* permalinks near load-bearing prose; Check 8 asks
 whether the model *emits* one when it answers. The grader runs keyless
-and deterministically — verified against 17/17 mocked cases with no
+and deterministically — verified against 18/18 mocked cases with no
 API calls; the live rate is per-contextualizer and downstream. See [chapter 13](../../docs/13-coverage-testing.md)
 for the methodology, mocked-vs-live distinction, and the live-run recipe
 for a forker supplying their own `eval-prompts.json`.
@@ -312,9 +340,8 @@ lint's documented carve-out — see `.semgrep/README.md`
 On `ImportError`, Check 8 exits 3 (distinct from FAIL exit 1 and
 runner-failure exit 2) and prints an install hint.
 
-**Tool-surface caveat.** Check 8 uses a custom `read_reference` tool
-(the AI-4 harness shape), not the generic `Read` tool real Claude Code
-agents see. The choice gives a cleaner signal on citation behavior given
+**Tool-surface caveat.** Check 8 uses a custom `read_reference` tool,
+not the generic `Read` tool real Claude Code agents see. The choice gives a cleaner signal on citation behavior given
 the agent has chosen to open, at the cost of not measuring over-opening
 on doesn't-need prompts. Comparing scores across a future tool-surface
 change would be invalid — re-baseline rather than compare.
@@ -373,9 +400,14 @@ auto-fixable (Checks 1, 4, and 6) or judgment-required (Checks 2, 3, 5, 7, 8).
 The three auto-fixable checks have a single correct mutation:
 
 - **Check 1 (stale `as of` dates):** refresh the date to today's UTC date.
-- **Check 4 (catalog row vs frontmatter `description`):** sync the catalog
-  row's one-line description to the reference frontmatter's `description:`
-  field (the canonical statement).
+- **Check 4 (catalog row vs reference body framing):** sync the catalog
+  row's one-line description to the reference's body framing — the first
+  paragraph under the H1, or the bullets under a `## When to Use This
+  Reference` section if one is present. References carry no frontmatter,
+  so the body-section heuristic is the canonical statement (see
+  [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) §SELF-AUDIT check 4). If neither
+  yields a usable one-line statement, demote the finding to
+  judgment-required rather than inventing content.
 - **Check 6 (review-state staleness):** rewrite
   `research/review-state.json` so `review_state: "stale"` (other fields
   unchanged).
@@ -395,7 +427,8 @@ Empty input is `n`. On `y` or `select`, follow the REFRESH propose →
 validate → approve gate documented in [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) §"Optional fix flow":
 
 1. Draft the edits on the sandbox copy at `/tmp/skill-engine-validate-<session-id>/`.
-2. Run `worker-verify` against the sandbox (four pre-approval checks).
+2. Run `bash verify.sh` from the sandbox copy — every check must pass
+   (or report N/A) before the diff is surfaced.
 3. Surface the diff for explicit `APPROVE` / `DEFER` / `REJECT`.
 4. On `APPROVE`, write to the working tree; log to
    `research/sessions/<session-id>.json`; append a

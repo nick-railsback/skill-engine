@@ -20,7 +20,7 @@ fail=0
 # "engine does not perform HTTP itself" stance below.
 if grep -rE 'turndown|pandoc|html2markdown|readability|cheerio' \
    "$PLUGIN_ROOT/skills" "$PLUGIN_ROOT/engine-bootstrap-templates" \
-   --include='*.sh' --include='*.md' 2>/dev/null \
+   --include='*.sh' --include='*.md' --include='*.template' 2>/dev/null \
    | grep -v -F "$PLUGIN_ROOT/tests/doctrine.sh"; then
   echo "FAIL: html-to-markdown library reference found in engine code."
   fail=1
@@ -28,14 +28,22 @@ fi
 
 # 2. Engine code does not perform HTTP GETs itself.
 # Doctrine: only the model (via WebFetch or MCP fetch) performs content
-# fetches. Engine shell scripts may use `git`, `gh`, and `curl --head`
-# (HEAD probes for reachability) only. A non-HEAD curl in any
-# engine-bootstrap-templates/*.sh would mean the engine is silently
-# taking on the fetch role.
-if grep -rE '\bcurl\s+[^-]' "$PLUGIN_ROOT/engine-bootstrap-templates" \
-   --include='*.sh' 2>/dev/null \
-   | grep -v 'curl --head\|curl -I'; then
-  echo "FAIL: non-HEAD curl invocation in engine shell scripts."
+# fetches. Engine shell scripts may use `git`, `gh`, and `curl --head`/-I
+# (HEAD probes for reachability) only. A non-HEAD curl in any stamped
+# shell script would mean the engine is silently taking on the fetch role.
+# Allowlist shape, not GET-recognition: the previous pattern required a
+# non-dash character right after `curl `, which never matches the dominant
+# real-world GET forms (`curl -fsSL URL`, `curl -s URL`) — so it caught
+# only invocations nobody writes. Now ANY curl invocation is flagged
+# unless its argument list carries --head or -I (alone or in a combined
+# short-flag cluster like -sI).
+# Scope includes *.sh.template: those files stamp into every user repo
+# and previously escaped this check entirely.
+if grep -rEn '(^|[^A-Za-z0-9_-])curl([[:space:]]|$)' \
+   "$PLUGIN_ROOT/engine-bootstrap-templates" \
+   --include='*.sh' --include='*.sh.template' 2>/dev/null \
+   | grep -vE '(--head|[[:space:]]-[A-Za-z]*I)([[:space:]]|$)'; then
+  echo "FAIL: non-HEAD curl invocation in engine shell scripts (only curl --head / -I reachability probes are permitted)."
   fail=1
 fi
 
@@ -45,9 +53,13 @@ fi
 # git/gh config). Any `Authorization: Bearer ...` or `GITHUB_TOKEN`
 # reference in engine shell scripts would mean the engine is silently
 # taking on auth.
+# Scope includes *.sh.template (stamped into user repos) but deliberately
+# NOT *.md.template: prose templates narrate doctrine and would
+# false-positive on sentences about tokens; checks 2-3 police executable
+# shell only.
 if grep -rE 'BEARER|Authorization:\s*Bearer|GITHUB_TOKEN' \
    "$PLUGIN_ROOT/engine-bootstrap-templates" \
-   --include='*.sh' 2>/dev/null; then
+   --include='*.sh' --include='*.sh.template' 2>/dev/null; then
   echo "FAIL: auth-token plumbing detected in engine shell scripts."
   fail=1
 fi
@@ -65,7 +77,8 @@ fi
 #
 # Scope:
 #   plugin/skill-engine/skills/**/*.md
-#   plugin/skill-engine/agents/*.md
+#   plugin/skill-engine/agents/*.md       (directory currently absent;
+#                                          covered again if reintroduced)
 #   plugin/skill-engine/bin/*.sh
 #   plugin/skill-engine/tests/*.sh        (this file is implicitly excluded
 #                                          via the path-equality check below)
@@ -125,8 +138,9 @@ git_readonly_scan() {
 # Known git verbs filter: the candidate-match `git <token>` is only a real
 # git invocation when <token> is a recognized git subcommand. Without this
 # filter, prose noun phrases like "no git mutations" or "a git host URL"
-# trip the lint. The union below is allow-list ∪ deny-list (AC5.2 ∪ AC5.3)
-# plus a few additional known verbs seen in docs / templates.
+# trip the lint. The union below is the read-only allow-list plus the
+# mutating deny-list, plus a few additional known verbs seen in docs /
+# templates.
 readonly_violations=$(
   {
     find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
@@ -136,7 +150,7 @@ readonly_violations=$(
     find "$PLUGIN_ROOT/engine-bootstrap-templates" -type f 2>/dev/null
   } | git_readonly_scan | awk -F: '
     BEGIN {
-      # Allow-list (AC5.2): read-only relative to user repo state.
+      # Allow-list: read-only relative to user repo state.
       allow["diff"]=1; allow["status"]=1; allow["log"]=1; allow["show"]=1
       allow["clone"]=1; allow["ls-remote"]=1; allow["ls-tree"]=1
       allow["ls-files"]=1; allow["rev-parse"]=1; allow["cat-file"]=1
@@ -340,6 +354,122 @@ elif [ "$plugin_ver" != "$market_ver" ] || [ "$plugin_ver" != "$readme_badge_ver
   echo "FAIL: version mismatch — plugin.json=$plugin_ver, marketplace.json=$market_ver, README badge=$readme_badge_ver, README prose=$readme_prose_ver. Reconcile to a single version."
   fail=1
 fi
+
+# 8 (continued) — the two hand-edited release surfaces the four-way check
+# above does not see. Only the prompt-guided /release skill touches
+# SECURITY.md's supported line and the CHANGELOG heading, so a hand-rolled
+# release could keep CI green while SECURITY.md advertises the wrong
+# supported line.
+#   SECURITY.md: the supported-versions table row `| X.Y.x |` must carry
+#   plugin.json's major.minor (pre-1.0 policy: latest minor line only).
+#   CHANGELOG.md: the top release heading `## [X.Y.Z]` must equal
+#   plugin.json's version exactly.
+if [ -n "$plugin_ver" ]; then
+  plugin_minor="${plugin_ver%.*}"
+  security_line=$(grep -oE '^\| [0-9]+\.[0-9]+\.x ' "$REPO_ROOT/SECURITY.md" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+')
+  changelog_ver=$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$REPO_ROOT/CHANGELOG.md" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+  if [ -z "$security_line" ]; then
+    echo "FAIL: version-parity could not read SECURITY.md's supported-line row ('| X.Y.x |' shape expected)."
+    fail=1
+  elif [ "$security_line" != "$plugin_minor" ]; then
+    echo "FAIL: SECURITY.md supports $security_line.x but plugin.json is $plugin_ver — update the supported-versions table."
+    fail=1
+  fi
+  if [ -z "$changelog_ver" ]; then
+    echo "FAIL: version-parity could not read CHANGELOG.md's top release heading ('## [X.Y.Z]' shape expected)."
+    fail=1
+  elif [ "$changelog_ver" != "$plugin_ver" ]; then
+    echo "FAIL: CHANGELOG.md's top release heading is $changelog_ver but plugin.json is $plugin_ver — add or fix the release entry."
+    fail=1
+  fi
+fi
+
+# 9. Skills reference only the kind-partitioned cache layout.
+# Doctrine: the clone cache is partitioned by source kind —
+# ~/.cache/skill-engine/git-managed/<source_id>-<sha>/ for git-backed
+# sources and ~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/ for
+# crawl snapshots. The flat layout (~/.cache/skill-engine/<source_id>-…/)
+# is legacy, mentioned only in migration and cleanup prose. An unmarked
+# flat-layout path in a skill means the layout has forked again — the
+# failure mode that once left engine-bootstrap seeding a cache DISCOVER
+# could not see, double-cloning every source. Deliberate legacy mentions
+# carry a per-line <!-- doctrine:legacy-cache-layout --> marker.
+flat_cache_refs=$(grep -rn -F 'cache/skill-engine/<source_id>' \
+  "$PLUGIN_ROOT/skills" --include='*.md' 2>/dev/null \
+  | grep -v -F '<!-- doctrine:legacy-cache-layout -->')
+if [ -n "$flat_cache_refs" ]; then
+  echo "FAIL: flat cache-layout path in a skill — the kind-partitioned layout (git-managed/, web-doc/) is the only current layout."
+  echo "$flat_cache_refs" | sed "s|^$PLUGIN_ROOT/|  |"
+  echo "  Use ~/.cache/skill-engine/git-managed/<source_id>-<sha>/ (or web-doc/), or mark a deliberate legacy mention with <!-- doctrine:legacy-cache-layout -->."
+  fail=1
+fi
+
+# 10. The shared contextualizer-locator block stays byte-identical across
+# the five locator skills.
+# Doctrine: discover, refresh, status, self-audit, and new-reference share
+# one root-resolution bash block, fenced by doctrine:locator-block
+# sentinels; discover/SKILL.md is the designated master. The
+# using-skill-engine router deliberately ships a different variant (it
+# lists and asks instead of exiting) and is NOT in the identity set.
+# Same enforcement idea as check 7's verify.sh byte-compare: shared prompt
+# logic that relied on discipline alone has already forked once (the
+# cache-layout split this file's check 9 now pins).
+locator_master="$PLUGIN_ROOT/skills/discover/SKILL.md"
+extract_locator() {
+  awk '
+    /<!-- doctrine:locator-block:start -->/ { inblock=1; next }
+    /<!-- doctrine:locator-block:end -->/   { inblock=0 }
+    inblock { print }
+  ' "$1"
+}
+locator_master_block=$(extract_locator "$locator_master")
+if [ -z "$locator_master_block" ]; then
+  echo "FAIL: no doctrine:locator-block sentinels in skills/discover/SKILL.md (the locator master) — cannot check the copies."
+  fail=1
+else
+  for locator_skill in refresh status self-audit new-reference; do
+    if [ "$(extract_locator "$PLUGIN_ROOT/skills/$locator_skill/SKILL.md")" != "$locator_master_block" ]; then
+      echo "FAIL: skills/$locator_skill/SKILL.md locator block diverges from skills/discover/SKILL.md — re-sync the fenced doctrine:locator-block region."
+      fail=1
+    fi
+  done
+fi
+
+# 10b. Sentinel-balance guard for check 10 (mirrors check 5b): an
+# unterminated :start would swallow the rest of the file into the
+# extracted block, making the byte-compare meaningless rather than loud.
+locator_imbalance=$(awk -v root="$PLUGIN_ROOT/" '
+  function flush() { if (prev != "" && s != e) printf "%s: %d start / %d end\n", prev, s, e }
+  FNR == 1 { flush(); prev = substr(FILENAME, length(root) + 1); s = 0; e = 0 }
+  /<!-- doctrine:locator-block:start -->/ { s++ }
+  /<!-- doctrine:locator-block:end -->/   { e++ }
+  END { flush() }
+' "$PLUGIN_ROOT"/skills/*/SKILL.md)
+if [ -n "$locator_imbalance" ]; then
+  echo "FAIL: unbalanced doctrine:locator-block sentinels (would blind check 10)."
+  echo "$locator_imbalance" | awk '{ print "  " $0 }'
+  fail=1
+fi
+
+# 11. Every bundled example's Claims policy carries the load-bearing
+# sentences from the navigator template.
+# Doctrine: examples legitimately customize their Claims-policy prose
+# (concrete permalink shapes, multi-source footer rules), so a whole-
+# section byte-compare would false-positive. What must NOT drift are the
+# two sentences other machinery depends on: the Check-8 grading contract
+# on item 1 (the v0.4.0 propagation missed exactly this sentence in one
+# example) and the footer-is-not-a-substitute contract on item 3.
+claims_sentence_1="This inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades."
+claims_sentence_2="summary of what you read — not a substitute"
+while IFS= read -r ex_skill; do
+  [ -n "$ex_skill" ] || continue
+  for sentence in "$claims_sentence_1" "$claims_sentence_2"; do
+    if ! grep -qF -- "$sentence" "$ex_skill"; then
+      echo "FAIL: ${ex_skill#"$REPO_ROOT/"} Claims policy is missing the load-bearing sentence: \"$sentence\" — re-propagate from navigator.md.template."
+      fail=1
+    fi
+  done
+done < <(find "$REPO_ROOT/examples" -mindepth 2 -maxdepth 2 -name SKILL.md -not -path '*/.*' 2>/dev/null)
 
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."

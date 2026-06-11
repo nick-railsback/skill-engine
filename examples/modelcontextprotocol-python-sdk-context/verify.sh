@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Contextualizer verify.sh — see ./README.md for the two-tier discipline
-# (this file audits a stamped contextualizer; templates/verify.sh in the
-# engine-authoring repo audits the engine itself; the surfaces don't overlap).
+# Contextualizer verify.sh — audits a stamped contextualizer's own
+# artifacts. Stamped by /skill-engine:engine-bootstrap into the
+# contextualizer root; the editing copy ships in the plugin's
+# engine-bootstrap-templates/ bundle (see its README.md), with
+# byte-identical copies in each bundled example enforced by
+# doctrine.sh check 7.
 #
-# Audits the stamped contextualizer's own artifacts — NOT the engine-
-# authoring repo. Stamped by /skill-engine:engine-bootstrap into the
-# contextualizer root; ships with the plugin's engine-bootstrap-templates/
-# bundle.
-#
-# Invariants audited (when applicable):
+# Core invariants audited (when applicable) — the first five named
+# checks; the full set is whatever the run_check calls below enumerate
+# (web-doc provenance, snapshot presence, the optional SKILL.json
+# trijection, and friends), so trust the run summary, not this list:
 #
 #   1. research/source-paths.json parses with schema_version: 1
 #   2. Each sources[i] entry has the expected shape (object, with string
@@ -31,10 +32,10 @@
 #   - references/ absent (no references emitted yet — typical between
 #     bootstrap and first DISCOVER emit pass)
 #
-# This script is NOT the engine-authoring verify.sh (which lives in the
-# engine repo's templates/verify.sh and audits engine-development
-# invariants — chapter ordering, template SHA, worker-prompt mirror, etc.).
-# The two scripts have intentionally disjoint scopes.
+# This script audits only the contextualizer it sits in. Engine-repo
+# invariants (doctrine greps, template/example sync, version parity) are
+# audited separately by plugin/skill-engine/tests/doctrine.sh in the
+# engine repo's CI — the two surfaces are intentionally disjoint.
 #
 # Tool surface: bash + jq + standard POSIX utilities. No third-party deps.
 
@@ -195,7 +196,7 @@ fi
 # transparently by REFRESH.
 #
 # Enum constraints:
-#   kind             ∈ {git-managed, external-doc, local-path}
+#   kind             ∈ {git-managed, web-doc, external-doc, local-path}
 #   lifecycle.state  ∈ {reachable, moved, removed, unknown}
 #   status           ∈ {intake, proposed, confirmed, rejected}
 #
@@ -363,19 +364,24 @@ else
               entries_ok=0
             fi
           fi
-          if jq -e ".sources[$idx] | has(\"crawl_budget\")" "$sp_file" >/dev/null 2>&1; then
-            budget_raw="$(jq -r ".sources[$idx].crawl_budget" "$sp_file" 2>/dev/null)"
-            if ! printf '%s' "$budget_raw" | grep -qE '^[0-9]+$'; then
-              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not an integer"
-              entries_ok=0
-            elif [ "$budget_raw" -lt 1 ] || [ "$budget_raw" -gt 5000 ]; then
-              fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not in [1, 5000]"
-              entries_ok=0
-            fi
-          fi
         elif [ -n "$crawl_mode" ]; then
           fail "sources[$idx] ($id): crawl_mode '$crawl_mode' set on kind '$kind' — crawl_mode is web-doc only"
           entries_ok=0
+        fi
+        # crawl_budget bounds apply whenever the key is present, on ANY
+        # kind — matching the schema, which bounds the property globally.
+        # (Only meaningful for web-doc, but a 9999 budget on a git-managed
+        # entry must not pass here while failing schema validation; the two
+        # enforcers stay equivalent.)
+        if jq -e ".sources[$idx] | has(\"crawl_budget\")" "$sp_file" >/dev/null 2>&1; then
+          budget_raw="$(jq -r ".sources[$idx].crawl_budget" "$sp_file" 2>/dev/null)"
+          if ! printf '%s' "$budget_raw" | grep -qE '^[0-9]+$'; then
+            fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not an integer"
+            entries_ok=0
+          elif [ "$budget_raw" -lt 1 ] || [ "$budget_raw" -gt 5000 ]; then
+            fail "sources[$idx] ($id): crawl_budget '$budget_raw' is not in [1, 5000]"
+            entries_ok=0
+          fi
         fi
       done < <(jq -r '
         .sources
@@ -1115,8 +1121,7 @@ fi
 # Asserts three-way correspondence between SKILL.md catalog rows, SKILL.json
 # non-draft catalog entries, and `*-*.md` reference files when a
 # contextualizer opts into the structured machine-readable sibling at
-# $CTX_ROOT/SKILL.json. Four states (a/b/c/d) mirror the engine-side
-# implementation in templates/verify.sh Check 27:
+# $CTX_ROOT/SKILL.json. Four states (a/b/c/d):
 #
 #   (a) SKILL.json absent  -> silent-skip pass (the opt-in default state).
 #   (b) invalid JSON       -> fail loud with the path.

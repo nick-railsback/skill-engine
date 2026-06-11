@@ -1,5 +1,10 @@
 name: Lint
 
+# Every run step delegates to scripts/ci-local.sh so this workflow, the
+# local `make ci-local` target, and the /release skill's Phase 5 validate
+# the exact same inventory. Tool installation stays here (a CI concern);
+# the script asserts presence and fails loud.
+
 on:
   push:
     branches: [main]
@@ -12,16 +17,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Lint shell scripts
-        run: |
-          set -e
-          shopt -s globstar nullglob
-          files=( **/*.sh )
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No .sh files found."
-            exit 0
-          fi
-          shellcheck --severity=warning "${files[@]}"
+      - name: Lint shell scripts (incl. stamped *.sh.template)
+        run: bash scripts/ci-local.sh shellcheck
 
   json-validate:
     runs-on: ubuntu-latest
@@ -34,52 +31,23 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Validate production JSON files
+      - name: Install jq and check-jsonschema
+        # check-jsonschema pinned (not 'latest') for reproducible CI —
+        # mirrors the bandit/semgrep pins in security.yml. Not
+        # dependabot-tracked: no Python manifest (see
+        # .github/dependabot.yml). Bump by hand.
         run: |
-          set -e
-          paths=(
-            ".claude/settings.json"
-            ".claude-plugin/marketplace.json"
-            "plugin/skill-engine/.claude-plugin/plugin.json"
-            "plugin/skill-engine/engine-bootstrap-templates/research-state.json.template"
-            "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template"
-            "plugin/skill-engine/engine-bootstrap-templates/monorepo-config.json.template"
-          )
-          for f in "${paths[@]}"; do
-            if [ -f "$f" ]; then
-              echo "Validating $f"
-              jq empty "$f"
-            else
-              echo "Skipping $f (not present)"
-            fi
-          done
-      - name: Validate source-paths.json against its schema
-        run: |
-          set -e
-          # Pinned (not 'latest') for reproducible CI — mirrors the bandit/
-          # semgrep pins in security.yml. Not dependabot-tracked: no Python
-          # manifest (see .github/dependabot.yml). Bump by hand.
+          sudo apt-get update && sudo apt-get install -y jq
           python3 -m pip install --quiet check-jsonschema==0.37.2
-          schema="plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json"
-          echo "Meta-validating the schema"
-          check-jsonschema --check-metaschema "$schema"
-          targets=( "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template" )
-          for f in examples/*/research/source-paths.json; do
-            [ -f "$f" ] && targets+=( "$f" )
-          done
-          # One invocation validates every target — avoids a cold start and a
-          # schema recompile per file.
-          echo "Validating ${#targets[@]} file(s) against the schema in one pass"
-          check-jsonschema --schemafile "$schema" "${targets[@]}"
+      - name: Validate JSON, schema, and negative fixtures
+        run: bash scripts/ci-local.sh json
 
   doctrine:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Run doctrine grep checks
-        run: bash plugin/skill-engine/tests/doctrine.sh
+        run: bash scripts/ci-local.sh doctrine
 
   tests:
     runs-on: ubuntu-latest
@@ -87,38 +55,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run web-doc tests
-        run: bash plugin/skill-engine/tests/web-doc/run.sh
-      - name: Run clean-cache tests
-        run: bash plugin/skill-engine/tests/clean-cache/run.sh
-      - name: Run migration tests
-        run: bash plugin/skill-engine/tests/migration/run.sh
-      - name: Run permalink-density tests
-        run: bash plugin/skill-engine/tests/permalink-density/run.sh
-      - name: Run grounded-rate tests
-        run: bash plugin/skill-engine/tests/grounded-rate/run.sh
-      - name: Run verify-bijection tests
-        run: bash plugin/skill-engine/tests/verify-bijection/run.sh
-      - name: Verify bundled example contextualizers
-        run: |
-          set -e
-          for v in examples/*/verify.sh; do
-            echo "== $v =="
-            bash "$v"
-          done
-      - name: Permalink density on example references
-        run: |
-          set -e
-          for refs in examples/*/references; do
-            [ -d "$refs" ] || continue
-            echo "== $refs =="
-            python3 plugin/skill-engine/tests/permalink_density.py "$refs" --threshold 0.80 --min-paragraphs 5 --require-min-paragraphs
-          done
-      - name: Validate example eval corpora (grounded-rate dry-run)
-        run: |
-          set -e
-          for ctx in examples/*/; do
-            [ -f "$ctx/research/eval-prompts.json" ] || continue
-            echo "== $ctx =="
-            python3 plugin/skill-engine/tests/grounded_rate.py "$ctx" --dry-run
-          done
+      - name: Run all test suites (tests/*/run.sh + hooks-audit)
+        run: bash scripts/ci-local.sh tests
+      - name: Verify bundled examples (verify.sh, permalink density, eval dry-run)
+        run: bash scripts/ci-local.sh examples

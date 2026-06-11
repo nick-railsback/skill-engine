@@ -139,9 +139,9 @@ to the canonical name on success); on `N` or anything else, the cache
 stays absent and reads fall back to `gh`/`git` CLI calls. The user may
 also clone manually at any time or pick a different cache location.
 See
-[`plugin/skill-engine/skills/engine-bootstrap/SKILL.md`](plugin/skill-engine/skills/engine-bootstrap/SKILL.md)
+[`plugin/skill-engine/skills/engine-bootstrap/SKILL.md`](../skills/engine-bootstrap/SKILL.md)
 §"Step 3.5 — Offer to seed local cache" and
-[`plugin/skill-engine/skills/discover/SKILL.md`](plugin/skill-engine/skills/discover/SKILL.md)
+[`plugin/skill-engine/skills/discover/SKILL.md`](../skills/discover/SKILL.md)
 pre-flight step 6 for the per-source clone shape.
 
 ### Cleanup contract

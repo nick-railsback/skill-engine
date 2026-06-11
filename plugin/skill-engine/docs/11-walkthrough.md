@@ -2,7 +2,7 @@
 
 This chapter walks through the engine producing an artifact called `modelcontextprotocol-python-sdk-context` end-to-end. The team is adopting the MCP Python SDK for an internal AI product — they need to teach Claude (or any other AI assistant) how to write MCP servers and clients in the v2 syntax, work through the v1→v2 migration when they hit legacy code, and answer questions about transports, auth, and types without re-reading the spec each time. The references draw directly from the v2 pre-alpha branch of `modelcontextprotocol/python-sdk`; the contextualizer is what keeps those references in sync as the SDK evolves.
 
-The artifact lives in [`examples/modelcontextprotocol-python-sdk-context/`](../../examples/modelcontextprotocol-python-sdk-context/) — that's the actual filesystem output. This chapter is the narrative around it: which questions earned a reference, which were rejected, and how the engine's patterns from this guide compose in practice.
+The artifact lives in [`examples/modelcontextprotocol-python-sdk-context/`](../../../examples/modelcontextprotocol-python-sdk-context/) — that's the actual filesystem output. This chapter is the narrative around it: which questions earned a reference, which were rejected, and how the engine's patterns from this guide compose in practice.
 
 The example is **larger than the recommended starting point** — nine references, not two — and that's part of the lesson. The team didn't start with nine; they started with three (overview, server, client) and grew the catalog as the v2 migration surfaced clean partitions. This chapter shows that growth path.
 
@@ -112,7 +112,7 @@ This is the **on-demand load** pattern in action. `mcpserver.md`, `client.md`, `
 
 For `modelcontextprotocol-python-sdk-context` after a year in production, here's what a run looks like under the goal-given posture documented in [08-discover-pipeline.md](08-discover-pipeline.md).
 
-> **Aside — web-doc upstreams.** This example uses `kind: git-managed` because the upstream is a GitHub repo with code, types, and inline docstrings — the engine reads the source directly. If the upstream were a documentation site (e.g., MkDocs / Docusaurus / Sphinx), the team would use `kind: web-doc` with `crawl_mode: sitemap`. The bundled [`inspect-ai-context`](../../examples/inspect-ai-context/) is the canonical example of `web-doc` source kind in action — it pulls both a git-managed source AND a sitemap-crawled docs portal.
+> **Aside — web-doc upstreams.** This example uses `kind: git-managed` because the upstream is a GitHub repo with code, types, and inline docstrings — the engine reads the source directly. If the upstream were a documentation site (e.g., MkDocs / Docusaurus / Sphinx), the team would use `kind: web-doc` with `crawl_mode: sitemap`. The bundled [`inspect-ai-context`](../../../examples/inspect-ai-context/) is the canonical example of `web-doc` source kind in action — it pulls both a git-managed source AND a sitemap-crawled docs portal.
 
 The contextualizer's `research/source-paths.json` carries one entry: `modelcontextprotocol-python-sdk` at `status: confirmed`, `lifecycle.state: reachable`, tracking the `main` branch (v2 pre-alpha) by omitting the `branch` field. The team invokes `/skill-engine:discover`; the model reads the repo via `gh repo view` / `git ls-tree` (preferring the CLI over WebFetch for `kind: git-managed`) and considers what to write.
 
@@ -215,4 +215,4 @@ Running the same conventions this guide preaches:
 
 If you fork this and start writing your own contextualizer, the example is a structural template, not a content template. Replace every word; keep the shape.
 
-[Next: Back to README full ToC and reading order](README.md)
+[Next: Back to README full ToC and reading order](../../../README.md)

@@ -22,10 +22,8 @@ import re
 import sys
 from pathlib import Path
 
-# SHA-pinned permalink (canonical form). Lifted verbatim from the AI-1
-# prototype at experiments/ai-1-provenance-smoke/provenance_smoke.py; the
-# shape matches the artifact contract's "SHA-pinned permalinks (the
-# canonical form)" section.
+# SHA-pinned permalink (canonical form). The shape matches the artifact
+# contract's "SHA-pinned permalinks (the canonical form)" section.
 SHA_PERMALINK_RE = re.compile(
     r"https://github\.com/[^/\s]+/[^/\s]+/(?:blob|tree)/[0-9a-f]{40}/[^\s)\]]+"
 )

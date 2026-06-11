@@ -395,4 +395,4 @@ If v2.0 DISCOVER schema is breaking, it's a MAJOR engine version bump with migra
 6. **Test-enforced consistency:** Version assertions across five surfaces; test suite validates consistency per [05-invariants.md](05-invariants.md).
 7. **User control over upgrades:** Contextualizers can stay on older templates or opt into new ones; no forced breakage.
 
-[Next: (Reserved for future chapters on DISCOVER maturity, npm surface, or marketplace best practices)](README.md)
+[Next: (Reserved for future chapters on DISCOVER maturity, npm surface, or marketplace best practices)](../../../README.md)

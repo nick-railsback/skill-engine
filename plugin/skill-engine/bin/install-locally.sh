@@ -5,7 +5,7 @@
 #
 #   - .claude-plugin/plugin.json parses as JSON
 #   - One SKILL.md per declared skill exists under skills/<name>/
-#   - The five template-bundle files exist under engine-bootstrap-templates/
+#   - The six template-bundle files exist under engine-bootstrap-templates/
 #
 # Does NOT invoke `/plugin install` (which requires interactive Claude Code)
 # and does NOT touch the network. Exits 0 with "OK — plugin substrate

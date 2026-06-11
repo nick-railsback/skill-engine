@@ -40,11 +40,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      # Pinned tool versions (Subtask 2.8: avoid 'latest' resolution for
-      # determinism + perf). These are pip installs, not action pins, so
-      # dependabot does not bump them while the repo has no Python manifest
-      # (see .github/dependabot.yml and Open Question Q1) — bump them here by
-      # hand, or add a requirements file later to let dependabot track them.
+      # Pinned tool versions: avoid 'latest' resolution, for determinism and
+      # perf. These are pip installs, not action pins, so dependabot does
+      # not bump them while the repo has no Python manifest (see
+      # .github/dependabot.yml) — bump them here by hand, or add a
+      # requirements file later to let dependabot track them.
       - name: Install scanners
         run: pip install "bandit[sarif]==1.9.4" "semgrep==1.164.0"
 
@@ -66,7 +66,7 @@ jobs:
       # findings by default (no --error), so this pass writes a complete SARIF
       # (all severities) for the Security tab without failing the job; the gate
       # pass below re-runs at ERROR only. Explicit --config args (no --config
-      # auto) keep the registry fetch bounded (AC9).
+      # auto) keep the registry fetch bounded.
       - name: semgrep (SARIF)
         run: semgrep scan --config p/ci --config p/secrets --config .semgrep/skill-content.yml --sarif --output semgrep.sarif
 
@@ -88,7 +88,7 @@ jobs:
           category: semgrep
 
       # --- Gate passes --------------------------------------------------------
-      # Severity gating (AC8): HIGH/CRITICAL -> fail, MEDIUM -> warn, LOW ->
+      # Severity gating: HIGH/CRITICAL -> fail, MEDIUM -> warn, LOW ->
       # ignore. Wired per tool, not as one global switch:
       #   gitleaks  — any secret fails (secrets have no severity gradient).
       #   shellcheck — any warning+ fails (mirrors lint.yml; intentional
@@ -104,8 +104,8 @@ jobs:
       # verified), which previously caused this workflow to fail at startup
       # validation. The CLI install carries equivalent gating with the same
       # supply-chain discipline used for bandit/semgrep pip pins: version +
-      # SHA-256 pinned in lockstep. AC6 scopes the SARIF-to-Security-tab
-      # requirement to bandit + semgrep, so gitleaks does not upload SARIF.
+      # SHA-256 pinned in lockstep. SARIF-to-Security-tab uploads cover
+      # bandit + semgrep only, so gitleaks does not upload SARIF.
       # Bump by hand: check https://github.com/gitleaks/gitleaks/releases,
       # update GITLEAKS_VERSION and GITLEAKS_SHA256 together.
       - name: gitleaks (secret scan)
@@ -121,19 +121,20 @@ jobs:
           tar -xzf "$tar" gitleaks
           ./gitleaks git . --no-banner
 
-      # shellcheck on all *.sh — same glob + severity as lint.yml. ubuntu-latest
-      # ships shellcheck preinstalled, so no apt install here (keeps a flaky
-      # network step out of the security gate).
-      - name: shellcheck (all *.sh)
+      # shellcheck on all *.sh and stamped *.sh.template — same glob +
+      # severity as lint.yml. ubuntu-latest ships shellcheck preinstalled,
+      # so no apt install here (keeps a flaky network step out of the
+      # security gate).
+      - name: shellcheck (all *.sh and *.sh.template)
         run: |
           set -e
           shopt -s globstar nullglob
-          files=( **/*.sh )
+          files=( **/*.sh **/*.sh.template )
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "No .sh files found."
+            echo "No shell files found."
             exit 0
           fi
-          shellcheck --severity=warning "${files[@]}"
+          shellcheck -s bash --severity=warning "${files[@]}"
 
       - name: bandit (gate — HIGH)
         run: bandit -r plugin/skill-engine/tests --severity-level high -q

@@ -92,7 +92,7 @@ In scope:
 
 - Vulnerabilities in a *consumer's* contextualizer plugin built using this engine. Those belong to the consumer's project.
 - Vulnerabilities in Claude Code itself, the Anthropic API, or other Anthropic products — please report those through [Anthropic's responsible disclosure channel](https://www.anthropic.com/security).
-- Static analysis findings on bash scripts: this codebase is reviewed against `shellcheck` when applicable; CodeQL does not analyze bash and is intentionally not enabled (see Task 12 / Section 10 of the repo-setup runbook).
+- Static analysis findings on bash scripts: this codebase is reviewed against `shellcheck` when applicable; CodeQL is intentionally not enabled because it has no bash extractor and the repo tracks no language CodeQL covers.
 - Social-engineering, physical security, or DoS against GitHub's infrastructure.
 - Findings that require the user to clone-and-execute code from an untrusted fork without review.
 

@@ -195,7 +195,7 @@ run_case "mock FAIL shows no-permalink-in-response marker" 1 \
   --mock-responses "$FIXTURES/grounded-fail-mocks.json"
 
 # (k) Error-marker fixture: all three error paths surface their markers
-# AND the all-errored gate emits exit 2 (runner failure) per AC2.9.
+# AND the all-errored gate emits exit 2 (runner failure).
 run_case "all-errored runner failure → exit 2" 2 \
   "all prompts errored" fx_mock_run \
   --mock-responses "$FIXTURES/grounded-error-markers-mocks.json"

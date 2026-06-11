@@ -22,7 +22,7 @@ your own install.*
 ## Validating an example yourself
 
 1. Pick a claim from a reference file that the user would be hurt by if it were wrong.
-2. Follow the nearest GitHub permalink (you'll find one within 5 lines of any load-bearing paragraph — see the [paragraph→permalink density lint](../README.md#safety-model)).
+2. Follow the nearest GitHub permalink (most load-bearing paragraphs carry one within 5 lines — the corpus-wide bar is ≥80% coverage; see the [paragraph→permalink density lint](../README.md#safety-model)).
 3. Confirm the claim against the upstream source.
 4. If the claim holds, you're done. If it doesn't, file an issue with the file path, the claim, and the permalink target.
 5. The full disclaimer lives in [`_disclaimer.md`](_disclaimer.md).

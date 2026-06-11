@@ -27,7 +27,7 @@ Everything under `${XDG_CACHE_HOME:-$HOME/.cache}/skill-engine/`. The cache is p
 - `~/.cache/skill-engine/git-managed/<source_id>-<sha>/` — shallow clones of git-backed upstream sources at a specific SHA.
 - `~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/` — snapshots of crawled web documentation for a specific crawl.
 
-Old flat-layout entries (`~/.cache/skill-engine/<source_id>-<sha>/`) may still exist if they predate the kind-partitioned layout and have not yet been migrated by REFRESH; this command will clean them too. The cache is regenerable: a subsequent DISCOVER or REFRESH against the same upstream re-creates whatever it needs from `gh`/`git` or the web crawler.
+Old flat-layout entries (`~/.cache/skill-engine/<source_id>-<sha>/`) may still exist if they predate the kind-partitioned layout and have not yet been migrated by REFRESH; this command will clean them too. <!-- doctrine:legacy-cache-layout --> The cache is regenerable: a subsequent DISCOVER or REFRESH against the same upstream re-creates whatever it needs from `gh`/`git` or the web crawler.
 
 Nothing outside the cache root is touched. No contextualizer state (`.claude/skills/<slug>-context/`, including its `research/` and `references/` directories) is touched. No user files outside `~/.cache/skill-engine/` are touched.
 
@@ -159,7 +159,7 @@ Notes:
 
 ### Step 3: Post-clean summary
 
-After deletion, emit a one-line summary: "Deleted N directories, freed <size>." If a subsequent DISCOVER or REFRESH runs, it will re-clone from upstream into a fresh `~/.cache/skill-engine/<source_id>-<sha>/`.
+After deletion, emit a one-line summary: "Deleted N directories, freed <size>." If a subsequent DISCOVER or REFRESH runs, it will re-clone or re-crawl from upstream into a fresh kind-partitioned directory (`~/.cache/skill-engine/git-managed/<source_id>-<sha>/` or `~/.cache/skill-engine/web-doc/<source_id>-<crawl_id>/`).
 
 ## When to suggest this command
 
