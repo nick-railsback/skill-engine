@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "_note": "Train corpus. Split from the original single eval-prompts.json by taking every third prompt by position into eval-prompts-test.json (n03, n06, n09) and the rest here. A stride rather than a tail cut: the corpus runs roughly basics -> deep cuts, so a tail cut would load the held-out set with the three most obscure prompts. Prompt objects are verbatim copies; the union of the two files is exactly n01-n10.",
   "prompts": [
     {
       "id": "n01",
@@ -12,11 +13,6 @@
       "text": "List the parameters of MCPServer.run() and their defaults."
     },
     {
-      "id": "n03",
-      "category": "needs_reference",
-      "text": "Walk me through the v1-to-v2 migration steps for a server that uses @tool decorators."
-    },
-    {
       "id": "n04",
       "category": "needs_reference",
       "text": "What happens when an elicitation request times out — exact behavior?"
@@ -27,11 +23,6 @@
       "text": "Show me how to inject a custom Context instance into a tool handler."
     },
     {
-      "id": "n06",
-      "category": "needs_reference",
-      "text": "What's the recommended transport for serverless deployment and why?"
-    },
-    {
       "id": "n07",
       "category": "needs_reference",
       "text": "Which lowlevel server hooks are exposed but not wrapped by MCPServer?"
@@ -40,11 +31,6 @@
       "id": "n08",
       "category": "needs_reference",
       "text": "What's the OAuth callback URL convention this SDK expects?"
-    },
-    {
-      "id": "n09",
-      "category": "needs_reference",
-      "text": "What's the specific format of structured output for a tool returning Image or Audio?"
     },
     {
       "id": "n10",

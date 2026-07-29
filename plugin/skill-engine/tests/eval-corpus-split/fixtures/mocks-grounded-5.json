@@ -1,0 +1,40 @@
+{
+  "_note": "Five grounded records -- deliberately sized to the UNION of the split fixture's train (3) and held-out (2) corpora. Handed to a default (no-selector) grading run as a probe: a runner that grades exactly one corpus cannot consume it, so no graded verdict may be produced.",
+  "records": [
+    {
+      "references_opened": ["alpha.md"],
+      "turns_used": 1,
+      "final_response_text": "Union record 1: https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/a.py",
+      "input_tokens": 100,
+      "output_tokens": 10
+    },
+    {
+      "references_opened": ["beta.md"],
+      "turns_used": 1,
+      "final_response_text": "Union record 2: https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/b.py",
+      "input_tokens": 100,
+      "output_tokens": 10
+    },
+    {
+      "references_opened": ["gamma.md"],
+      "turns_used": 1,
+      "final_response_text": "Union record 3: https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/c.py",
+      "input_tokens": 100,
+      "output_tokens": 10
+    },
+    {
+      "references_opened": ["alpha.md"],
+      "turns_used": 1,
+      "final_response_text": "Union record 4: https://github.com/foo/bar/blob/v1.2.3/d.py",
+      "input_tokens": 100,
+      "output_tokens": 10
+    },
+    {
+      "references_opened": ["beta.md"],
+      "turns_used": 1,
+      "final_response_text": "Union record 5: https://github.com/foo/bar/blob/v1.2.3/e.py",
+      "input_tokens": 100,
+      "output_tokens": 10
+    }
+  ]
+}

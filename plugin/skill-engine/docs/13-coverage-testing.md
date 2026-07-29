@@ -4,7 +4,7 @@
 
 This chapter documents the two grounding instruments the engine ships: a corpus-side density check (paragraph→permalink coverage) and an answering-side citation check (grounded-citation rate). Together they ask whether the references *contain* anchors near load-bearing prose, and whether the model *emits* an anchor when it answers. Both are wired into SELF-AUDIT as Checks 7 and 8 respectively.
 
-**Short answer:** Check 7 is a Python lint, free and bash-local, that walks `references/**/*.md` and asks whether each prose paragraph has a SHA-pinned (or stable-tag-pinned) GitHub permalink within five lines. The threshold is ≥80% corpus-wide. Check 8 is an opt-in Anthropic API runner that replays each `needs_reference` prompt in `research/eval-prompts.json` against the contextualizer and grades whether the model both opened a reference *and* emitted a SHA-pinned permalink in its final response text. Threshold ≥80% by default. The grader is verified keyless and deterministically; the live rate is per-contextualizer and downstream.
+**Short answer:** Check 7 is a Python lint, free and bash-local, that walks `references/**/*.md` and asks whether each prose paragraph has a SHA-pinned (or stable-tag-pinned) GitHub permalink within five lines. The threshold is ≥80% corpus-wide. Check 8 is an opt-in Anthropic API runner that replays each `needs_reference` prompt in one corpus file under `research/` against the contextualizer and grades whether the model both opened a reference *and* emitted a SHA-pinned permalink in its final response text. Threshold ≥80% by default. The grader is verified keyless and deterministically; the live rate is per-contextualizer and downstream.
 
 ## Scope and delineation from chapter 12
 
@@ -51,7 +51,7 @@ All three clear the bar. These are live measurements against the shipping corpor
 
 ### The grader, verified
 
-Check 7 measures what the references *contain*. Check 8 measures what the model *says* when it answers. For each `needs_reference` prompt in `research/eval-prompts.json`, the runner invokes the contextualizer's `SKILL.md` as system prompt against Claude Haiku 4.5 with a single `read_reference` tool, and grades whether the model both (a) opened ≥1 reference and (b) emitted a SHA-pinned or tag-pinned GitHub permalink in its final response text. The permalink regex is imported from the Check 7 lint so the two checks share one source of truth.
+Check 7 measures what the references *contain*. Check 8 measures what the model *says* when it answers. For each `needs_reference` prompt in the corpus under grade (`research/eval-prompts.json`, or one half of a train / held-out split — see *Splitting the corpus* below), the runner invokes the contextualizer's `SKILL.md` as system prompt against Claude Haiku 4.5 with a single `read_reference` tool, and grades whether the model both (a) opened ≥1 reference and (b) emitted a SHA-pinned or tag-pinned GitHub permalink in its final response text. The permalink regex is imported from the Check 7 lint so the two checks share one source of truth.
 
 The test runner at `plugin/skill-engine/tests/grounded-rate/run.sh` exercises the grader against **18 cases** with zero API calls — the grounded-path cases inject pre-recorded model responses (`--mock-responses`); the rest drive the dry-run, schema-validation, and N/A paths. Each case asserts exit-code + stdout substring. The grader runs keyless and deterministically: no environment credentials, no network I/O, identical exit codes on repeat invocations. Coverage spans PASS, FAIL, schema-invalid, opt-in N/A, empty-prompts N/A, error-marker handling, and the per-prompt timeout / tool-turn-cap paths. The fixtures live at `plugin/skill-engine/tests/grounded-rate/fixtures/`.
 
@@ -59,17 +59,17 @@ The test runner at `plugin/skill-engine/tests/grounded-rate/run.sh` exercises th
 
 ### What is not here, and why
 
-The engine ships **no single canonical `eval-prompts.json`**. The prompt set is a per-contextualizer downstream artifact: committing one shared corpus to the engine would couple it to a single contextualizer's prompt set, invite gaming (the grader sees the prompts), and churn whenever an example is re-snapshotted. The bundled MCP example carries its own `research/eval-prompts.json` and a recorded `research/eval-results.md` as a worked demonstrator — that is the 30% → 90% live measurement noted above; the other examples ship none, so Check 8 reports `[N/A]` against them by design. The grader being verified deterministically is the engine-side claim; what a forker's contextualizer actually scores is downstream territory.
+The engine ships **no single canonical `eval-prompts.json`**. The prompt set is a per-contextualizer downstream artifact: committing one shared corpus to the engine would couple it to a single contextualizer's prompt set, invite gaming (the grader sees the prompts), and churn whenever an example is re-snapshotted. The bundled MCP example carries its own corpus — split into `research/eval-prompts-train.json` and `research/eval-prompts-test.json` — and a recorded `research/eval-results.md` as a worked demonstrator; that is the 30% → 90% live measurement noted above, which `eval-results.md` labels as a pre-split figure. The other examples ship no corpus, so Check 8 reports `[N/A]` against them by design. The grader being verified deterministically is the engine-side claim; what a forker's contextualizer actually scores is downstream territory.
 
 ### Live-run recipe (for a forker)
 
-A maintainer running Check 8 against their own contextualizer supplies an Anthropic API key, writes a `research/eval-prompts.json`, and either invokes the runner directly or sets the SELF-AUDIT opt-in. Transcribed from `grounded_rate.py` and the fixtures at `tests/grounded-rate/fixtures/`:
+A maintainer running Check 8 against their own contextualizer supplies an Anthropic API key, writes a corpus under `research/`, and either invokes the runner directly or sets the SELF-AUDIT opt-in. Transcribed from `grounded_rate.py` and the fixtures at `tests/grounded-rate/fixtures/`:
 
 **Opt-in env var.** SELF-AUDIT's bash entry checks `SKILL_ENGINE_RUN_EVAL` before invoking the runner. Setting it to any non-empty value (e.g. `1`) enables Check 8; unset, Check 8 emits `[N/A]` and exits 0 without calling the API. The runner script itself does not check the env var — it runs whenever invoked, so a direct `python3 grounded_rate.py …` invocation bypasses the opt-in.
 
 **API key source.** The `--api-key-source` flag accepts two values: `keychain` (default, macOS `security find-generic-password -s anthropic-api-key`) and `env` (reads `ANTHROPIC_API_KEY`). The default is macOS-only; on Linux or Windows pass `--api-key-source env` and export `ANTHROPIC_API_KEY` in the shell. The script never logs the key.
 
-**`eval-prompts.json` schema.** The runner validates the file as a JSON object with `schema_version: 1` and a `prompts` list. Each prompt object requires three non-whitespace string fields: `id`, `category`, `text`. The grader only acts on prompts whose `category == "needs_reference"`. Example shape, lifted from the test harness:
+**Corpus schema.** The runner validates each corpus file as a JSON object with `schema_version: 1` and a `prompts` list. Each prompt object requires three non-whitespace string fields: `id`, `category`, `text`. The grader only acts on prompts whose `category == "needs_reference"`. Example shape, lifted from the test harness:
 
 ```json
 {
@@ -102,7 +102,21 @@ These examples omit `--threshold`; both Check 7 and Check 8 default to the same
 bar (`DEFAULT_COVERAGE_THRESHOLD` in `plugin/skill-engine/tests/permalink_density.py`,
 currently `0.80`). Pass `--threshold <ratio>` only to override it for a one-off run.
 
-A `--dry-run` flag validates the prompts file and exits without calling the API. A `--results-json <path>` flag writes full per-prompt records (including each turn's tool calls and the final response text) for downstream analysis.
+A `--dry-run` flag validates **every** corpus file under `research/` and exits without calling the API. A `--results-json <path>` flag writes full per-prompt records (including each turn's tool calls and the final response text) for downstream analysis.
+
+### Splitting the corpus
+
+One corpus is the supported baseline: a contextualizer whose `research/` carries only `eval-prompts.json` needs nothing from this section and behaves exactly as it always has. Splitting is optional and per-contextualizer.
+
+A maintainer who tunes the navigator *against* the eval — which is the normal way a navigator improves — is tuning against the answer key, and the resulting rate is a training-set number however honestly it was measured. The remedy is a physical split rather than a convention, because a convention is not something you can fail to violate by accident:
+
+* **Discovery.** Any file matching `eval-prompts*.json` directly under `research/` is a corpus. Nothing is registered anywhere, and the other `schema_version: 1` artifacts in that directory (`source-paths.json`, `review-state.json`, …) are not corpora.
+* **The keyless gate looks at all of them.** `--dry-run` validates every corpus it discovers and exits non-zero if any is schema-invalid. It calls no model and costs nothing, so a corpus it skipped would be a corpus gated by nothing until a paid live run tripped over it.
+* **A grading run scores exactly one.** `eval-prompts-train.json` when present, else `eval-prompts.json`. A rate averaged across a tuned set and a held-out set means nothing, so no invocation grades the union.
+* **The held-out set is reachable only by name.** `--corpus eval-prompts-test.json` — it appears in no default-resolution rule, so reaching it costs a deliberate act rather than happening automatically. `--corpus` accepts any corpus filename under `research/`; a name that does not resolve is a `[FAIL]`, never an `[N/A]`.
+* **The verdict line names the corpus graded**, as a trailing `[corpus: <filename>]`, so a recorded rate cannot later be misattributed to the other set. It is printed for an unsplit root too — a forker who records unlabeled numbers and splits later is exactly where a pre-split figure comes from.
+
+Splitting an already-tuned corpus does not retroactively clean the numbers measured on it; both halves were tuned on. What it protects is the *next* tuning pass. The bundled MCP example is precisely this case, and [`eval-results.md`](../../../examples/modelcontextprotocol-python-sdk-context/research/eval-results.md) labels its 90% as a pre-split figure rather than quietly reframing it as a holdout result.
 
 For the failure-mode catalogue (per-prompt timeout, tool-turn-cap exceeded, no-reference-opened, no-permalink-in-response, api-error), the SELF-AUDIT skill's Check 8 description is the canonical surface — see [`self-audit/SKILL.md` § Check 8](../skills/self-audit/SKILL.md#check-8--grounded-citation-rate).
 

@@ -286,7 +286,8 @@ until coverage clears the threshold.
 ## Check 8 — grounded-citation rate
 
 Check 8 measures behavioral structural-honesty on the answering side:
-for each `needs_reference` prompt in `$CTX_ROOT/research/eval-prompts.json`,
+for each `needs_reference` prompt in the corpus under grade — one file
+under `$CTX_ROOT/research/`, by default `eval-prompts.json` —
 did the answering model both (a) open ≥1 reference via the
 `read_reference` tool AND (b) include a SHA-pinned (or stable-tag-pinned)
 GitHub permalink in its final response text? The check is the empirical
@@ -295,8 +296,9 @@ references *contain* permalinks near load-bearing prose; Check 8 asks
 whether the model *emits* one when it answers. The grader runs keyless
 and deterministically — verified against 18/18 mocked cases with no
 API calls; the live rate is per-contextualizer and downstream. See [chapter 13](../../docs/13-coverage-testing.md)
-for the methodology, mocked-vs-live distinction, and the live-run recipe
-for a forker supplying their own `eval-prompts.json`.
+for the methodology, mocked-vs-live distinction, the live-run recipe
+for a forker supplying their own corpus, and the optional train /
+held-out split.
 
 **Opt-in.** Check 8 makes paid Anthropic API calls (~$0.01–$0.05 per run,
 sometimes more for long prompt corpora or many references). Unlike Checks
@@ -316,8 +318,8 @@ stable-tag-pinned GitHub URL shapes Check 7 uses. The two checks import
 the regex from a single module so the permalink contract has one source
 of truth.
 
-**N/A behavior.** When `eval-prompts.json` is absent or carries 0
-prompts, Check 8 emits `[N/A]` and exits 0 without calling the API.
+**N/A behavior.** When no corpus is present, or the corpus under grade
+carries 0 prompts, Check 8 emits `[N/A]` and exits 0 without calling the API.
 Contextualizers with no eval corpus pay nothing. An absent or zero-prompt
 corpus is a clean, terminal N/A — a check that does not apply, not a
 finding — so the auditor records the status line and stops there, without
@@ -325,7 +327,7 @@ recommending that anyone author a corpus or otherwise framing the absence
 as outstanding work. Authoring an eval corpus is the maintainer's
 discretionary curation, never something SELF-AUDIT requests; a corpus that
 is present but scores below threshold is the only Check 8 state that earns
-a remediation line. When the file exists but its schema is invalid (e.g.,
+a remediation line. When a corpus exists but its schema is invalid (e.g.,
 missing `prompts` key, missing required prompt fields), Check 8 emits
 `[FAIL]` rather than silently skipping — a malformed corpus would
 otherwise look identical to "no corpus."
@@ -357,13 +359,19 @@ engine can mutate mechanically.
 aligned with Check 7 — two spaces after `[N/A]`):
 
 ```
-[PASS] grounded-rate: 80.0% (4/5 prompts grounded) ≥80% threshold (cost: $0.04)
+[PASS] grounded-rate: 80.0% (4/5 prompts grounded) ≥80% threshold (cost: $0.04) [corpus: eval-prompts.json]
 [N/A]  grounded-rate: no eval prompts defined (research/eval-prompts.json absent)
 [N/A]  grounded-rate: eval-prompts.json has 0 prompts
 [N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~$0.01–$0.05 per run)
-[FAIL] grounded-rate: 40.0% (2/5 prompts grounded) below 80% threshold (cost: $0.05)
+[FAIL] grounded-rate: 40.0% (2/5 prompts grounded) below 80% threshold (cost: $0.05) [corpus: eval-prompts.json]
 [FAIL] grounded-rate: eval-prompts.json schema invalid — missing 'prompts' key
 ```
+
+The trailing `[corpus: <filename>]` names the corpus that produced the
+rate. A contextualizer may split its corpus into a train set and a
+held-out set (chapter 13, *Splitting the corpus*); a grading run scores
+exactly one of them, so the rate carries the name of the set it came
+from and cannot later be misattributed to the other.
 
 On FAIL, the header is followed by one indented line per non-grounded
 prompt naming the prompt id, the first failure marker

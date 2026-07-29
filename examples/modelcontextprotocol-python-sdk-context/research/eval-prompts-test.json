@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "_note": "Held-out corpus. Split from the original single eval-prompts.json by taking every third prompt by position (n03, n06, n09); the rest are in eval-prompts-train.json. A stride rather than a tail cut: the corpus runs roughly basics -> deep cuts, so a tail cut would load this set with the three most obscure prompts. Reachable only by naming it with --corpus; no default invocation grades it. Prompt objects are verbatim copies.",
+  "prompts": [
+    {
+      "id": "n03",
+      "category": "needs_reference",
+      "text": "Walk me through the v1-to-v2 migration steps for a server that uses @tool decorators."
+    },
+    {
+      "id": "n06",
+      "category": "needs_reference",
+      "text": "What's the recommended transport for serverless deployment and why?"
+    },
+    {
+      "id": "n09",
+      "category": "needs_reference",
+      "text": "What's the specific format of structured output for a tool returning Image or Audio?"
+    }
+  ]
+}

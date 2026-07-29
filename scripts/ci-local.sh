@@ -139,7 +139,10 @@ run_examples() {
     python3 plugin/skill-engine/tests/permalink_density.py "$refs" --min-paragraphs 5 --require-min-paragraphs
   done
   for ctx in examples/*/; do
-    [ -f "$ctx/research/eval-prompts.json" ] || continue
+    # No filename guard: the runner owns corpus discovery, so a context root
+    # that splits its corpus is gated on every file it carries rather than on
+    # one name this script happens to know. A corpus-less root already emits
+    # [N/A] and exits 0.
     echo "== eval corpus dry-run: $ctx =="
     python3 plugin/skill-engine/tests/grounded_rate.py "$ctx" --dry-run
   done
