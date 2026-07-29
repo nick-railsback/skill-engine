@@ -14,3 +14,8 @@ __pycache__/
 
 # CI scanner artifacts (bandit/semgrep SARIF, generated in .github/workflows/security.yml)
 *.sarif
+
+# Claude Code local overrides — the repo ships .claude/settings.json but never
+# the per-developer sibling. The rule lives here rather than in a contributor's
+# global ignore so a fresh clone is protected without local setup.
+.claude/settings.local.json

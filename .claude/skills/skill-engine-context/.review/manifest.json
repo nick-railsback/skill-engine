@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "entries": [
+    { "path": "references/nick-railsback-skill-engine-overview.md", "status": "added", "sha_before": null, "sha_after": "ef6b81f" },
+    { "path": "references/nick-railsback-skill-engine-principles.md", "status": "added", "sha_before": null, "sha_after": "3c3437f" },
+    { "path": "references/nick-railsback-skill-engine-artifact-contract.md", "status": "added", "sha_before": null, "sha_after": "75463df" },
+    { "path": "references/nick-railsback-skill-engine-invariants.md", "status": "added", "sha_before": null, "sha_after": "ff00efb" },
+    { "path": "references/nick-railsback-skill-engine-discover-refresh.md", "status": "added", "sha_before": null, "sha_after": "556f176" },
+    { "path": "references/nick-railsback-skill-engine-workflows.md", "status": "added", "sha_before": null, "sha_after": "38ba0f1" },
+    { "path": "references/nick-railsback-skill-engine-monorepo.md", "status": "added", "sha_before": null, "sha_after": "7016fe1" },
+    { "path": "references/nick-railsback-skill-engine-versioning.md", "status": "added", "sha_before": null, "sha_after": "693aaf2" },
+    { "path": "references/nick-railsback-skill-engine-evaluation-and-audit.md", "status": "added", "sha_before": null, "sha_after": "910dcae" },
+    { "path": "SKILL.md", "status": "modified", "sha_before": "d143464", "sha_after": "584fcfb" },
+    { "path": "research/source-paths.json", "status": "modified", "sha_before": "2ab486d", "sha_after": "893ad74" },
+    { "path": "verify.sh", "status": "unchanged", "sha_before": "ad111f5", "sha_after": "ad111f5" },
+    { "path": "research/.research-state.json", "status": "unchanged", "sha_before": "48e4ce3", "sha_after": "48e4ce3" }
+  ]
+}

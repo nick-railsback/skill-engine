@@ -133,6 +133,19 @@ git_readonly_scan() {
       gsub(/<!--[^>]*-->/, "", line)
       # Strip Markdown code spans (paired backticks on the same line).
       gsub(/`[^`]*`/, "", line)
+      # Strip shell line comments. Engine shell files legitimately describe
+      # git verbs in prose ("...the global/system git config..."), and a
+      # comment cannot invoke anything. Applied after the code-span strip so
+      # a span containing '#' has already gone.
+      sub(/#.*$/, "", line)
+      # Strip double-quoted literals carrying no command substitution, so a
+      # verb named inside a diagnostic message is not read as an invocation.
+      # Forms that can actually run something -- $(...) and backticks -- are
+      # deliberately left in place and still scanned. Known limit, pinned
+      # rather than implied away: `bash -c "git push"` is not caught here.
+      while (match(line, /"[^"$`]*"/)) {
+        line = substr(line, 1, RSTART - 1) " " substr(line, RSTART + RLENGTH)
+      }
       # Extract executable git verbs. \<git\> + whitespace + lowercase verb.
       while (match(line, /(^|[[:space:]]|[(;&|])git[[:space:]]+[a-z][a-z-]*/)) {
         token = substr(line, RSTART, RLENGTH)
