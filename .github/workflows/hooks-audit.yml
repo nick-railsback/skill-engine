@@ -1,5 +1,12 @@
 name: Hooks Audit
 
+# Deliberate duplicate: lint.yml's `tests` job runs this same script via
+# `ci-local tests`. The standalone workflow is kept because the README's "Hooks
+# Audit" badge links to it, and because it gives hook creep its own PR check
+# status instead of burying it in the lint job. Unlike the comparable
+# shellcheck redundancy in security.yml, the reason here is not a cron — this
+# workflow has none.
+
 on:
   push:
     branches: [main]
