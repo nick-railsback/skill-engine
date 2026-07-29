@@ -497,6 +497,40 @@ while IFS= read -r ex_skill; do
   done
 done < <(find "$REPO_ROOT/examples" -mindepth 2 -maxdepth 2 -name SKILL.md -not -path '*/.*' 2>/dev/null)
 
+# 12. No tracked file names the feature-planning docs tree.
+# Doctrine: this repo's feature-planning documents live in a directory that is
+# excluded per-clone via .git/info/exclude and is never committed. A tracked
+# file naming a path under it is a pointer that resolves on exactly one
+# machine, written in vocabulary no reader of this repo can look up.
+#
+# The trap is structural, not careless. A planning workflow that pins test
+# files by hash needs those tests tracked, while the documents they were
+# derived from stay untracked — so the natural way to head such a test, citing
+# the document it implements, produces a committed dangling pointer every time.
+# Nothing upstream detects it and the machine-local pre-push hook scrubs an
+# unrelated token set, so this check is the only mechanical guard.
+#
+# Scope is every tracked file (git ls-files): the trap is about being
+# committed, not about living in any particular directory. -H forces the
+# filename prefix even when xargs hands grep a single-file final batch, which
+# otherwise yields unprefixed lines that defeat both the exclusion and the
+# report. This file is the one exclusion, because a grep must name what it
+# searches for; keep it the only one, and state the rule here in the abstract
+# rather than quoting a real offending path -- a check whose own comment
+# violates it is not a check. If the planning docs ever become tracked, delete
+# this check outright instead of exempting files from it.
+chunk_doc_refs=$(
+  cd "$REPO_ROOT" && git ls-files -z \
+    | xargs -0 grep -HInF 'docs/chunks/' 2>/dev/null \
+    | grep -v '^plugin/skill-engine/tests/doctrine\.sh:'
+)
+if [ -n "$chunk_doc_refs" ]; then
+  echo "FAIL: a tracked file names the untracked feature-planning docs tree — the pointer dangles in every other clone."
+  echo "$chunk_doc_refs" | awk -F: '{ printf "  %s:%s\n", $1, $2 }'
+  echo "  Tracked artifacts must stand alone: state the invariant, never cite the planning doc."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
