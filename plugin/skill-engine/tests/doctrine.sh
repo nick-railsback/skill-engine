@@ -430,52 +430,55 @@ if [ -n "$flat_cache_refs" ]; then
   fail=1
 fi
 
-# 10. The shared contextualizer-locator block stays byte-identical across
-# the five locator skills.
-# Doctrine: discover, refresh, status, self-audit, and new-reference share
-# one root-resolution bash block, fenced by doctrine:locator-block
-# sentinels; discover/SKILL.md is the designated master. The
-# using-skill-engine router deliberately ships a different variant (it
-# lists and asks instead of exiting) and is NOT in the identity set.
-# Same enforcement idea as check 7's verify.sh byte-compare: shared prompt
-# logic that relied on discipline alone has already forked once (the
-# cache-layout split this file's check 9 now pins).
-locator_master="$PLUGIN_ROOT/skills/discover/SKILL.md"
-extract_locator() {
-  awk '
-    /<!-- doctrine:locator-block:start -->/ { inblock=1; next }
-    /<!-- doctrine:locator-block:end -->/   { inblock=0 }
-    inblock { print }
-  ' "$1"
-}
-locator_master_block=$(extract_locator "$locator_master")
-if [ -z "$locator_master_block" ]; then
-  echo "FAIL: no doctrine:locator-block sentinels in skills/discover/SKILL.md (the locator master) — cannot check the copies."
+# 10. The contextualizer-locator script lives in exactly one shared file;
+# none of the five locator skills inlines it, and each links to it instead.
+# Doctrine: discover, refresh, status, self-audit, and new-reference used to
+# carry a byte-identical copy of one root-resolution bash block, which this
+# check enforced with a byte-compare across all five (plus a sentinel-
+# balance guard so an unterminated fence couldn't blind that compare). The
+# block now lives in exactly one tracked file — shared/locator-block.md —
+# so there is nothing left for five copies to diverge from, and the
+# byte-compare and its guard are retired outright rather than reworked into
+# a no-op. What a single shared copy still needs enforced: the shared file
+# must exist and actually carry the locator script, not a stub or an empty
+# placeholder (grepped for two literal strings pulled from the script's own
+# error paths, so a bad move or a truncation fails loud rather than passing
+# vacuously); none of the five skills' SKILL.md may still carry the block
+# inline — its fenced sentinels or its literal script text surviving in a
+# SKILL.md would mean the move was a copy, not a move; and each of the five
+# skills' SKILL.md must link to the shared file instead of inlining it.
+# Whether that link actually resolves to a real file on disk is check 15's
+# job — a Markdown link target beginning `../../` already matches this
+# pointer's shape — so link resolution is not re-checked here.
+locator_shared="$PLUGIN_ROOT/shared/locator-block.md"
+locator_sentence_1='No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed.'
+locator_sentence_2='No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first.'
+
+if [ ! -f "$locator_shared" ]; then
+  echo "FAIL: shared/locator-block.md is missing — the locator script has no single shared home."
   fail=1
-else
-  for locator_skill in refresh status self-audit new-reference; do
-    if [ "$(extract_locator "$PLUGIN_ROOT/skills/$locator_skill/SKILL.md")" != "$locator_master_block" ]; then
-      echo "FAIL: skills/$locator_skill/SKILL.md locator block diverges from skills/discover/SKILL.md — re-sync the fenced doctrine:locator-block region."
-      fail=1
-    fi
-  done
+elif ! grep -qF -- "$locator_sentence_1" "$locator_shared" || ! grep -qF -- "$locator_sentence_2" "$locator_shared"; then
+  echo "FAIL: shared/locator-block.md exists but does not contain the locator script (its distinguishing 'No contextualizer …' text is missing)."
+  fail=1
 fi
 
-# 10b. Sentinel-balance guard for check 10 (mirrors check 5b): an
-# unterminated :start would swallow the rest of the file into the
-# extracted block, making the byte-compare meaningless rather than loud.
-locator_imbalance=$(awk -v root="$PLUGIN_ROOT/" '
-  function flush() { if (prev != "" && s != e) printf "%s: %d start / %d end\n", prev, s, e }
-  FNR == 1 { flush(); prev = substr(FILENAME, length(root) + 1); s = 0; e = 0 }
-  /<!-- doctrine:locator-block:start -->/ { s++ }
-  /<!-- doctrine:locator-block:end -->/   { e++ }
-  END { flush() }
-' "$PLUGIN_ROOT"/skills/*/SKILL.md)
-if [ -n "$locator_imbalance" ]; then
-  echo "FAIL: unbalanced doctrine:locator-block sentinels (would blind check 10)."
-  echo "$locator_imbalance" | awk '{ print "  " $0 }'
-  fail=1
-fi
+for locator_skill in discover refresh status self-audit new-reference; do
+  skill_md="$PLUGIN_ROOT/skills/$locator_skill/SKILL.md"
+  locator_inline_line=$(grep -nF \
+    -e '<!-- doctrine:locator-block:start -->' \
+    -e '<!-- doctrine:locator-block:end -->' \
+    -e "$locator_sentence_1" \
+    -e "$locator_sentence_2" \
+    "$skill_md" 2>/dev/null | head -1 | cut -d: -f1)
+  if [ -n "$locator_inline_line" ]; then
+    echo "FAIL: skills/$locator_skill/SKILL.md:$locator_inline_line still inlines the locator block — move it to shared/locator-block.md and link to it instead."
+    fail=1
+  fi
+  if ! grep -qF -- '](../../shared/locator-block.md' "$skill_md" 2>/dev/null; then
+    echo "FAIL: skills/$locator_skill/SKILL.md does not link to ../../shared/locator-block.md."
+    fail=1
+  fi
+done
 
 # 11. Every bundled example's Claims policy carries the load-bearing
 # sentences from the navigator template.
