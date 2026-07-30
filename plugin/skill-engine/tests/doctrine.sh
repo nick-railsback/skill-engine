@@ -564,6 +564,90 @@ else
     | tr -d '`' | awk '{ print $2 }' | sort -u)
 fi
 
+# 14. No SKILL.md doctrine pointer uses a GitHub blob/tree permalink into
+# this plugin's own shipped tree.
+# Doctrine: a doctrine pointer whose target already ships on disk inside the
+# installed plugin (a docs/*.md chapter, an engine-bootstrap-templates/*
+# file) must resolve as a local relative read, not a GitHub `blob/main` or
+# `tree/main` permalink that round-trips back out to this repo's hosted
+# copy of a file the user already has on disk. Closed-pattern shape, per
+# check 4's git-verb allow-list precedent, rather than a bare `grep
+# blob/main`: anchored on the full literal path prefix
+# `github.com/nick-railsback/skill-engine/(blob|tree)/main/plugin/skill-engine/`
+# so the two existing prose mentions of the anti-pattern itself —
+# discover/SKILL.md's and self-audit/SKILL.md's "`blob/main/...` URLs do not
+# satisfy the [SHA-pin] requirement" — do not trip it. Those sentences
+# describe a different invariant entirely (SHA-pinning permalinks inside a
+# user's own reference corpus, not this repo's doctrine pointers) and
+# neither line contains the `.../main/plugin/skill-engine/` prefix, so
+# anchoring on the prefix rather than the bare `blob/main` substring lets
+# them pass by construction.
+# Scope: tracked *.md files under skills/** only. docs/*.md cross-references
+# to other repo files and engine-bootstrap-templates/*.template
+# cross-references to each other carry their own blob/main and tree/main
+# links and are a different, unaudited surface this check does not police.
+doctrine_pointer_violations=$(
+  cd "$REPO_ROOT" && git ls-files -z -- 'plugin/skill-engine/skills/**/*.md' \
+    | xargs -0 grep -HInE 'github\.com/nick-railsback/skill-engine/(blob|tree)/main/plugin/skill-engine/' 2>/dev/null
+)
+if [ -n "$doctrine_pointer_violations" ]; then
+  echo "FAIL: SKILL.md contains a GitHub blob/tree permalink into the plugin's own shipped tree — convert to a local relative path (e.g. ../../docs/02-artifact-contract.md or ../../engine-bootstrap-templates/maintenance-agent.md.template)."
+  echo "$doctrine_pointer_violations" | awk -F: '{ printf "  %s:%s\n", $1, $2 }'
+  fail=1
+fi
+
+# 15. Every local relative doctrine pointer in a SKILL.md resolves to a real
+# file on disk.
+# Doctrine: a doctrine pointer written as a local relative path (rather than a
+# GitHub permalink — check 14's concern) is only a safe trade if something
+# keeps it honest. A relative path is a filesystem check, not a network
+# fetch, so nothing but the absence of a check was stopping this from being
+# asserted: a future rename or move of a docs/*.md chapter or an
+# engine-bootstrap-templates/* file that leaves a pointer dangling must be
+# caught here, the next time this suite runs, not discovered by someone
+# following a broken link.
+# Scope: tracked SKILL.md files under skills/** only, same as check 14.
+# Match shape: a Markdown link target beginning `../../` — the local
+# relative form the two existing self-audit pointers demonstrate
+# (../../docs/13-coverage-testing.md) — captured per-occurrence with its
+# line number, in the spirit of check 4's file:line reporting. A trailing
+# `#anchor` is stripped before the filesystem check, since anchors are not a
+# path component; the pointer is resolved against the citing file's own
+# directory (skills/<skill-name>/), matching how a relative Markdown link
+# resolves in any renderer.
+relative_link_matches=$(
+  cd "$REPO_ROOT" && git ls-files -z -- 'plugin/skill-engine/skills/**/SKILL.md' \
+    | while IFS= read -r -d '' f; do
+        awk -v rel="$f" '
+          {
+            line = $0
+            while (match(line, /\]\(\.\.\/\.\.\/[^)]*\)/)) {
+              target = substr(line, RSTART + 2, RLENGTH - 3)
+              sub(/#.*$/, "", target)
+              print rel ":" FNR ":" target
+              line = substr(line, RSTART + RLENGTH)
+            }
+          }
+        ' "$REPO_ROOT/$f"
+      done
+)
+relative_link_violations=""
+if [ -n "$relative_link_matches" ]; then
+  while IFS=: read -r rel_file rel_line rel_target; do
+    [ -n "$rel_file" ] || continue
+    skill_dir="$(dirname "$REPO_ROOT/$rel_file")"
+    if [ ! -f "$skill_dir/$rel_target" ]; then
+      relative_link_violations="${relative_link_violations}${rel_file}:${rel_line}: ${rel_target}
+"
+    fi
+  done <<< "$relative_link_matches"
+fi
+if [ -n "$relative_link_violations" ]; then
+  echo "FAIL: SKILL.md local relative doctrine pointer does not resolve to a file on disk."
+  printf '%s' "$relative_link_violations" | sed '/^$/d;s/^/  /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi

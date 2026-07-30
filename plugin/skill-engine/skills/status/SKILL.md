@@ -119,11 +119,11 @@ fi
 ## Doctrine surface
 
 The STATUS workflow — what it renders, how it sorts, when it pre-renders vs.
-runs on demand — lives in chapter [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md) and the `## Workflow: STATUS`
-section of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
+runs on demand — lives in chapter [`04-delivery.md`](../../docs/04-delivery.md) and the `## Workflow: STATUS`
+section of [`maintenance-agent.md.template`](../../engine-bootstrap-templates/maintenance-agent.md.template).
 
 The freshness categories (fresh, stale, critical) and their default thresholds
-are documented in chapter [`05-invariants.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/05-invariants.md).
+are documented in chapter [`05-invariants.md`](../../docs/05-invariants.md).
 
 ## Cadence
 

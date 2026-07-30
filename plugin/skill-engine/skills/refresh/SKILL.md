@@ -88,7 +88,7 @@ but every write goes to `$CTX_PROPOSED/...`. See `discover/SKILL.md`
 § Staging directory for the full model (manifest schema, three
 commands, REVIEW.md template stamping) — including the sandbox-block
 diagnostic to emit when a `$CTX_PROPOSED` write under `.claude/skills/**`
-is rejected (per [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md)
+is rejected (per [`04-delivery.md`](../../docs/04-delivery.md)
 § "When a `.claude/skills/**` write is blocked"; retry with
 `/skill-engine:refresh`).
 
@@ -103,9 +103,9 @@ Two things, both load-bearing:
 
 1. **Updated reference files in `references/`** (where applicable),
    each still citing its source by path plus content-hash (see
-   [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md)). Each still satisfies the four
+   [`02-artifact-contract.md`](../../docs/02-artifact-contract.md)). Each still satisfies the four
    reference invariants (definitions owned by
-   [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §Navigator size budget and
+   [`02-artifact-contract.md`](../../docs/02-artifact-contract.md) §Navigator size budget and
    §Long references — do not restate them elsewhere):
    - **first-5K** — the navigator's standing instructions (invariants,
      critical rules, dispatch logic) fit in the first 5K bytes of
@@ -300,7 +300,7 @@ procedure.
 
 **Lifecycle state.** For each in-scope source, decide whether its
 upstream is still `reachable`, `moved`, `removed`, or `unknown` (see
-[`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) for the four-state field). Write
+[`02-artifact-contract.md`](../../docs/02-artifact-contract.md) for the four-state field). Write
 transitions to `$CTX_PROPOSED/research/source-paths.json`. The first
 time this run needs to record a transition, seed the proposed file as
 a copy-on-write of the live file before mutating it:
@@ -329,7 +329,7 @@ the `decay` policy in the source's frontmatter governs.
 
 **Lifecycle sweep.** If a transition would affect existing reference
 files or the navigator (a `moved` URL is cited; a `removed` source is
-referenced), emit a lifecycle sweep dry-run per [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md).
+referenced), emit a lifecycle sweep dry-run per [`04-delivery.md`](../../docs/04-delivery.md).
 The user accepts or rejects the sweep through the protocol documented
 there (proposal-token + per-file SHA integrity gates). The engine
 does not auto-mutate references on lifecycle transition.
@@ -555,13 +555,13 @@ contextualizers) and catches dead-link drift that accumulates silently.
 
 ## Doctrine surface
 
-- [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) — the four invariants;
+- [`02-artifact-contract.md`](../../docs/02-artifact-contract.md) — the four invariants;
   `source-paths.json` thin schema; reference shape contract.
-- [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md) — lifecycle sweep dry-run UX + dangling-citation
+- [`04-delivery.md`](../../docs/04-delivery.md) — lifecycle sweep dry-run UX + dangling-citation
   consequence framing.
-- [`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md) — pipeline doctrine (one-pager;
+- [`08-discover-pipeline.md`](../../docs/08-discover-pipeline.md) — pipeline doctrine (one-pager;
   REFRESH and DISCOVER share the goal-given posture).
-- [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template) § `## Workflow: REFRESH` —
+- [`maintenance-agent.md.template`](../../engine-bootstrap-templates/maintenance-agent.md.template) § `## Workflow: REFRESH` —
   per-domain agent template overview.
 
 ## What this skill does NOT do

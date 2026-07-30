@@ -104,7 +104,7 @@ live tree, not through the staging model.
     - `status` — read-only freshness dashboard
     - `self-audit` — read-only drift audit
 
-   The chapter doctrine in [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) enumerates six workflows
+   The chapter doctrine in [`03-engine.md`](../../docs/03-engine.md) enumerates six workflows
    (REFRESH, SKILL, NEW, STATUS, DISCOVER, SELF-AUDIT). The plugin surface
    ships twelve skills: the five maintenance workflows above that this
    router dispatches to, plus the router itself, the scaffolder
@@ -123,7 +123,7 @@ live tree, not through the staging model.
 ## Doctrine surfaces
 
 The full activation protocol (engine doctor, reflections, rejection-log
-preflight) and the menu live in the engine chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) under
+preflight) and the menu live in the engine chapter [`03-engine.md`](../../docs/03-engine.md) under
 `## Activation` and `## The menu (six workflows)`. The orchestrator the
 maintainer pastes into a fresh Claude Code session is the contextualizer's
 navigator skill at `.claude/skills/<slug>-context/SKILL.md`, which is

@@ -273,7 +273,7 @@ stamp.
 or a non-zero / `EPERM` exit under a restricted sandbox on a
 `.claude/skills/<contextualizer-slug>-context/` path — do not retry
 blindly or skip the file. Emit the sandbox-block diagnostic per
-[`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md)
+[`04-delivery.md`](../../docs/04-delivery.md)
 § "When a `.claude/skills/**` write is blocked": name the exact path, the
 scoped `sandbox.filesystem.allowWrite` (or remove-`deny`) remedy, the
 literal failed command, and the retry (`/skill-engine:engine-bootstrap`).
@@ -457,7 +457,7 @@ the other. The final `mv` is atomic on a single filesystem, so the
 canonical `<source_id>-<sha>/` directory either exists complete or does
 not exist at all — DISCOVER's pre-flight checks for `.git/` inside the
 directory before treating it as a warm cache (see
-[`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md)).
+[`08-discover-pipeline.md`](../../docs/08-discover-pipeline.md)).
 
 Substitute `<url>` and `<source_id>` from the source entry. On success,
 emit one line naming the resulting path:
@@ -655,10 +655,10 @@ separate "warm-up" step required.
 
 The full scaffolder contract — what each stamped file means, how it evolves,
 how a contextualizer transitions across major plugin revisions — is
-documented in [`10-version-evolution.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/10-version-evolution.md). The artifact contract every
-stamped file must satisfy is in [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md). The DISCOVER
+documented in [`10-version-evolution.md`](../../docs/10-version-evolution.md). The artifact contract every
+stamped file must satisfy is in [`02-artifact-contract.md`](../../docs/02-artifact-contract.md). The DISCOVER
 posture (goal-given delegation) is documented in
-[`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md).
+[`08-discover-pipeline.md`](../../docs/08-discover-pipeline.md).
 
 ## Source materialization (optional local cache)
 
@@ -703,7 +703,7 @@ the cache explicitly via `/skill-engine:clean-cache`.
   `git clone` in Step 3.5, and it writes solely to
   `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`. Lifecycle probes and
   content crawls belong to DISCOVER and REFRESH (see
-  [`08-discover-pipeline.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/08-discover-pipeline.md)).
+  [`08-discover-pipeline.md`](../../docs/08-discover-pipeline.md)).
 - It does not propose additional sources or expand source coverage —
   those belong to DISCOVER.
 - It does not validate the existence or reachability of supplied sources at
@@ -717,5 +717,5 @@ the cache explicitly via `/skill-engine:clean-cache`.
   in batch.
 - It does not produce `kind: "external-doc"` entries. external-doc
   sources are pre-curated local markdown addressed by a contextualizer-
-  internal `path` (see [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md#kind-external-doc)); they arrive in `source-paths.json`
+  internal `path` (see [`02-artifact-contract.md`](../../docs/02-artifact-contract.md#kind-external-doc)); they arrive in `source-paths.json`
   via DISCOVER or hand-edit, not via URL intake.

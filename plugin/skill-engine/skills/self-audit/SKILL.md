@@ -82,9 +82,9 @@ every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 ## Doctrine surface
 
 The complete SELF-AUDIT protocol — what the eight drift checks do, what they
-emit, how the reviewer acts on findings — lives in chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
+emit, how the reviewer acts on findings — lives in chapter [`03-engine.md`](../../docs/03-engine.md)
 under `## SELF-AUDIT (drift audit)` and the `## Workflow: SELF-AUDIT` section
-of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
+of [`maintenance-agent.md.template`](../../engine-bootstrap-templates/maintenance-agent.md.template).
 
 ## Cadence
 
@@ -107,7 +107,7 @@ does not modify `research/.research-state.json`.
 Every audit run records an entry per check — no silent skips. `N/A` entries
 include the one-line reason the check did not apply (e.g., "all references
 mtime today; no comparison window yet" or "no source URLs in scope"). The
-output table format is documented in [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) under SELF-AUDIT
+output table format is documented in [`03-engine.md`](../../docs/03-engine.md) under SELF-AUDIT
 "Output format."
 
 SELF-AUDIT scope is framing drift, not invariant compliance.
@@ -414,7 +414,7 @@ The three auto-fixable checks have a single correct mutation:
   paragraph under the H1, or the bullets under a `## When to Use This
   Reference` section if one is present. References carry no frontmatter,
   so the body-section heuristic is the canonical statement (see
-  [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) §SELF-AUDIT check 4). If neither
+  [`03-engine.md`](../../docs/03-engine.md) §SELF-AUDIT check 4). If neither
   yields a usable one-line statement, demote the finding to
   judgment-required rather than inventing content.
 - **Check 6 (review-state staleness):** rewrite
@@ -433,7 +433,7 @@ Apply auto-fixable findings now?
 ```
 
 Empty input is `n`. On `y` or `select`, follow the REFRESH propose →
-validate → approve gate documented in [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) §"Optional fix flow":
+validate → approve gate documented in [`03-engine.md`](../../docs/03-engine.md) §"Optional fix flow":
 
 1. Draft the edits on the sandbox copy at `/tmp/skill-engine-validate-<session-id>/`.
 2. Run `bash verify.sh` from the sandbox copy — every check must pass

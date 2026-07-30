@@ -32,7 +32,7 @@ recorded only when the contextualizer follows a non-default branch
 for a branch at registration time — the maintainer can supply
 `"branch": "<name>"` in the proposed entry directly during the
 approval gesture, or edit `source-paths.json` after approval. Field
-schema and regex enforcement: [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §"source-paths.json entry shape".
+schema and regex enforcement: [`02-artifact-contract.md`](../../docs/02-artifact-contract.md) §"source-paths.json entry shape".
 
 For `web-doc` sources, citations pin three values: `source_url` (from the
 fetched URL), `content_hash` (`sha256(file)[:8]`), and `crawl_date` (ISO-8601
@@ -129,13 +129,13 @@ cleanly, so this run never layers onto a stale proposed tree.
 ## Doctrine surface
 
 The complete NEW protocol — resource registration, initial crawl, reference
-authoring, catalog update, validation — lives in chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) under
+authoring, catalog update, validation — lives in chapter [`03-engine.md`](../../docs/03-engine.md) under
 `## Workflow patterns (how each menu item runs)` and the `## Workflow: NEW`
-section of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
+section of [`maintenance-agent.md.template`](../../engine-bootstrap-templates/maintenance-agent.md.template).
 
 The artifact contract a new reference must satisfy (frontmatter, filename
 conventions, catalog bijection; the byte-equality fixture is pre-fixture-harness
-aspirational) is documented in [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md).
+aspirational) is documented in [`02-artifact-contract.md`](../../docs/02-artifact-contract.md).
 
 ## Cadence
 
@@ -144,7 +144,7 @@ Ad-hoc, whenever the domain grows a new topic the catalog does not yet cover.
 ## Invariants
 
 Pre-stage validation runs before the proposal is finalized: catalog
-bijection, no-frontmatter, `verify.sh`. See chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
+bijection, no-frontmatter, `verify.sh`. See chapter [`03-engine.md`](../../docs/03-engine.md)
 `## Pre-approval validation (the load-bearing contract)`. (Byte-equality
 fixture refresh and the full test-suite harness are pre-fixture-harness aspirational —
 the pre-fixture-harness three-check gate ends with `verify.sh`.)
