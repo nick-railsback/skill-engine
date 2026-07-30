@@ -963,6 +963,148 @@ if ! grep -qiE 'read[^a-z]{1,15}glob[^a-z]{1,15}grep' "$refresh_skill_md" 2>/dev
   fail=1
 fi
 
+# 30. self-audit has a references/ directory carrying at least one tracked
+# Markdown file, and self-audit/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+self_audit_dir="$PLUGIN_ROOT/skills/self-audit"
+self_audit_skill_md="$self_audit_dir/SKILL.md"
+self_audit_refs_dir="$self_audit_dir/references"
+if [ ! -d "$self_audit_refs_dir" ]; then
+  echo "FAIL: skills/self-audit/references/ does not exist."
+  fail=1
+else
+  self_audit_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/self-audit/references/' | grep -E '\.md$')
+  if [ -z "$self_audit_refs_tracked_md" ]; then
+    echo "FAIL: skills/self-audit/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$self_audit_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$self_audit_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/self-audit/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 31. apply has a references/ directory carrying at least one tracked
+# Markdown file, and apply/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+apply_dir="$PLUGIN_ROOT/skills/apply"
+apply_skill_md="$apply_dir/SKILL.md"
+apply_refs_dir="$apply_dir/references"
+if [ ! -d "$apply_refs_dir" ]; then
+  echo "FAIL: skills/apply/references/ does not exist."
+  fail=1
+else
+  apply_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/apply/references/' | grep -E '\.md$')
+  if [ -z "$apply_refs_tracked_md" ]; then
+    echo "FAIL: skills/apply/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$apply_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$apply_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/apply/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 32. self-audit/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+self_audit_skill_md="$PLUGIN_ROOT/skills/self-audit/SKILL.md"
+if [ ! -f "$self_audit_skill_md" ]; then
+  echo "FAIL: skills/self-audit/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  self_audit_skill_bytes=$(wc -c < "$self_audit_skill_md" | tr -d ' ')
+  if [ "$self_audit_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/self-audit/SKILL.md is $self_audit_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 33. apply/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+apply_skill_md="$PLUGIN_ROOT/skills/apply/SKILL.md"
+if [ ! -f "$apply_skill_md" ]; then
+  echo "FAIL: skills/apply/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  apply_skill_bytes=$(wc -c < "$apply_skill_md" | tr -d ' ')
+  if [ "$apply_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/apply/SKILL.md is $apply_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 34. Content trimmed out of self-audit/SKILL.md lands in tracked files, not
+# the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of self-audit/SKILL.md plus everything under self-audit/references/
+# must not fall below 90% of the file's pre-split size — a floor a real
+# relocation cannot breach but a real deletion can.
+self_audit_dir="$PLUGIN_ROOT/skills/self-audit"
+self_audit_skill_md="$self_audit_dir/SKILL.md"
+self_audit_refs_dir="$self_audit_dir/references"
+self_audit_combined_bytes=0
+if [ -f "$self_audit_skill_md" ]; then
+  self_audit_combined_bytes=$(wc -c < "$self_audit_skill_md" | tr -d ' ')
+fi
+if [ -d "$self_audit_refs_dir" ]; then
+  while IFS= read -r -d '' self_audit_ref_file; do
+    self_audit_ref_bytes=$(wc -c < "$self_audit_ref_file" | tr -d ' ')
+    self_audit_combined_bytes=$((self_audit_combined_bytes + self_audit_ref_bytes))
+  done < <(find "$self_audit_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$self_audit_combined_bytes" -lt 20290 ]; then
+  echo "FAIL: self-audit/SKILL.md + self-audit/references/ combined is $self_audit_combined_bytes bytes — below the 20,290-byte (90% of the pre-split 22,545) floor."
+  fail=1
+fi
+
+# 35. Content trimmed out of apply/SKILL.md lands in tracked files, not the
+# void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of apply/SKILL.md plus everything under apply/references/ must not
+# fall below 90% of the file's pre-split size — a floor a real relocation
+# cannot breach but a real deletion can.
+apply_dir="$PLUGIN_ROOT/skills/apply"
+apply_skill_md="$apply_dir/SKILL.md"
+apply_refs_dir="$apply_dir/references"
+apply_combined_bytes=0
+if [ -f "$apply_skill_md" ]; then
+  apply_combined_bytes=$(wc -c < "$apply_skill_md" | tr -d ' ')
+fi
+if [ -d "$apply_refs_dir" ]; then
+  while IFS= read -r -d '' apply_ref_file; do
+    apply_ref_bytes=$(wc -c < "$apply_ref_file" | tr -d ' ')
+    apply_combined_bytes=$((apply_combined_bytes + apply_ref_bytes))
+  done < <(find "$apply_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$apply_combined_bytes" -lt 15658 ]; then
+  echo "FAIL: apply/SKILL.md + apply/references/ combined is $apply_combined_bytes bytes — below the 15,658-byte (90% of the pre-split 17,398) floor."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
