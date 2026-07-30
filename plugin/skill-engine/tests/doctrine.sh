@@ -790,6 +790,179 @@ if ! grep -qiE 'read[^a-z]{1,15}glob[^a-z]{1,15}grep' "$discover_skill_md" 2>/de
   fail=1
 fi
 
+# 22. refresh has a references/ directory carrying at least one tracked
+# Markdown file, and refresh/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+refresh_dir="$PLUGIN_ROOT/skills/refresh"
+refresh_skill_md="$refresh_dir/SKILL.md"
+refresh_refs_dir="$refresh_dir/references"
+if [ ! -d "$refresh_refs_dir" ]; then
+  echo "FAIL: skills/refresh/references/ does not exist."
+  fail=1
+else
+  refresh_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/refresh/references/' | grep -E '\.md$')
+  if [ -z "$refresh_refs_tracked_md" ]; then
+    echo "FAIL: skills/refresh/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$refresh_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$refresh_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/refresh/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 23. engine-bootstrap has a references/ directory carrying at least one
+# tracked Markdown file, and engine-bootstrap/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+engine_bootstrap_dir="$PLUGIN_ROOT/skills/engine-bootstrap"
+engine_bootstrap_skill_md="$engine_bootstrap_dir/SKILL.md"
+engine_bootstrap_refs_dir="$engine_bootstrap_dir/references"
+if [ ! -d "$engine_bootstrap_refs_dir" ]; then
+  echo "FAIL: skills/engine-bootstrap/references/ does not exist."
+  fail=1
+else
+  engine_bootstrap_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/engine-bootstrap/references/' | grep -E '\.md$')
+  if [ -z "$engine_bootstrap_refs_tracked_md" ]; then
+    echo "FAIL: skills/engine-bootstrap/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$engine_bootstrap_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$engine_bootstrap_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/engine-bootstrap/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 24. refresh/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+refresh_skill_md="$PLUGIN_ROOT/skills/refresh/SKILL.md"
+if [ ! -f "$refresh_skill_md" ]; then
+  echo "FAIL: skills/refresh/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  refresh_skill_bytes=$(wc -c < "$refresh_skill_md" | tr -d ' ')
+  if [ "$refresh_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/refresh/SKILL.md is $refresh_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 25. engine-bootstrap/SKILL.md's own file size sits at or under the
+# router-sized ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+engine_bootstrap_skill_md="$PLUGIN_ROOT/skills/engine-bootstrap/SKILL.md"
+if [ ! -f "$engine_bootstrap_skill_md" ]; then
+  echo "FAIL: skills/engine-bootstrap/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  engine_bootstrap_skill_bytes=$(wc -c < "$engine_bootstrap_skill_md" | tr -d ' ')
+  if [ "$engine_bootstrap_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/engine-bootstrap/SKILL.md is $engine_bootstrap_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 26. Content trimmed out of refresh/SKILL.md lands in tracked files, not
+# the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of refresh/SKILL.md plus everything under refresh/references/
+# must not fall below 90% of the file's pre-split size — a floor a real
+# relocation cannot breach but a real deletion can.
+refresh_dir="$PLUGIN_ROOT/skills/refresh"
+refresh_skill_md="$refresh_dir/SKILL.md"
+refresh_refs_dir="$refresh_dir/references"
+refresh_combined_bytes=0
+if [ -f "$refresh_skill_md" ]; then
+  refresh_combined_bytes=$(wc -c < "$refresh_skill_md" | tr -d ' ')
+fi
+if [ -d "$refresh_refs_dir" ]; then
+  while IFS= read -r -d '' refresh_ref_file; do
+    refresh_ref_bytes=$(wc -c < "$refresh_ref_file" | tr -d ' ')
+    refresh_combined_bytes=$((refresh_combined_bytes + refresh_ref_bytes))
+  done < <(find "$refresh_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$refresh_combined_bytes" -lt 23381 ]; then
+  echo "FAIL: refresh/SKILL.md + refresh/references/ combined is $refresh_combined_bytes bytes — below the 23,381-byte (90% of the pre-split 25,979) floor."
+  fail=1
+fi
+
+# 27. Content trimmed out of engine-bootstrap/SKILL.md lands in tracked
+# files, not the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of engine-bootstrap/SKILL.md plus everything under
+# engine-bootstrap/references/ must not fall below 90% of the file's
+# pre-split size — a floor a real relocation cannot breach but a real
+# deletion can.
+engine_bootstrap_dir="$PLUGIN_ROOT/skills/engine-bootstrap"
+engine_bootstrap_skill_md="$engine_bootstrap_dir/SKILL.md"
+engine_bootstrap_refs_dir="$engine_bootstrap_dir/references"
+engine_bootstrap_combined_bytes=0
+if [ -f "$engine_bootstrap_skill_md" ]; then
+  engine_bootstrap_combined_bytes=$(wc -c < "$engine_bootstrap_skill_md" | tr -d ' ')
+fi
+if [ -d "$engine_bootstrap_refs_dir" ]; then
+  while IFS= read -r -d '' engine_bootstrap_ref_file; do
+    engine_bootstrap_ref_bytes=$(wc -c < "$engine_bootstrap_ref_file" | tr -d ' ')
+    engine_bootstrap_combined_bytes=$((engine_bootstrap_combined_bytes + engine_bootstrap_ref_bytes))
+  done < <(find "$engine_bootstrap_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$engine_bootstrap_combined_bytes" -lt 28581 ]; then
+  echo "FAIL: engine-bootstrap/SKILL.md + engine-bootstrap/references/ combined is $engine_bootstrap_combined_bytes bytes — below the 28,581-byte (90% of the pre-split 31,757) floor."
+  fail=1
+fi
+
+# 28. refresh's Doctrine surface section links the engine chapter that
+# documents subagent-dispatch doctrine.
+# Doctrine: a skill's Doctrine surface section is the map from the skill to
+# the fuller chapters that govern it. A chapter the skill's own behavior
+# depends on but the surface omits is a doctrine pointer that should exist
+# and does not — refresh dispatches subagents under concurrency and
+# tool-isolation rules documented in 03-engine.md, so its Doctrine surface
+# must link that chapter.
+refresh_skill_md="$PLUGIN_ROOT/skills/refresh/SKILL.md"
+refresh_surface_section=$(awk '/^## Doctrine surface/{f=1;next} /^## /{f=0} f' "$refresh_skill_md" 2>/dev/null)
+if ! printf '%s' "$refresh_surface_section" | grep -qF '03-engine.md'; then
+  echo "FAIL: skills/refresh/SKILL.md's Doctrine surface section does not link 03-engine.md."
+  fail=1
+fi
+
+# 29. refresh/SKILL.md's own body states the tool-isolation rule for any
+# subagent it dispatches.
+# Doctrine: exploration work a refresh subagent performs is read-only —
+# Read, Glob, and Grep only, no write and no shell access — and that rule
+# must be stated in the file the model actually reads before deciding
+# whether to dispatch, not left to live only in a doctrine chapter the
+# model may or may not have loaded alongside it.
+refresh_skill_md="$PLUGIN_ROOT/skills/refresh/SKILL.md"
+if ! grep -qiE 'read[^a-z]{1,15}glob[^a-z]{1,15}grep' "$refresh_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+write' "$refresh_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+shell' "$refresh_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/refresh/SKILL.md does not state the Read/Glob/Grep-only, no-write/no-shell subagent isolation rule in its own body."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
