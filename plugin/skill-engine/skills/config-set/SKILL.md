@@ -1,6 +1,6 @@
 ---
 name: config-set
-description: Set an engine-wide config value (currently the `review` diff tool).
+description: Use when changing an engine-wide config value — currently `diff.tool`, the command `/skill-engine:review` prints for inspecting a proposed-vs-live diff.
 ---
 
 # Config set

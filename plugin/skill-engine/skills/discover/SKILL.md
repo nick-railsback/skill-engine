@@ -1,6 +1,6 @@
 ---
 name: discover
-description: Propose new reference files for registered sources.
+description: Use when a contextualizer's reference coverage needs to grow against its registered sources — a fresh contextualizer's first pass, quarterly upkeep, or whenever the catalog is lagging what users are asking — to propose new reference files.
 ---
 
 # Discover

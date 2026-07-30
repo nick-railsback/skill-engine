@@ -1,6 +1,6 @@
 ---
 name: clean-cache
-description: Delete the skill-engine clone cache (`~/.cache/skill-engine/`), with a dry-run preview first.
+description: Use when the local `~/.cache/skill-engine/` clone cache should be cleared — to free disk, drop stale git-managed clones or web-doc snapshots, or force a clean re-fetch on the next DISCOVER/REFRESH. Always dry-runs first.
 ---
 
 # Clean cache

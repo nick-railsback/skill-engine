@@ -1,6 +1,6 @@
 ---
 name: new-reference
-description: Register one new reference in an existing contextualizer without a full discover pass.
+description: Use when a single topic is already identified and a full DISCOVER pass would be overkill, to register one new reference in an existing contextualizer.
 ---
 
 # New reference

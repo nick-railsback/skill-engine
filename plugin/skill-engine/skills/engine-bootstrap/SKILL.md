@@ -1,6 +1,6 @@
 ---
 name: engine-bootstrap
-description: Scaffold a new contextualizer from one or more source URLs or local paths.
+description: Use when no contextualizer exists yet for a set of source URLs or local paths and one needs to be scaffolded from scratch.
 ---
 
 # Engine bootstrap

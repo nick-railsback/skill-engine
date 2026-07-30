@@ -1,6 +1,6 @@
 ---
 name: self-audit
-description: Audit a contextualizer for drift (read-only).
+description: Use when checking an existing contextualizer for drift — stale dates, broken URLs, catalog/content disagreement, and more — every two to four weeks; read-only unless the user opts into fixing the deterministic checks.
 ---
 
 # Self-audit

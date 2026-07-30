@@ -1,6 +1,6 @@
 ---
 name: apply
-description: Promote a reviewed proposal into the live contextualizer.
+description: Use when a staged proposal has been reviewed and signed off — REVIEW.md Step 3 ticked reviewed or provisional — and is ready to promote into the live contextualizer.
 ---
 
 # Apply

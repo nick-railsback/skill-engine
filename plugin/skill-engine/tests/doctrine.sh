@@ -648,6 +648,44 @@ if [ -n "$relative_link_violations" ]; then
   fail=1
 fi
 
+# 16. Every shipped skill's description names a trigger condition, not a
+# bare label.
+# Doctrine: a SKILL.md `description:` frontmatter value states WHEN to invoke
+# the skill, not WHAT the skill is. A label-only description ("Delete the
+# cache." / "Register a reference.") gives the routing matcher nothing to
+# compare a query against, so the skill either fires too often or never; a
+# trigger-condition description ("Use when...") is what the matcher actually
+# needs. This is a syntactic floor, not a semantic verifier of trigger-
+# condition quality — a description can contain the word and still be a weak
+# trigger, which is a review-time judgment call, not a mechanical one; the
+# same boundary check 15 draws between a pointer resolving and a pointer
+# being the *right* one.
+# Scope: tracked SKILL.md files under skills/** only, same convention as
+# checks 14/15. Match shape: the `description:` frontmatter line's value must
+# contain a case-insensitive "when" — the word every existing WHEN-form
+# description in this repo already carries.
+description_when_violations=""
+while IFS= read -r -d '' f; do
+  [ -n "$f" ] || continue
+  desc_line=$(awk '
+    BEGIN { infm=0 }
+    /^---[[:space:]]*$/ { infm++; if (infm == 2) exit; next }
+    infm == 1 && /^description:/ { print; exit }
+  ' "$REPO_ROOT/$f")
+  if [ -z "$desc_line" ]; then
+    description_when_violations="${description_when_violations}${f}: no description: frontmatter field found
+"
+  elif ! printf '%s' "$desc_line" | grep -qiE 'when'; then
+    description_when_violations="${description_when_violations}${f}: ${desc_line}
+"
+  fi
+done < <(cd "$REPO_ROOT" && git ls-files -z -- 'plugin/skill-engine/skills/**/SKILL.md')
+if [ -n "$description_when_violations" ]; then
+  echo "FAIL: SKILL.md description: frontmatter names what the skill is, not when to invoke it (no case-insensitive 'when' found)."
+  printf '%s' "$description_when_violations" | sed '/^$/d;s/^/  /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi

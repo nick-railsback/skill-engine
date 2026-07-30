@@ -1,6 +1,6 @@
 ---
 name: status
-description: List a contextualizer's reference freshness and any pending review work.
+description: Use when picking up a contextualizer after a gap, or checking reference freshness and pending review work at a glance — read-only, safe to run anytime.
 ---
 
 # Status

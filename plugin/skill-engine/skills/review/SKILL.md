@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review a staged proposal and sign off before applying it.
+description: Use when DISCOVER or REFRESH has surfaced a proposal staged at <name>-context.proposed/, to inspect it and record sign-off before applying it.
 ---
 
 # Review

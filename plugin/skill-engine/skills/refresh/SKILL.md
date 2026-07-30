@@ -1,6 +1,6 @@
 ---
 name: refresh
-description: Refresh a contextualizer's references against current upstream state.
+description: Use when an existing contextualizer's references may have drifted from current upstream state — typically weekly, or whenever a few days of upstream changes have accumulated — to bring them back into agreement.
 ---
 
 # Refresh
