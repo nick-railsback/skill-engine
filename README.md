@@ -166,6 +166,7 @@ graph LR
 - **SHA-pinning** — every snapshot records the commit it was reviewed against.
 - **Drift surfacing** — stale snapshots fail loudly, not silently.
 - **Hooks audit** — `make hooks-audit` ([workflow](https://github.com/nick-railsback/skill-engine/actions/workflows/hooks-audit.yml)) asserts the bundled settings ship zero hooks and the plugin declares only the single `SessionStart` bootstrap; any hook creep fails the check, not a reviewer's memory.
+- **Local check** — `make ci-local` runs every suite CI runs (shellcheck, json, doctrine, tests, examples) against the working tree, with no network and no model calls. The hooks audit above is one of them; this is the whole target, and it's what to run before proposing a change.
 
 > **Quote the line, or name its absence.**
 

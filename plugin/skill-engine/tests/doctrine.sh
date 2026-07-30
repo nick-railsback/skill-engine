@@ -531,6 +531,39 @@ if [ -n "$chunk_doc_refs" ]; then
   fail=1
 fi
 
+# 13. The always-loaded standing rules exist and name real targets.
+# Doctrine: CLAUDE.md is the one file a session loads before doing anything, so
+# what it says is instruction delivered ahead of any check that could correct
+# it. Two ways that goes wrong on an ordinary edit, neither of which anything
+# else in this repo would notice: the file goes missing, and the standing rules
+# have no always-loaded home; or a Makefile target is renamed underneath a rule
+# that names it, and the instruction sends every session to a target that does
+# not exist. Absence is a failure rather than a skip -- a check that goes quiet
+# exactly when its subject is deleted is the vacuous green this suite exists to
+# refuse. Anchored on the backticked `make <target>` form so ordinary prose
+# ("make sure") is not swept in.
+#
+# Tracked-ness is deliberately NOT asserted here, though it is what the rule
+# ultimately needs. This target runs before a commit -- that is its whole
+# purpose -- so requiring the file to be tracked would fail every run between
+# writing it and committing it, which is exactly when the maintainer runs this.
+# CI checks out tracked files only, so there the existence branch below already
+# means tracked; that is where the guarantee has to hold, and it does.
+claude_md="$REPO_ROOT/CLAUDE.md"
+if [ ! -f "$claude_md" ]; then
+  echo "FAIL: CLAUDE.md is absent — the repo's standing rules have no always-loaded home."
+  fail=1
+else
+  while IFS= read -r mk_target; do
+    [ -n "$mk_target" ] || continue
+    if ! grep -qE "^${mk_target}:" "$REPO_ROOT/Makefile" 2>/dev/null; then
+      echo "FAIL: CLAUDE.md names 'make $mk_target', which is not a target in Makefile — the always-loaded rules are stale."
+      fail=1
+    fi
+  done < <(grep -oE '`make [a-zA-Z0-9_.-]+`' "$claude_md" 2>/dev/null \
+    | tr -d '`' | awk '{ print $2 }' | sort -u)
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
