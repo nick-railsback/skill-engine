@@ -689,6 +689,107 @@ if [ -n "$description_when_violations" ]; then
   fail=1
 fi
 
+# 17. discover has a references/ directory carrying at least one tracked
+# Markdown file, and discover/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+discover_dir="$PLUGIN_ROOT/skills/discover"
+discover_skill_md="$discover_dir/SKILL.md"
+discover_refs_dir="$discover_dir/references"
+if [ ! -d "$discover_refs_dir" ]; then
+  echo "FAIL: skills/discover/references/ does not exist."
+  fail=1
+else
+  discover_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/discover/references/' | grep -E '\.md$')
+  if [ -z "$discover_refs_tracked_md" ]; then
+    echo "FAIL: skills/discover/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$discover_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$discover_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/discover/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 18. discover/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+discover_skill_md="$PLUGIN_ROOT/skills/discover/SKILL.md"
+if [ ! -f "$discover_skill_md" ]; then
+  echo "FAIL: skills/discover/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  discover_skill_bytes=$(wc -c < "$discover_skill_md" | tr -d ' ')
+  if [ "$discover_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/discover/SKILL.md is $discover_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 19. Content trimmed out of discover/SKILL.md lands in tracked files, not
+# the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of discover/SKILL.md plus everything under discover/references/
+# must not fall below 90% of the file's pre-split size — a floor a real
+# relocation cannot breach but a real deletion can.
+discover_dir="$PLUGIN_ROOT/skills/discover"
+discover_skill_md="$discover_dir/SKILL.md"
+discover_refs_dir="$discover_dir/references"
+discover_combined_bytes=0
+if [ -f "$discover_skill_md" ]; then
+  discover_combined_bytes=$(wc -c < "$discover_skill_md" | tr -d ' ')
+fi
+if [ -d "$discover_refs_dir" ]; then
+  while IFS= read -r -d '' discover_ref_file; do
+    discover_ref_bytes=$(wc -c < "$discover_ref_file" | tr -d ' ')
+    discover_combined_bytes=$((discover_combined_bytes + discover_ref_bytes))
+  done < <(find "$discover_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$discover_combined_bytes" -lt 31743 ]; then
+  echo "FAIL: discover/SKILL.md + discover/references/ combined is $discover_combined_bytes bytes — below the 31,743-byte (90% of the pre-split 35,270) floor."
+  fail=1
+fi
+
+# 20. discover's Doctrine surface section links the engine chapter that
+# documents subagent-dispatch doctrine.
+# Doctrine: a skill's Doctrine surface section is the map from the skill to
+# the fuller chapters that govern it. A chapter the skill's own behavior
+# depends on but the surface omits is a doctrine pointer that should exist
+# and does not — discover dispatches subagents under concurrency and
+# tool-isolation rules documented in 03-engine.md, so its Doctrine surface
+# must link that chapter.
+discover_skill_md="$PLUGIN_ROOT/skills/discover/SKILL.md"
+discover_surface_section=$(awk '/^## Doctrine surface/{f=1;next} /^## /{f=0} f' "$discover_skill_md" 2>/dev/null)
+if ! printf '%s' "$discover_surface_section" | grep -qF '03-engine.md'; then
+  echo "FAIL: skills/discover/SKILL.md's Doctrine surface section does not link 03-engine.md."
+  fail=1
+fi
+
+# 21. discover/SKILL.md's own body states the tool-isolation rule for any
+# subagent it dispatches.
+# Doctrine: exploration work a discover subagent performs is read-only —
+# Read, Glob, and Grep only, no write and no shell access — and that rule
+# must be stated in the file the model actually reads before deciding
+# whether to dispatch, not left to live only in a doctrine chapter the
+# model may or may not have loaded alongside it.
+discover_skill_md="$PLUGIN_ROOT/skills/discover/SKILL.md"
+if ! grep -qiE 'read[^a-z]{1,15}glob[^a-z]{1,15}grep' "$discover_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+write' "$discover_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+shell' "$discover_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/discover/SKILL.md does not state the Read/Glob/Grep-only, no-write/no-shell subagent isolation rule in its own body."
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."
 fi
