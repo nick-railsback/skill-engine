@@ -62,13 +62,11 @@ Two things, both load-bearing:
 2. **A post-run summary** for the author (see "Post-run summary" below).
 
 `verify.sh` — plus the permalink-density lint and the reviewer — is the
-trust mechanism. Of the four invariants above, `verify.sh` mechanically
-checks depth-1 (inside its `catalog-bijection` check) and the lint checks
-SHA-pinning; first-5K and the TOC are reviewer-backstopped. Variance below
-the invariant floor is acceptable and expected — two sessions on the same
-corpus may produce different reference counts, different topical partitions,
-different prose styles. The invariants plus the named checks are what
-bind quality.
+trust mechanism: it mechanically checks depth-1 (`catalog-bijection`)
+and the lint checks SHA-pinning; first-5K and the TOC are
+reviewer-backstopped. Variance below the floor is expected — sessions
+on the same corpus may differ in reference count, partition, and
+prose style.
 
 ## Pre-flight
 
@@ -93,6 +91,9 @@ read at your discretion, ignore as you see fit):
 - `data/popular-names.json` — top-N most-popular bare names per
   ecosystem; useful when deciding whether a dependency is commodity
   vs. worth a reference.
+- `research/.discover-inventory.json` — pre-flight file inventory,
+  largest files, and doc roots per source; a starting frame for
+  corpus shape, read at your discretion.
 
 The engine does not require you to use them and does not require any
 particular procedural shape. It requires that the references you emit

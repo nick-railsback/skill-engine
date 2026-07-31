@@ -195,6 +195,63 @@ When `/skill-engine:discover` is invoked:
    subdirectory, with a valid `.git/` inside for git-managed) skips the
    prompt entirely.
 
+7. **Pre-flight inventory (per in-scope `git-managed` source).** Before
+   `§ Discovering essence` begins, compute each source's corpus-shape
+   inventory — a deterministic, non-model step, run unconditionally
+   regardless of whether step 6 above offered a clone or the user
+   accepted it:
+
+   - **If a cache directory is available** (matched in step 6 this run,
+     or already present from a prior run):
+
+     ```bash
+     python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" \
+       ${last_checked_sha:+--last-checked-sha "$last_checked_sha"}
+     ```
+
+     omitting `--last-checked-sha` entirely when the source entry's
+     `lifecycle.last_checked_sha` is null.
+
+   - **Else** (no cache — declined or never offered), fetch a tree
+     listing and, when a prior SHA is known, a compare summary, and
+     hand both to the script instead of a local directory:
+
+     ```bash
+     gh api "repos/<owner>/<repo>/git/trees/<ref>?recursive=1" \
+       --jq '[.tree[] | {path, bytes: (.size // 0), type: (if .type == "tree" then "tree" else "blob" end)}]' \
+       > "$tree_tmpfile"
+     if [ -n "$last_checked_sha" ]; then
+       gh api "repos/<owner>/<repo>/compare/$last_checked_sha...<ref>" \
+         --jq '{from_sha: "'"$last_checked_sha"'", to_sha: "<ref-sha>", files: [.files[] | {path: .filename, changes: (.additions + .deletions)}]}' \
+         > "$compare_tmpfile"
+     fi
+     python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" --tree-json "$tree_tmpfile" \
+       ${compare_tmpfile:+--since-json "$compare_tmpfile"}
+     ```
+
+     **On any `gh api` failure** (non-GitHub remote, `gh` not
+     authenticated, network error): emit one stderr notice naming the
+     source —
+
+     ```
+     skill-engine: pre-flight inventory unavailable for <source_id> — no cache and no gh API result
+     ```
+
+     — and skip that source's entry in the merged output entirely. Do
+     not abort the run.
+
+   Merge every source's JSON object into one file keyed by `source_id`
+   and write it to `research/.discover-inventory.json`, fully
+   overwriting any prior run's copy — re-derived every run, never
+   merged with an earlier one, so a source whose tree changed since the
+   last run never reads a stale inventory. This file is gitignored runtime state, the same status `research/.discover-cache.json`
+   already has above — not a reference artifact, and not subject to any
+   `verify.sh` check or the four reference invariants.
+
+   This step never prompts the user and never writes to
+   `~/.cache/skill-engine/...` itself; it only reads step 6's cache
+   directory when one exists.
+
 ## Tool preference for git-managed sources
 
 For each in-scope source, you decide how to read its content. Prefer
