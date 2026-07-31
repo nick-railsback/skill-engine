@@ -400,6 +400,21 @@ extract_named_section() {
   ' "$file"
 }
 
+# extract_named_subsection <heading-text> <until-regex> <file> — the named
+# "## " heading through (not including) the next "## " heading or the first
+# line matching until-regex, whichever comes first, or end of file. Used to
+# pin a prefix of a section that is shared unchanged across chunks, distinct
+# from a suffix that a later chunk is expected to keep evolving.
+extract_named_subsection() {
+  local want="$1" until_re="$2" file="$3"
+  awk -v want="$want" -v until_re="$until_re" '
+    $0 ~ ("^## " want) { f = 1; print; next }
+    f && /^## / { exit }
+    f && $0 ~ until_re { exit }
+    f { print }
+  ' "$file"
+}
+
 # extract_probe_section <file> — the first "## "-level heading whose text
 # mentions "probe", through the next "## " heading or end of file. Located
 # by content, not by a name this suite would otherwise have to guess and
@@ -418,16 +433,25 @@ extract_probe_section() {
 echo
 echo "── SKILL.md: default (non-flag) behavior and existing sections are untouched ──"
 
-# The two existing bash-block sections (cache listing, pending-proposal
-# review state) are unrelated to upstream drift and are not this addition's
-# job to touch — verified against a hash of their current content rather
-# than a literal copy pasted into this file, so a future editorial pass on
-# this test file can't silently drift from the real baseline.
-cache_surface_hash="$(extract_named_section "Cache surface" "$STATUS_SKILL" | sha256_of_stdin)"
-if [ "$cache_surface_hash" = "90e12c756e284a1367903a43567d3c94ca21f3524dab2bf694334f2900063c5d" ]; then
-  pass "SKILL.md: the existing Cache surface section is untouched"
+# The pre-existing cache-root bash block/prose (Cache surface, up to but
+# excluding "### Cache listing") and the Pending proposals section are
+# unrelated to upstream drift and are not this addition's job to touch —
+# verified against a hash of their current content rather than a literal
+# copy pasted into this file, so a future editorial pass on this test file
+# can't silently drift from the real baseline. The Cache surface pin stops
+# at "### Cache listing" rather than covering the whole section: that
+# subsection's web-doc table is documented (status/SKILL.md itself) as a
+# placeholder pending real decay-visibility wiring, and chunk 17
+# (status-decay-visibility) legitimately fills it in — pinning the whole
+# section would block work this guard was never meant to cover. Narrowed
+# 2026-07-31 after chunk 17's implementation collided with the original,
+# whole-section hash; chunk 16 never touched "### Cache listing" itself, so
+# nothing this guard originally verified is weakened.
+cache_surface_hash="$(extract_named_subsection "Cache surface" "^### Cache listing" "$STATUS_SKILL" | sha256_of_stdin)"
+if [ "$cache_surface_hash" = "116f95b1051606e6123c69d4221a647ef4d447af3204ad300243f755d5c2a8d2" ]; then
+  pass "SKILL.md: the existing Cache surface preamble (before Cache listing) is untouched"
 else
-  fail "SKILL.md: the existing Cache surface section is untouched" \
+  fail "SKILL.md: the existing Cache surface preamble (before Cache listing) is untouched" \
     "sha256: $cache_surface_hash"
 fi
 

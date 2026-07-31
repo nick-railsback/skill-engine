@@ -142,7 +142,21 @@ them as a hint in the Cache section, but do not delete.
 `~/.cache/skill-engine/web-doc/`:
 | source_id | crawl_id | page_count | crawl_date | decay_remaining |
 |---|---|---|---|---|
-| ... | ... | ... | ... | ... |
+
+```bash
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/skill-engine"
+decay_json=$(python3 "$CLAUDE_PLUGIN_ROOT/tests/decay_check.py" research/source-paths.json "$cache_root" 2>/dev/null)
+row_count=$(printf '%s' "$decay_json" | jq 'length' 2>/dev/null); row_count=${row_count:-0}
+if [ "$row_count" -eq 0 ]; then
+  printf '(No web-doc sources with a cached, decay-checkable snapshot yet.)\n'
+else
+  printf '%s' "$decay_json" | jq -r '
+    .[] | "| \(.source_id) | \(.crawl_id) | \(.page_count) | \(.crawl_date) | " +
+    (if .state == "non_expiring" then "no expiry"
+     elif .state == "past_budget" then "\(.days) days past decay budget"
+     else "\(.days) days remaining" end) + " |"'
+fi
+```
 
 Old flat-layout entries (if present — directories sitting directly at the
 cache root rather than under `git-managed/` or `web-doc/`):
