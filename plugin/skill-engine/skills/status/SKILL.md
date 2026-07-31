@@ -153,6 +153,39 @@ cache root rather than under `git-managed/` or `web-doc/`):
 (The old-layout listing exists until the user runs the REFRESH migration
 prompt or `clean-cache`.)
 
+## Provenance probe (`--probe`)
+
+`/skill-engine:status <name> --probe` is an opt-in check: without
+`--probe`, STATUS's behavior is exactly as documented above — it does
+not fetch upstream. With `--probe`, STATUS runs one upstream check per
+in-scope `git-managed` source in `research/source-paths.json` and
+reports whether the locally recorded SHA still matches upstream today,
+without waiting for a full REFRESH pass:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/tests/status_probe.py" research/source-paths.json
+```
+
+For each in-scope `git-managed` source (the same filter REFRESH's own
+pre-flight uses: `status` confirmed or proposed, not archived, upstream
+lifecycle state not removed), render one line from the script's JSON:
+
+- **current** — the live SHA matches the recorded `last_checked_sha`.
+- **mismatch** — the live SHA differs; show both the recorded SHA and
+  the live SHA so the user can see how far behind it is.
+- **never been probed** — `last_checked_sha` is null; this source has
+  no prior probe on record, reported distinctly rather than compared
+  against an absent value.
+- **error** — the probe itself failed (unreachable remote, no such branch); shown inline with the diagnostic. One source's error does not stop the remaining in-scope sources from being probed and reported.
+
+With zero in-scope `git-managed` sources, print `Nothing to probe.`
+rather than no output.
+
+`--probe` does not write `source-paths.json` — `lifecycle.last_checked_sha`
+and `lifecycle.last_checked` are unchanged by this command. It does not
+modify anything; it only reports. Persisting a probe result is REFRESH's
+job, not this one's.
+
 ## Invariants
 
 STATUS is read-only. It surfaces findings; it does not propose edits, does not
