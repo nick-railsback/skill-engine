@@ -43,6 +43,11 @@ set -uo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Navigator description: byte cap enforced by Check 3. Generous ceiling
+# meant to catch a pasted paragraph, not to constrain a well-written
+# WHEN-form trigger sentence.
+NAV_DESCRIPTION_MAX_BYTES=1024
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 CTX_ROOT="${CTX_ROOT:-$SCRIPT_DIR}"
 
@@ -439,8 +444,16 @@ else
   elif ! printf '%s\n' "$fm" | grep -qE '^description:[[:space:]]+'; then
     fail "$nav_rel frontmatter missing required key: description"
   else
-    pass "$nav_rel exists with valid frontmatter (name + description)"
-    nav_ok=1
+    desc_line=$(printf '%s\n' "$fm" | grep -E '^description:[[:space:]]+' | head -1)
+    desc_val="${desc_line#description:}"
+    desc_val="${desc_val#"${desc_val%%[![:space:]]*}"}"
+    desc_bytes=$(printf '%s' "$desc_val" | wc -c | tr -d ' ')
+    if [ "$desc_bytes" -gt "$NAV_DESCRIPTION_MAX_BYTES" ]; then
+      fail "$nav_rel description is $desc_bytes bytes, over the ${NAV_DESCRIPTION_MAX_BYTES}-byte cap"
+    else
+      pass "$nav_rel exists with valid frontmatter (name + description, ${desc_bytes}/${NAV_DESCRIPTION_MAX_BYTES} bytes)"
+      nav_ok=1
+    fi
   fi
 fi
 

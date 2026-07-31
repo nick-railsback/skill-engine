@@ -68,7 +68,7 @@ When `REVIEW.md` exists and the three Step-1 lines no longer contain the literal
    - **Content-style disagreements** rank next: prose voice, reference partition shape, depth-of-detail choices.
    - **Reference-count disagreements** rank lowest: number of references emitted, whether a borderline candidate became its own reference or got folded.
 
-3. **Write 5–9 disagreements** between the existing Step 2 section markers, leaving Steps 1 and 3 byte-for-byte unchanged. Each disagreement is one sentence with verdict checkboxes:
+3. **Write 5–9 disagreements** between the existing Step 2 section markers, leaving Steps 1 and 3 byte-for-byte unchanged. Immediately below the `## Step 2 — Disagreement set` heading and above the ranked bullet list, write one line stating the paragraph→permalink density this run computed against the proposed tree: run `python3 "$CLAUDE_PLUGIN_ROOT/tests/permalink_density.py" <install>/<name>-context.proposed/references` and parse its `[PASS]`/`[FAIL]` percentage, then write `Paragraph→permalink density: <pct>% (report-only; not one of the disagreements below).` This is independent of, and computed separately from, the disagreement set below — report-only, never itself a disagreement, and never counted toward the 5–9 slot budget. Then write the disagreements. Each disagreement is one sentence with verdict checkboxes:
 
    ```
    - [ ] accept  [ ] reject   <one-sentence disagreement>

@@ -58,9 +58,39 @@ tree is a sparse copy-on-write — it omits `unchanged` files — so running
 (Check 1/Check 3 on `source-paths.json` / `SKILL.md`) or N/A-skip the
 catalog↔references bijection (Check 4), gating on a partial tree instead of
 the real post-apply state. Instead, verify against an **ephemeral merged tree**
-that reflects exactly what `apply` would produce:
+that reflects exactly what `apply` would produce, preceded by a collision
+guard that aborts before the merge is even built (see below).
+
+Before building the merged tree, check for a **cross-root collision**: does
+the candidate `<name>-context` already exist under a *different* install
+root than the one this run targets? Reuses `shared/locator-block.md`'s own
+root-resolution block verbatim (extracted at run time) rather than
+restating its three-root list a second time here — see that file for the
+canonical roots and search order. The root this run is writing into is
+excluded, so an ordinary same-root update-in-place is never flagged.
 
 ```bash
+name="$(basename "$CTX_ROOT" | sed 's/-context$//')"
+target_root="$(dirname "$CTX_ROOT")"
+
+# Cross-root collision guard: pull just the `ctx_roots=$( ... )` resolution
+# block out of shared/locator-block.md (bounded by its own start/end
+# markers) and eval it with `name` already set above — this is the same
+# three-root find/glob that block runs, reused rather than duplicated, and
+# it runs before the merge below so a colliding run aborts without paying
+# for an unnecessary mktemp/cp/verify.sh pass.
+eval "$(awk '/^ctx_roots=\$\($/{f=1} f{print} f&&/^\)$/{exit}' "$CLAUDE_PLUGIN_ROOT/shared/locator-block.md")"
+collision=""
+while IFS= read -r hit; do
+  [ -n "$hit" ] || continue
+  [ "$(dirname "$hit")" = "$target_root" ] && continue
+  collision="$hit"
+done <<< "$ctx_roots"
+if [ -n "$collision" ]; then
+  echo "Aborting: ${name}-context already exists at $collision, a different install root than $target_root. Duplicate <name>-context navigators across install levels resolve non-deterministically — rename one or remove the other before proceeding." >&2
+  exit 1
+fi
+
 merged=$(mktemp -d)
 cp -R "$CTX_ROOT"/.      "$merged"/   # live baseline
 cp -R "$CTX_PROPOSED"/.  "$merged"/   # overlay this run's added/modified (incl. any verify.sh re-stamp)
@@ -68,6 +98,10 @@ cp -R "$CTX_PROPOSED"/.  "$merged"/   # overlay this run's added/modified (incl.
 #   for each entry with status == "removed": rm -f "$merged/<path>"
 rm -rf "$merged/.review"              # the audit trail is not part of the audited tree
 CTX_ROOT="$merged" "$merged/verify.sh"; rc=$?
+# Report-only density lint: computed here for the Coverage report below;
+# never gates. rc above (verify.sh's own exit) is the sole abort condition
+# for the staging write — density_out is not consulted for it.
+density_out=$(python3 "$CLAUDE_PLUGIN_ROOT/tests/permalink_density.py" "$merged/references" 2>&1) || true
 rm -rf "$merged"
 ```
 
@@ -75,7 +109,10 @@ Confirm `verify.sh` exits 0 against the merged tree, then write
 `$CTX_PROPOSED/.review/manifest.json` per the schema and stamping
 convention documented in § Staging directory. A non-zero `verify.sh`
 exit aborts the proposed-dir write with a diagnostic; the user never
-sees a `REVIEW.md` for a broken proposal. The merged tree is ephemeral —
+sees a `REVIEW.md` for a broken proposal. The density lint above runs in
+this same step, in report-only mode: its result is surfaced in the
+Coverage report below and never changes whether `verify.sh`'s exit aborts
+the write. The merged tree is ephemeral —
 `$CTX_PROPOSED/` stays sparse, so `apply`'s "`unchanged` is a no-op" model
 and its empty-proposed-tree cleanup (apply § Promotion Step 4) are
 unaffected.
@@ -91,7 +128,10 @@ five components (no multi-column tables, no interactive menus):
    of the Coverage report (e.g., `Cached source clones at
    ~/.cache/skill-engine/git-managed/<source_id>-<sha>/; run
    /skill-engine:status to inspect, /skill-engine:clean-cache to free
-   disk.`).
+   disk.`). State the paragraph→permalink density this run computed,
+   e.g. `Paragraph→permalink density: 84% (report-only; SELF-AUDIT Check
+   7's threshold is 80%).` Parse the percentage out of `$density_out`'s
+   `[PASS]`/`[FAIL]` line above.
 2. **Skip-reasoning.** For files and companion sources you
    considered but excluded: "I deliberately skipped Z because… I
    considered companions P, Q and excluded them because…" Empty-skip
