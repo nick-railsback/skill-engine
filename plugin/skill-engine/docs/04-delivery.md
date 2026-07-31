@@ -419,7 +419,7 @@ The per-verb shape looks like this — adapt to your repo's threat model and dro
 }
 ```
 
-The `Read(${CLAUDE_PLUGIN_DATA}/**)` entry is what lets the engine's `SessionStart` hook hydrate state from the plugin-managed location (see "Hooks-vs-permissions interaction" below); without it the hook would surface a permission diagnostic on every session start.
+The `Read(${CLAUDE_PLUGIN_DATA}/**)` entry is what lets surfaces like `/skill-engine:review` read the engine's plugin-data tree (e.g. its config file) without a per-invocation permission prompt.
 
 The `Edit(.claude/skills/**)` entry suppresses the per-write prompt for the engine's in-project skill writes only — the stamping, promotion, and staging steps that land files under `.claude/skills/`. `Edit` is the umbrella file-edit verb: it covers `Write` and `NotebookEdit` too, so no separate `Write(.claude/skills/**)` row is needed. Critically, this is **prompt-suppression only**. It does *not* punch through a user-level `deny` on `.claude/**`, and it does *not* override an OS-level sandbox restriction — an `allow` cannot widen either layer. A user who denies or sandboxes `.claude/**` and then hits a blocked write should see the engine's sandbox-block diagnostic (see "When a `.claude/skills/**` write is blocked" below), which routes them to the narrow fix rather than the prompt.
 
@@ -482,14 +482,12 @@ Claude Code supports event-driven hooks (`SessionStart`, `PreToolUse`, `PostTool
 
 **The scaffolder ships zero hooks.** When a user runs the bootstrap workflow to create a new contextualizer, the result is a navigator skill plus references plus the research agent template. There's no engine state to hydrate, no per-session context to inject — the navigator skill loads itself when invoked. Adding hooks here would be paperwork without payoff.
 
-**A future engine plugin will ship exactly one inline `SessionStart` hook.** When the engine ships as a Claude Code plugin in a later release, the plugin will need to hydrate engine state (the catalog of tracked sources, the per-source SHA cache) at session start. That hook will be **inline** — defined directly in `settings.json` rather than as a separate script — because [Issue #18610](https://github.com/anthropics/claude-code/issues/18610) reports script-based hooks are broken on native Windows. Inline hooks work on every platform tier; script hooks don't. One inline hook, no shell scripts, no portability worry.
+**The plugin itself ships zero hooks too.** An earlier release shipped one inline `SessionStart` hook that wrote a small bootstrap-state file to the plugin's data directory on session start. Nothing ever came to read it — `using-skill-engine` and the other workflow-routing skills decide by globbing `.claude/skills/*-context/` at invocation time instead — so the hook was removed (see `SECURITY.md`'s "Why we ship zero hooks"). If the engine ever earns a real reason for a hook, the inline form is still the right shape: defined directly in `plugin.json`'s `hooks` key rather than as a separate script, because [Issue #18610](https://github.com/anthropics/claude-code/issues/18610) reports script-based hooks are broken on native Windows. Inline hooks work on every platform tier; script hooks don't.
 
 **The non-choices.** A few hooks that look attractive at first glance are deliberately *not* used:
 
 - **`PreCompact`** — skipped because engine state is already file-based (`research/.research-state.json`, the per-source SHA cache, the catalog) per [06-release-doctrine.md](06-release-doctrine.md). The compaction event has nothing to add.
 - **`PostToolUse` for `verify.sh`** — skipped because `verify.sh` is a release-doctrine ritual, not a per-tool-call latency drag. It runs once at human-review time, not on every tool invocation.
-
-**Hooks-vs-permissions interaction.** When the engine plugin's `SessionStart` hook hydrates state from outside the project root (typically `${CLAUDE_PLUGIN_DATA}/state/current.json`), your `.claude/settings.json` will need to grant `Read(${CLAUDE_PLUGIN_DATA}/**)` so the hook can read it. That's a permission scoped beyond project root, and it's intentional — engine state belongs to the plugin, not the project.
 
 ## What this chapter does NOT cover
 

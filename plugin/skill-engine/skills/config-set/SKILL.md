@@ -23,7 +23,7 @@ The `<value>` is taken verbatim; quote it so shell-splitting does not eat embedd
 
 ## Resolution of the config file
 
-The config file lives at `$CLAUDE_PLUGIN_DATA/config.json`. This is the same plugin-data tree the existing `SessionStart` hook (declared in `plugin/skill-engine/.claude-plugin/plugin.json`) writes `state/current.json` to. The directory is created if absent.
+The config file lives at `$CLAUDE_PLUGIN_DATA/config.json`. The directory is created if absent.
 
 When `$CLAUDE_PLUGIN_DATA` is unset, surface:
 
@@ -31,7 +31,7 @@ When `$CLAUDE_PLUGIN_DATA` is unset, surface:
 $CLAUDE_PLUGIN_DATA is unset. The engine's plugin-data tree is not reachable from this shell. Run the skill from a Claude Code session where the plugin is installed, or set $CLAUDE_PLUGIN_DATA to the engine's plugin-data directory.
 ```
 
-Exit non-zero. Do not write a config file to a fallback location — the engine's other surfaces (the `SessionStart` hook, `/skill-engine:review`) all key off `$CLAUDE_PLUGIN_DATA`, and writing to a different path would create a config that the readers never find.
+Exit non-zero. Do not write a config file to a fallback location — the engine's other surfaces (`/skill-engine:review`) key off `$CLAUDE_PLUGIN_DATA`, and writing to a different path would create a config that the readers never find.
 
 ## The write
 

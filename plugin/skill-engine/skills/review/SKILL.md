@@ -38,7 +38,7 @@ When `REVIEW.md` exists but Step 1 still contains the literal `___` blanks (i.e.
 
    Empty buckets are omitted, not surfaced as "Added (0):".
 
-3. **Print the diff command.** Read the configured `diff.tool` value from `$CLAUDE_PLUGIN_DATA/config.json` (the same plugin-data tree the `SessionStart` hook already uses for `state/current.json`). If the file is absent, or the key is absent, or `$CLAUDE_PLUGIN_DATA` is unset, fall back to the default: `git diff --no-index --color`.
+3. **Print the diff command.** Read the configured `diff.tool` value from `$CLAUDE_PLUGIN_DATA/config.json`. If the file is absent, or the key is absent, or `$CLAUDE_PLUGIN_DATA` is unset, fall back to the default: `git diff --no-index --color`.
 
    Print one line naming the command and the two paths to diff:
 
