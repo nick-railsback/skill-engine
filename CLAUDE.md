@@ -21,7 +21,8 @@ the build when they disagree, which is the point.
 ## Git
 
 Nothing is committed, pushed, tagged, or released on the maintainer's behalf —
-prepare the change, then surface the commands for them to run. `git add`,
-`git commit`, `git push`, `git tag` and `gh release create` are all ask-gated in
+prepare the change, then surface the commands for them to run. `git commit`,
+`git push`, `git tag` and `gh release create` are all ask-gated in
 `.claude/settings.json`, so the rule has mechanical backing; keep the two in
-step if either changes.
+step if either changes. `git add` is not ask-gated — staging isn't
+publishing, and re-confirming it on every save was pure friction.
