@@ -146,6 +146,16 @@ run_examples() {
     echo "== eval corpus dry-run: $ctx =="
     python3 plugin/skill-engine/tests/grounded_rate.py "$ctx" --dry-run
   done
+
+  echo "== navigator budget: .claude/skills/skill-engine-context/SKILL.md =="
+  python3 plugin/skill-engine/tests/navigator_budget.py \
+    .claude/skills/skill-engine-context/SKILL.md
+
+  local nav
+  for nav in examples/*/SKILL.md; do
+    echo "== navigator budget: $nav =="
+    python3 plugin/skill-engine/tests/navigator_budget.py "$nav"
+  done
 }
 
 cmd="${1:-all}"
