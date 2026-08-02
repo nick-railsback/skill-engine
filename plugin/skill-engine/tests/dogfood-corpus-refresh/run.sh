@@ -2,9 +2,10 @@
 # Black-box oracle for the self-referential reference corpus at
 # .claude/skills/skill-engine-context/references/ and its
 # research/source-paths.json pin: the corpus's own GitHub permalinks (and
-# the source-paths.json entry they all derive from) must be pinned to the
-# *current* commit, not a commit frozen in the past with nothing noticing
-# drift afterward. Every assertion below is read-only over the live repo —
+# the source-paths.json entry they all derive from) must be pinned to a real
+# commit in this repo's history that nothing the corpus quotes has moved on
+# from — not a commit frozen in the past with nothing noticing drift
+# afterward. Every assertion below is read-only over the live repo —
 # git plumbing and file/JSON inspection only, no network I/O, no writes to
 # anything outside a throwaway tmpdir.
 #
@@ -112,19 +113,70 @@ ENTRY_JSON="$(jq -c --arg id "$SOURCE_ID" '.sources[] | select(.id == $id)' "$SO
 ENTRY_SHA="$(jq_field "$ENTRY_JSON" '.lifecycle.last_checked_sha // empty')"
 ENTRY_DATE="$(jq_field "$ENTRY_JSON" '.lifecycle.last_checked // empty')"
 
+# The permalink scan runs before the pin assertions because those assertions
+# need its `cited_paths` — the set of repo paths the corpus actually quotes.
+SCAN_OUT=""
+if [ -f "$PERMALINK_SCAN" ] && [ -d "$REFERENCES_DIR" ]; then
+  SCAN_OUT="$(python3 "$PERMALINK_SCAN" "$REFERENCES_DIR" --repo-root "$REPO_ROOT" \
+    --expected-sha "${ENTRY_SHA:-__no_pin_recorded__}" 2>/dev/null || true)"
+fi
+
 # ---------------------------------------------------------------------------
-# pin refreshed: source-paths.json's own record of the corpus's upstream
-# commit points at the repo's actual current HEAD, and the date attached to
-# that record moved off its old value.
+# pin refreshed: source-paths.json's record of the corpus's upstream commit
+# names a real commit in this repo's history, nothing the corpus actually
+# quotes has changed since that commit, and the date attached to the record
+# moved off its old value.
+#
+# This deliberately does NOT assert `last_checked_sha == HEAD`. That
+# formulation is unsatisfiable by construction: recording the pin is itself
+# a commit, so the act of writing the correct value immediately falsifies
+# it. It can only ever hold in an uncommitted working tree — it was green
+# at this chunk's pre-commit verify and red forever after — and under
+# `actions/checkout` on a pull_request, where HEAD is a synthetic merge
+# commit, it can never hold at all.
+#
+# What `pin == HEAD` was reaching for is "the corpus is not describing
+# stale code", and that is asserted directly below: an ancestor check (the
+# pin is a real commit here, not fabricated, foreign, or ahead of HEAD)
+# plus a content check (no cited path changed between the pin and HEAD).
+# The looser question of *how far* behind the pin has drifted is already
+# owned, report-only, by the staleness script asserted further down.
 # ---------------------------------------------------------------------------
 
 section "pin refreshed"
 
-if [ -n "$HEAD_SHA" ] && [ -n "$ENTRY_SHA" ] && [ "$ENTRY_SHA" = "$HEAD_SHA" ]; then
-  pass "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha equals current HEAD"
+PIN_IS_ANCESTOR="no"
+if [ -n "$ENTRY_SHA" ] && git -C "$REPO_ROOT" merge-base --is-ancestor "$ENTRY_SHA" HEAD 2>/dev/null; then
+  PIN_IS_ANCESTOR="yes"
+fi
+
+if [ "$PIN_IS_ANCESTOR" = "yes" ]; then
+  pass "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history"
 else
-  fail "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha equals current HEAD" \
-    "lifecycle.last_checked_sha=${ENTRY_SHA:-<missing>} HEAD=${HEAD_SHA:-<unresolved>}"
+  fail "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history" \
+    "lifecycle.last_checked_sha=${ENTRY_SHA:-<missing>} is not an ancestor of HEAD=${HEAD_SHA:-<unresolved>}"
+fi
+
+# Intersect the corpus's cited paths with everything that changed between
+# the pin and HEAD. A non-empty intersection means the corpus quotes a file
+# that has moved on without it — the real staleness this section guards.
+CITED_PATHS="$(jq_field "$SCAN_OUT" '.cited_paths // [] | .[]')"
+DRIFTED_PATHS=""
+if [ "$PIN_IS_ANCESTOR" = "yes" ] && [ -n "$CITED_PATHS" ]; then
+  CHANGED_SINCE_PIN="$(git -C "$REPO_ROOT" diff --name-only "$ENTRY_SHA" HEAD 2>/dev/null || true)"
+  while IFS= read -r cited; do
+    [ -n "$cited" ] || continue
+    if printf '%s\n' "$CHANGED_SINCE_PIN" | grep -Fxq -- "$cited"; then
+      DRIFTED_PATHS="${DRIFTED_PATHS:+$DRIFTED_PATHS, }$cited"
+    fi
+  done <<< "$CITED_PATHS"
+fi
+
+if [ "$PIN_IS_ANCESTOR" = "yes" ] && [ -n "$CITED_PATHS" ] && [ -z "$DRIFTED_PATHS" ]; then
+  pass "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit"
+else
+  fail "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit" \
+    "${DRIFTED_PATHS:-<no cited paths resolved — scan did not run or found none>}"
 fi
 
 if [ -n "$ENTRY_DATE" ] && [ "$ENTRY_DATE" != "$OLD_RECORDED_DATE" ]; then
@@ -146,11 +198,7 @@ fi
 
 section "reference corpus permalinks: pin consistency"
 
-SCAN_OUT=""
-if [ -f "$PERMALINK_SCAN" ] && [ -d "$REFERENCES_DIR" ]; then
-  SCAN_OUT="$(python3 "$PERMALINK_SCAN" "$REFERENCES_DIR" --repo-root "$REPO_ROOT" \
-    --expected-sha "${ENTRY_SHA:-__no_pin_recorded__}" 2>/dev/null || true)"
-fi
+# SCAN_OUT was computed above the "pin refreshed" section, which needs it.
 
 if jq_check "$SCAN_OUT" '.file_count == 9'; then
   pass "reference corpus: exactly 9 primary files scanned under references/"

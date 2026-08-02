@@ -15,7 +15,10 @@ stdout):
     local git object store: does `<path>` exist at `<sha>`, and does
     `<end>` fall within that blob's line count (`start <= end`, `end <=
     line_count`). No semantic / fuzzy content comparison is attempted —
-    structural resolution only.
+    structural resolution only,
+  - the sorted set of distinct repo paths the corpus cites, so a caller can
+    diff those paths across a commit range and decide whether the pin is
+    still current in substance rather than merely in sha.
 
 Read-only: never writes to the files it scans or to the git repository.
 Stdlib only, no network I/O.
@@ -156,6 +159,13 @@ def main(argv: list[str]) -> int:
         "structural_ok_count": ok_count,
         "structural_fail_count": len(failures),
         "structural_failures_sample": failures[: args.max_failures],
+        # Every distinct repo path the corpus cites. The caller uses this to
+        # ask whether the pin is *semantically* current — has any file the
+        # corpus actually quotes changed since the pinned commit — which is
+        # the question `pin == HEAD` was standing in for and could not
+        # answer without being unsatisfiable. Emitted here, not re-derived
+        # by the caller, so the permalink regex stays in exactly one place.
+        "cited_paths": sorted({h["path"] for h in hits}),
     }
     print(json.dumps(result))
     return 0
