@@ -18,6 +18,19 @@ signal from the source code — docs repos carry tutorial and concept
 scaffolding; layered packages carry their own API surface — and the
 user is the right one to decide whether they warrant a reference.
 
+**Named terminal outcome: minimal essence.** A registered, correctly
+covered source that legitimately warrants zero — or fewer than three —
+references is a valid terminal outcome of a run, not a failure to
+propose. Some sources are small, single-purpose, or already exhausted
+by the navigator's own prose; forcing catalog rows out of them dilutes
+the catalog. This outcome is distinct from Skip-reasoning, which stays
+reserved for clear non-fits: a minimal-essence source is in domain and
+covered — there is simply little of it. State the outcome in the
+Coverage report using the justification shape defined in § Post-run
+summary component 1 below; the stamped `verify.sh`'s catalog-density
+heuristic WARNs on any ≥20-file source with fewer than 3 catalog rows
+and directs the reviewer to exactly that justification.
+
 ## Markdown style for emitted references
 
 Reference files emitted by DISCOVER use **soft wrapping**: one paragraph
@@ -132,6 +145,26 @@ five components (no multi-column tables, no interactive menus):
    e.g. `Paragraph→permalink density: 84% (report-only; SELF-AUDIT Check
    7's threshold is 80%).` Parse the percentage out of `$density_out`'s
    `[PASS]`/`[FAIL]` line above.
+
+   When a source legitimately warrants zero — or fewer than three —
+   references (the minimal-essence terminal outcome named above), the
+   Coverage report is where that is justified. Shape (illustrative):
+
+   ```
+   Minimal-essence justification:
+     - source: vite-plugin-inspect (source_id: vite-plugin-inspect)
+       scale: 214 files at the pinned SHA
+       essence: single-purpose dev-tool plugin; its public surface is
+       one plugin factory and its options object, fully covered by the
+       navigator plus one reference. Fewer than three catalog rows is
+       the correct coverage here, not an omission.
+   ```
+
+   The stamped `verify.sh`'s catalog-density heuristic WARNs on any
+   ≥20-file source carrying fewer than 3 catalog rows and tells the
+   reviewer to check the post-run summary for a minimal-essence
+   justification — the WARN is working as designed when this shape is
+   the answer it finds.
 2. **Skip-reasoning.** For files and companion sources you
    considered but excluded: "I deliberately skipped Z because… I
    considered companions P, Q and excluded them because…" Empty-skip
