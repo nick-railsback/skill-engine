@@ -93,12 +93,12 @@ input validation are in [`references/intake-and-detection.md`](references/intake
 Bootstrap writes directly to the live tree — unlike DISCOVER and
 REFRESH, which stage to `<slug>-context.proposed/`, there is no
 pre-existing tree to diff against. Copy `verify.sh`, the
-topology-appropriate navigator template, and the source-paths/
-research-state templates into `.claude/skills/<slug>-context/`,
-creating parent directories as needed. A rejected write gets the
-sandbox-block diagnostic, never a silent skip. Per-kind entry shapes,
-navigator-template stamping, and `verify.sh`'s contextualizer-flavored
-behavior are in
+topology-appropriate navigator template, the source-paths/
+research-state templates, and the eval harness into
+`.claude/skills/<slug>-context/`, creating parent directories as
+needed. A rejected write gets the sandbox-block diagnostic, never a
+silent skip. Per-kind entry shapes, navigator-template stamping, and
+`verify.sh`'s contextualizer-flavored behavior are in
 [`references/stamping-and-templates.md`](references/stamping-and-templates.md).
 
 ## Offer to seed local cache (git-managed and web-doc sources)
@@ -113,13 +113,14 @@ procedure, and the manifest schema are in
 
 ## Step 4 — Exit
 
-After stamping completes, render exactly four lines to the user (substitute
+After stamping completes, render exactly five lines to the user (substitute
 the actual source count, the first id, and the user-confirmed slug; for
 2+ sources, use a phrasing that summarizes the set):
 
 ```
 Bootstrap complete. <N> source<s?> registered: <id-1[, id-2[, ...]]>.
 Contextualizer stamped at .claude/skills/<slug>-context/.
+Starter eval corpus stamped at evals/ — edit it, then run evals/run-eval.sh.
 Run /skill-engine:discover next — it'll scan each source and propose how to slice it.
 Run /skill-engine:status anytime to see what's registered.
 ```
@@ -127,12 +128,11 @@ Run /skill-engine:status anytime to see what's registered.
 For 4+ sources, render `<id-1>, <id-2>, ... (N total)` rather than the full
 list.
 
-**State-aware next-step recommendation.** The bootstrap exit message
-recommends `discover` because bootstrap's exit state (sources registered,
-no references yet) is exactly the precondition DISCOVER needs. DISCOVER
-is goal-given: it accepts a fresh contextualizer as its first task and
-returns reference files that satisfy the four reference invariants — no
-separate "warm-up" step required.
+**State-aware next-step recommendation.** `discover` is recommended
+because bootstrap's exit state (sources registered, no references
+yet) is exactly its precondition: DISCOVER is goal-given and accepts
+a fresh contextualizer as its first task, no separate "warm-up" step
+required.
 
 **Do NOT** in the exit message:
 

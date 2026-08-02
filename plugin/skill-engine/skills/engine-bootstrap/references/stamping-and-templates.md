@@ -26,9 +26,13 @@ bundle).
   - 2+ sources → `navigator-multi-domain.md.template` → `.claude/skills/<contextualizer-slug>-context/SKILL.md`
 - `source-paths.json.template` → `.claude/skills/<contextualizer-slug>-context/research/source-paths.json`
 - `research-state.json.template` → `.claude/skills/<contextualizer-slug>-context/research/.research-state.json`
+- `eval/*.template` (3 files, `.template` suffix stripped, both `.sh`
+  files marked executable) → `.claude/skills/<contextualizer-slug>-context/evals/`
+  — see *Stamping `evals/`* below
 
 Create the parent directories (`.claude/skills/<contextualizer-slug>-context/`,
-`.claude/skills/<contextualizer-slug>-context/research/`) as part of the
+`.claude/skills/<contextualizer-slug>-context/research/`,
+`.claude/skills/<contextualizer-slug>-context/evals/`) as part of the
 stamp.
 
 **If a stamp write is rejected** — a denied `cp` / `mkdir -p` / `chmod`,
@@ -161,3 +165,48 @@ DISCOVER run: `Passed: N, Failed: 0`, where catalog-bijection and reference-
 shape checks are skipped with `[N/A]` (not `[FAIL]`) because no references
 exist yet. After the first DISCOVER run populates references and the
 catalog, those checks become live.
+
+### Stamping `evals/`
+
+Copy the three eval templates from `engine-bootstrap-templates/eval/`
+into `.claude/skills/<contextualizer-slug>-context/evals/`, `.template`
+suffix stripped and the `<area-domain>` placeholder replaced with
+`<contextualizer-slug>-context` — the same substitution the navigator
+template gets (see *Stamping the navigator template* above):
+
+- `eval/run-eval.sh.template` → `evals/run-eval.sh` (mark executable:
+  `chmod +x`)
+- `eval/eval-viewer.html.template` → `evals/eval-viewer.html`
+- `eval/render-eval-results.sh.template` → `evals/render-eval-results.sh`
+  (mark executable: `chmod +x`)
+
+Then write `evals/evals.json`: a single file (schema_version 1) — not
+the train/test split `12-evaluation.md` reserves for eval sets over ten
+entries — seeded with exactly one entry per source registered in
+`research/source-paths.json`, in registration order:
+
+```json
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "query": "What does <source-id> cover?",
+      "expected": "<source-id>",
+      "notes": "Bootstrap-seeded placeholder — <source-id> is not a real reference filename. Correct `expected` to the actual reference this query should route to once /skill-engine:discover has populated references/."
+    }
+  ]
+}
+```
+
+Substitute each registered source's own `id` for every `<source-id>`
+above — one object in `entries` per source. Each entry's three fields:
+
+- `query` — contains the source's `id` as a substring.
+- `expected` — set to the source's own `id`, unchanged.
+- `notes` — flags the entry as a bootstrap-seeded placeholder and says
+  to correct `expected` to a real reference filename once
+  `/skill-engine:discover` has populated `references/`.
+
+This is a starting scaffold, not a finished eval set;
+[`docs/12-evaluation.md`](../../../docs/12-evaluation.md) documents it
+as exactly that.
