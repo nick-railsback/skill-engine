@@ -11,9 +11,10 @@ does not hardcode one. Instead it:
      plugin/skill-engine/tests/ and whose own name plausibly names a
      staleness/pin/drift concern (case-insensitive substring match on
      "stale", "staleness", "drift", or "pin").
-  3. If found, runs that exact command (verbatim, via a shell, from the
-     repo root — the same invocation ci-local.sh itself would run) and
-     records its exit code and stdout.
+  3. If found, runs that exact command from the repo root — the same
+     invocation ci-local.sh itself would run — and records its exit code
+     and stdout. The discovered line is split with shlex and executed
+     without a shell; see the call site for why.
 
 Emits one JSON object to stdout describing what it found (and, if it ran
 something, what happened). Read-only over ci-local.sh itself; the
@@ -32,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -125,14 +127,38 @@ def main(argv: list[str]) -> int:
     result["matched_line"] = matched_line.strip()
     result["command"] = command
 
-    proc = subprocess.run(
-        command,
-        shell=True,
-        cwd=str(args.repo_root),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    # No shell. INVOCATION_RE only ever matches a literal `python3 <path>` /
+    # `bash <path>` argv — there is no pipe, redirect, or variable for a
+    # shell to expand — so shell=True bought nothing and tripped bandit's
+    # B602, which this repo gates on at HIGH severity. shlex.split still
+    # honors quoting a wiring may legitimately put around a path.
+    try:
+        argv_parts = shlex.split(command)
+    except ValueError as exc:
+        result["error"] = f"discovered command did not lex: {exc}"
+        print(json.dumps(result))
+        return 0
+
+    if not argv_parts:
+        result["error"] = "discovered command lexed to nothing"
+        print(json.dumps(result))
+        return 0
+
+    try:
+        proc = subprocess.run(
+            argv_parts,
+            cwd=str(args.repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except OSError as exc:
+        # Left as ran=False so the caller's assertion fails loudly with a
+        # diagnostic rather than this scan dying and reporting nothing.
+        result["error"] = f"discovered command did not execute: {exc}"
+        print(json.dumps(result))
+        return 0
+
     result["ran"] = True
     result["exit_code"] = proc.returncode
     result["stdout"] = proc.stdout[:2000]
