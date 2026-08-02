@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+set -euo pipefail
+LC_ALL=C
+export LC_ALL
+
+# run-eval.sh parameterized template for the skill-engine-context navigator.
+#
+# This is a TEMPLATE. Replace placeholders before use:
+# skill-engine           - your domain stem (used in invocation prompt + output header)
+#
+# See 12-evaluation.md for the schema, methodology, and aggregation contract.
+#
+# Usage:
+#   bash evals/run-eval.sh [<evals-path>] [<results-path>]
+#
+# Inputs:
+#   $1 - (optional) path to evals.json (default: evals/evals.json).
+#        Pass evals/evals-train.json or evals/evals-test.json when running
+#        against the train or test split per the chapter's separate-file
+#        train/test discipline.
+#   $2 - (optional) path to results output (default: evals/results-<UTC-timestamp>-<pid>.json).
+#
+# Output:
+#   evals/results-<timestamp>-<pid>.json with the per-run records, in the
+#   shape documented in 12-evaluation.md. Each run records one of three
+#   outcomes: "pass", "fail", or "error" (the CLI invocation itself failed —
+#   an infra condition, not a navigator verdict). The PID suffix prevents
+#   two runs invoked in the same UTC second from overwriting each other.
+#
+# Exit codes:
+#   0  - all entries ran (pass/fail recorded per run; non-zero pass count is
+#        not a script error).
+#   64 - usage error or unsubstituted template placeholders.
+#   65 - input file missing or unparseable.
+#   69 - required external command not found (claude CLI, jq).
+#   70 - runner failure: every invocation errored (expired auth, broken CLI).
+#        The results file is still written, but its 0% pass rate measures the
+#        runner, not the navigator — fix the runner before reading the report.
+#
+# Dependencies:
+#   bash (POSIX-compatible subset; no [[ ]], no GNU-only flags)
+#   claude (the Claude Code CLI, available on PATH; this is the agent platform
+#           the engine targets, not a third-party dep on top of it)
+#   jq (stream-json parsing for the pass condition; already required by the
+#       sibling verify.sh, so it adds no new dependency to a contextualizer)
+#   grep, sed, awk, date (POSIX)
+#
+# Determinism:
+#   The harness records results in input-file order. Per-run outcome is
+#   non-deterministic at the model layer (this is what variance handling
+#   captures); the surrounding bookkeeping is deterministic.
+
+# Belt-and-suspenders: refuse to run if placeholders have not been substituted.
+# The placeholder is reassembled at runtime so a naive sed substitution like
+#   sed 's/skill-engine/library/g'
+# does not rewrite this check (the way it rewrites every other occurrence).
+_ph_a='<area'
+_ph_b='-domain>'
+_PLACEHOLDER="${_ph_a}${_ph_b}"
+if grep -qF "${_PLACEHOLDER}" "$0"; then
+  echo "ERROR: template placeholder ${_PLACEHOLDER} not substituted; copy and replace before running." >&2
+  exit 64
+fi
+unset _ph_a _ph_b _PLACEHOLDER
+
+EVALS_PATH="${1:-evals/evals.json}"
+RESULTS_PATH="${2:-evals/results-$(date -u +%Y%m%dT%H%M%SZ)-$$.json}"
+RUNS_PER_QUERY=3
+
+if [ ! -f "$EVALS_PATH" ]; then
+  echo "ERROR: evals file not found at $EVALS_PATH" >&2
+  exit 65
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "ERROR: 'claude' CLI not found on PATH (required for navigator invocation)." >&2
+  exit 69
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: 'jq' not found on PATH (required to scope pass detection to Read tool calls)." >&2
+  exit 69
+fi
+
+# Strict integer schema_version check.
+# Extracts the top-level "schema_version" field; rejects strings, floats,
+# null, and boolean. Absent field defaults to v1.
+schema_version_raw=$(grep -E '^[[:space:]]*"schema_version"[[:space:]]*:' "$EVALS_PATH" \
+  | head -n 1 \
+  | sed -E 's/^[[:space:]]*"schema_version"[[:space:]]*:[[:space:]]*//; s/[[:space:]]*,?[[:space:]]*$//' \
+  || true)
+
+if [ -z "${schema_version_raw:-}" ]; then
+  schema_version=1
+elif printf '%s' "$schema_version_raw" | grep -qE '^[1-9][0-9]*$'; then
+  schema_version=$schema_version_raw
+else
+  echo "ERROR: schema_version must be a JSON integer >= 1; got: $schema_version_raw" >&2
+  exit 65
+fi
+
+if [ "$schema_version" != "1" ]; then
+  echo "ERROR: this harness understands schema_version 1; got: $schema_version" >&2
+  exit 65
+fi
+
+# Field separator for the entries record stream: ASCII Unit Separator (US,
+# 0x1F). Picked because it is illegal in JSON strings, so it cannot appear
+# inside a value parsed out of evals.json. Tab was unsafe (a literal tab in
+# a query/expected/persona value would corrupt the IFS-split read).
+US=$(printf '\037')
+
+# Single-run invocation: send <query> to the agent and decide the outcome by
+# whether references/<expected>.md was Read during the response.
+#
+# Pass condition: a Read tool_use whose input.file_path ends at
+# references/<expected>.md appears in the stream-json output. The match is
+# scoped to Read tool calls only — an unscoped grep over the whole transcript
+# false-passes whenever the navigator catalog (which must name every
+# reference, per the bijection check) flows through it, grading "skill
+# triggered" as "correct reference read". The expected stem is regex-escaped
+# and the path is end-anchored so expected="auth" does not match
+# references/auth-mfa.md.
+#
+# Fail condition: the CLI ran but no Read against the expected reference
+# appears (no Read at all, or Read against a different reference).
+#
+# Error condition: the CLI invocation itself failed (non-zero exit). The
+# exit code and last stderr lines are surfaced on the harness's stderr, and
+# the run records "error" — an infra outcome the renderer excludes from the
+# pass-vs-fail vote, so an expired token is not misread as a navigator
+# regression.
+#
+# The maintainer can override this function (e.g., to assert against catalog
+# row text, or to use a different CLI) by editing the body below.
+run_one() {
+  local query="$1"
+  local expected="$2"
+  local exp_re out rc err_tmp
+  exp_re=$(printf '%s' "$expected" | sed -e 's/[][\.*^$+?(){}|\\\/]/\\&/g')
+  err_tmp=$(mktemp "${TMPDIR:-/tmp}/run-eval-stderr.XXXXXX")
+  # Redirect stdin from /dev/null so claude does not consume the
+  # process-substitution feeding the outer while-read loop. Without this,
+  # only the first entry is processed and subsequent entries are silently
+  # swallowed by claude's stdin read.
+  rc=0
+  out=$(claude --print --output-format=stream-json --verbose -p "$query" </dev/null 2>"$err_tmp") || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "  claude exited $rc for query: $query" >&2
+    sed 's/^/    stderr: /' "$err_tmp" | tail -n 3 >&2
+    rm -f "$err_tmp"
+    echo "error"
+    return 0
+  fi
+  rm -f "$err_tmp"
+  # Parse stream-json line by line; fromjson? makes non-JSON lines a no-op.
+  # Two stages, not one pipeline into grep -q: under pipefail, grep -q's
+  # exit-at-first-match can SIGPIPE the upstream jq (status 141) on a
+  # Read-heavy transcript and record a false "fail" for a passing run.
+  # Capturing jq's output first, then counting with grep -c (which always
+  # reads its whole input), leaves no early-exiting pipe reader anywhere.
+  local read_paths hits
+  read_paths=$(printf '%s\n' "$out" \
+    | jq -Rr 'fromjson? | select(.type == "assistant")
+              | .message.content[]?
+              | select(.type == "tool_use" and .name == "Read")
+              | (.input.file_path // empty)' 2>/dev/null) || read_paths=""
+  hits=$(printf '%s\n' "$read_paths" \
+    | grep -cE "(^|/)references/${exp_re}\\.md\$") || true
+  if [ "${hits:-0}" -gt 0 ]; then
+    echo "pass"
+  else
+    echo "fail"
+  fi
+}
+
+# Iterate entries. evals.json is parsed with grep+sed+awk (no jq dependency);
+# the supported shape is a top-level "entries" array of objects with at least
+# "query" and "expected" string fields. Newlines inside string values are not
+# supported (single-line entries only). Embedded \" inside a value is
+# preserved by the unescape pass; embedded backslashes are also preserved.
+emit_entries() {
+  awk -v US="$US" '
+    function extract(line, key,    out) {
+      gsub(/\\"/, "\001", line)
+      sub("^.*\"" key "\"[[:space:]]*:[[:space:]]*\"", "", line)
+      sub(/".*$/, "", line)
+      gsub(/\\\\/, "\\", line)
+      gsub(/\001/, "\"", line)
+      return line
+    }
+    function flush() {
+      if (q != "" && e != "") {
+        if (p == "") p = "domain-expert"
+        printf "%s%s%s%s%s\n", q, US, e, US, p
+      }
+      in_entry = 0; q = ""; e = ""; p = ""
+    }
+    /"query"[[:space:]]*:[[:space:]]*"/ {
+      if (in_entry && q != "") flush()
+      in_entry = 1
+      q = extract($0, "query")
+    }
+    /"expected"[[:space:]]*:[[:space:]]*"/ {
+      if (in_entry && e != "") flush()
+      if (!in_entry) in_entry = 1
+      e = extract($0, "expected")
+    }
+    /"persona"[[:space:]]*:[[:space:]]*"/ {
+      if (in_entry && p != "") flush()
+      if (!in_entry) in_entry = 1
+      p = extract($0, "persona")
+    }
+    in_entry && /^[[:space:]]*[\}]/ { flush() }
+    END { if (in_entry) flush() }
+  ' "$1"
+}
+
+mkdir -p "$(dirname "$RESULTS_PATH")"
+TMP_RESULTS="${RESULTS_PATH}.tmp"
+# Don't strand the half-written .tmp on Ctrl-C / kill; normal completion
+# renames it away before the trap could matter. The exit is load-bearing:
+# without it bash resumes the script after the trap, the >> appends
+# recreate the deleted file without its JSON header or earlier entries,
+# and the final mv publishes the corrupt results file with exit 0.
+trap 'rm -f "$TMP_RESULTS"; exit 130' INT TERM
+
+start_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+{
+  printf '{\n'
+  printf '  "navigator": "skill-engine-context",\n'
+  printf '  "schema_version": 1,\n'
+  printf '  "started_at": "%s",\n' "$start_iso"
+  printf '  "runs_per_query": %d,\n' "$RUNS_PER_QUERY"
+  printf '  "entries": [\n'
+} > "$TMP_RESULTS"
+
+first=1
+total_runs=0
+error_runs=0
+while IFS="$US" read -r query expected persona; do
+  [ -z "$query" ] && continue
+  echo "running: $query (expected: $expected, persona: $persona)" >&2
+  runs=""
+  i=1
+  while [ "$i" -le "$RUNS_PER_QUERY" ]; do
+    outcome=$(run_one "$query" "$expected")
+    if [ -n "$runs" ]; then runs="$runs, \"$outcome\""; else runs="\"$outcome\""; fi
+    total_runs=$((total_runs + 1))
+    [ "$outcome" = "error" ] && error_runs=$((error_runs + 1))
+    i=$((i + 1))
+  done
+
+  if [ "$first" -eq 0 ]; then printf ',\n' >> "$TMP_RESULTS"; fi
+  first=0
+
+  # Escape minimal JSON metacharacters (\ and ") in query.
+  # printf %s avoids echo's flag-eating on values starting with -e/-E/-n.
+  esc_query=$(printf '%s' "$query"    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+  esc_expected=$(printf '%s' "$expected" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+  esc_persona=$(printf '%s' "$persona" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+
+  printf '    {"query": "%s", "expected": "%s", "persona": "%s", "runs": [%s]}' \
+    "$esc_query" "$esc_expected" "$esc_persona" "$runs" >> "$TMP_RESULTS"
+done < <(emit_entries "$EVALS_PATH")
+
+end_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+{
+  printf '\n'
+  printf '  ],\n'
+  printf '  "ended_at": "%s"\n' "$end_iso"
+  printf '}\n'
+} >> "$TMP_RESULTS"
+
+mv "$TMP_RESULTS" "$RESULTS_PATH"
+echo "wrote: $RESULTS_PATH" >&2
+
+# Runner-failure detection (mirrors grounded_rate.py's exit-2 contract):
+# when EVERY invocation errored, the report measures the runner, not the
+# navigator. Surface that loudly instead of rendering a misleading 0%.
+if [ "$total_runs" -gt 0 ] && [ "$error_runs" -eq "$total_runs" ]; then
+  echo "ERROR: runner failure — all $total_runs invocations errored (expired auth or broken CLI likely). Fix the runner before reading the report." >&2
+  exit 70
+fi
+
+# Render summary inline if the renderer is available.
+if [ -x "$(dirname "$0")/render-eval-results.sh" ]; then
+  bash "$(dirname "$0")/render-eval-results.sh" "$RESULTS_PATH"
+fi
