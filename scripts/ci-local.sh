@@ -151,6 +151,10 @@ run_examples() {
   python3 plugin/skill-engine/tests/navigator_budget.py \
     .claude/skills/skill-engine-context/SKILL.md
 
+  echo "== dogfood pin staleness: .claude/skills/skill-engine-context/research/source-paths.json =="
+  python3 plugin/skill-engine/tests/dogfood_pin_staleness.py \
+    .claude/skills/skill-engine-context/research/source-paths.json
+
   local nav
   for nav in examples/*/SKILL.md; do
     echo "== navigator budget: $nav =="
