@@ -178,6 +178,27 @@ to agree on one version. If Phase 3 or Phase 4 was skipped or left
 partial, this phase fails — that failure is the gate working, not a
 validator bug. Complete the bump and the CHANGELOG entry, then re-run.
 
+Run the opt-in live grounded-citation eval (Check 8) against every
+bundled example with a corpus under research/. This is a paid,
+non-gating report — do not halt Phase 5 on its result, and state the
+per-run cost estimate (~$0.03-$0.15, 3 calls/prompt) before running it.
+No filename guard, no hardcoded example — the runner owns corpus
+discovery, so an example with no corpus under `research/` emits `[N/A]`
+and costs nothing, and a future example that gains one is picked up
+here without a `release.md` edit:
+
+```bash
+for ctx in examples/*/; do
+  SKILL_ENGINE_RUN_EVAL=1 python3 \
+    plugin/skill-engine/tests/grounded_rate.py "${ctx%/}"
+done
+```
+
+Include each verdict line in Phase 5's summary alongside the validator
+results. A FAIL, an [N/A] (no corpus, or no API key configured), or
+exit 3 (anthropic SDK missing) are all informational here — report them
+and continue; only make ci-local's own failures halt this phase.
+
 Surface a tight summary: which suites passed, which failed, and the failing-test names if any.
 
 ## Phase 6 — Pause and surface manual steps

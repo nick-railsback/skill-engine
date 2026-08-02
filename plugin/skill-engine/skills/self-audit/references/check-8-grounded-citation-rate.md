@@ -12,15 +12,20 @@ did the answering model both (a) open ≥1 reference via the
 GitHub permalink in its final response text? The check is the empirical
 counterpart to Check 7's corpus-side density: Check 7 asks whether the
 references *contain* permalinks near load-bearing prose; Check 8 asks
-whether the model *emits* one when it answers. The grader runs keyless
-and deterministically — verified against 18/18 mocked cases with no
-API calls; the live rate is per-contextualizer and downstream. See [chapter 13](../../../docs/13-coverage-testing.md)
+whether the model *emits* one when it answers. Each prompt is graded from
+3 independent runs rather than 1: the per-prompt verdict is a majority
+vote over those 3 runs, and a prompt whose 3 runs disagree is reported as
+flickering rather than folded silently into the aggregate rate. The
+grader runs keyless and deterministically — verified against 18/18 mocked
+cases with no API calls; the live rate is per-contextualizer and
+downstream. See [chapter 13](../../../docs/13-coverage-testing.md)
 for the methodology, mocked-vs-live distinction, the live-run recipe
 for a forker supplying their own corpus, and the optional train /
 held-out split.
 
-**Opt-in.** Check 8 makes paid Anthropic API calls (~$0.01–$0.05 per run,
-sometimes more for long prompt corpora or many references). Unlike Checks
+**Opt-in.** Check 8 makes paid Anthropic API calls (~$0.03–$0.15 per run —
+3 calls per prompt — sometimes more for long prompt corpora or many
+references). Unlike Checks
 1–7 — bash-local and free — Check 8 only runs when the maintainer sets
 the `SKILL_ENGINE_RUN_EVAL` environment variable. The opt-in is per
 invocation; there is no setting to default it on. When the opt-in is
@@ -81,7 +86,7 @@ aligned with Check 7 — two spaces after `[N/A]`):
 [PASS] grounded-rate: 80.0% (4/5 prompts grounded) ≥80% threshold (cost: $0.04) [corpus: eval-prompts.json]
 [N/A]  grounded-rate: no eval prompts defined (research/eval-prompts.json absent)
 [N/A]  grounded-rate: eval-prompts.json has 0 prompts
-[N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~$0.01–$0.05 per run)
+[N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~$0.03–$0.15 per run)
 [FAIL] grounded-rate: 40.0% (2/5 prompts grounded) below 80% threshold (cost: $0.05) [corpus: eval-prompts.json]
 [FAIL] grounded-rate: eval-prompts.json schema invalid — missing 'prompts' key
 ```
@@ -103,6 +108,15 @@ prompt naming the prompt id, the first failure marker
   n04 [no-permalink-in-response]:  What happens when an elicitation request time
 ```
 
+A prompt whose 3 runs did not unanimously agree — some grounded, some
+not — is reported distinctly, named `flicker` rather than folded into a
+grading marker. The `[flicker]` line prints regardless of overall
+PASS/FAIL, alongside (never instead of) the header's PASS/FAIL/N/A line:
+
+```
+  n03 [flicker]:  Q3: signature of Gamma's interface.
+```
+
 **How it runs.** SELF-AUDIT checks the opt-in env var first; on opt-in,
 invokes the bundled Python runner:
 
@@ -112,7 +126,7 @@ if [ -n "${SKILL_ENGINE_RUN_EVAL:-}" ]; then
   # permalink_density.DEFAULT_COVERAGE_THRESHOLD — one bar for Checks 7 and 8).
   python3 "$CLAUDE_PLUGIN_ROOT/tests/grounded_rate.py" "$CTX_ROOT"
 else
-  echo "[N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~\$0.01–\$0.05 per run)"
+  echo "[N/A]  grounded-rate: opt-in required (set SKILL_ENGINE_RUN_EVAL=1 to include the citation-rate eval; ~\$0.03–\$0.15 per run)"
 fi
 ```
 

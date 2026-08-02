@@ -1,0 +1,26 @@
+{
+  "_note": "Three prompts: n01 and n02 unanimously not grounded (0/3 each), n03 splits 2-1 grounded (majority grounded). Per-prompt majority-vote aggregation reads this as 1 grounded prompt out of 3 = 33.3%. A raw run-level average (2 grounded runs out of 9 total runs) would instead read 22.2% -- the two percentages are deliberately distinct strings so the verdict line's literal text pins down which arithmetic produced it.",
+  "records": [
+    {
+      "runs": [
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Alpha is a standard class with no specific detail to surface here.", "input_tokens": 800, "output_tokens": 28},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "I believe Alpha's path follows the usual package convention.", "input_tokens": 790, "output_tokens": 27},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Alpha lives wherever the package layout puts it.", "input_tokens": 810, "output_tokens": 29}
+      ]
+    },
+    {
+      "runs": [
+        {"references_opened": [], "turns_used": 0, "final_response_text": "The migration guide describes a few breaking changes; nothing specific comes to mind.", "input_tokens": 820, "output_tokens": 30},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "There were some v1->v2 breaking changes, generally speaking.", "input_tokens": 815, "output_tokens": 29},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Migration mostly involves renamed arguments, as I recall.", "input_tokens": 825, "output_tokens": 31}
+      ]
+    },
+    {
+      "runs": [
+        {"references_opened": ["gamma.md"], "turns_used": 1, "final_response_text": "The `Gamma` interface signature is defined at https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py (tag-pinned).", "input_tokens": 1150, "output_tokens": 70},
+        {"references_opened": ["gamma.md"], "turns_used": 1, "final_response_text": "Gamma's signature: https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py.", "input_tokens": 1140, "output_tokens": 68},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Gamma is a standard interface — no specific implementation detail to surface here.", "input_tokens": 800, "output_tokens": 30}
+      ]
+    }
+  ]
+}

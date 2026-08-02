@@ -1,0 +1,12 @@
+{
+  "_note": "One prompt, three runs, splitting 2-1 grounded. Naive per-run averaging would read this as 2/3 = 66.7% and FAIL against an 80% threshold. Per-prompt majority-vote aggregation reads it as one grounded prompt out of one, 100%, PASS -- the two aggregation strategies diverge here on purpose, so the correct one is distinguishable from the wrong one by the exit code and verdict line alone.",
+  "records": [
+    {
+      "runs": [
+        {"references_opened": ["alpha.md"], "turns_used": 1, "final_response_text": "The `Alpha` class lives at https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py.", "input_tokens": 1200, "output_tokens": 60},
+        {"references_opened": ["alpha.md"], "turns_used": 1, "final_response_text": "See https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py for Alpha's import path.", "input_tokens": 1180, "output_tokens": 58},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Alpha lives wherever the package layout puts it.", "input_tokens": 810, "output_tokens": 29}
+      ]
+    }
+  ]
+}

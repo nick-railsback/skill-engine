@@ -1,0 +1,26 @@
+{
+  "_note": "Three prompts, each supplying three runs that all agree NOT grounded (no reference opened in any of the three). Exercises the plain majority-of-3 FAIL path with zero disagreement — no prompt here should ever be reported as flickering, and each should keep showing its ordinary failure marker rather than a flicker marker.",
+  "records": [
+    {
+      "runs": [
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Alpha is a standard class with no specific detail to surface here.", "input_tokens": 800, "output_tokens": 28},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "I believe Alpha's path follows the usual package convention.", "input_tokens": 790, "output_tokens": 27},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Alpha lives wherever the package layout puts it.", "input_tokens": 810, "output_tokens": 29}
+      ]
+    },
+    {
+      "runs": [
+        {"references_opened": [], "turns_used": 0, "final_response_text": "The migration guide describes a few breaking changes; nothing specific comes to mind.", "input_tokens": 820, "output_tokens": 30},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "There were some v1->v2 breaking changes, generally speaking.", "input_tokens": 815, "output_tokens": 29},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Migration mostly involves renamed arguments, as I recall.", "input_tokens": 825, "output_tokens": 31}
+      ]
+    },
+    {
+      "runs": [
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Gamma is a standard interface — no specific implementation detail to surface here.", "input_tokens": 800, "output_tokens": 30},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Gamma follows a typical interface shape.", "input_tokens": 790, "output_tokens": 28},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Gamma's signature is fairly ordinary.", "input_tokens": 805, "output_tokens": 29}
+      ]
+    }
+  ]
+}

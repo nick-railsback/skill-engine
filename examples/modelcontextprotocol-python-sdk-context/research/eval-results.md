@@ -13,14 +13,16 @@ split across [`eval-prompts-train.json`](eval-prompts-train.json) and
   scores exactly one of them, the train set by default; the held-out set is
   reachable only via `--corpus eval-prompts-test.json`.
 - **Answering model:** Claude Haiku 4.5.
-- **Runs:** one per prompt. Routing and citation are non-deterministic, so treat
-  single-run figures as indicative, not exact.
+- **Runs:** the runner's current default is 3 per prompt, majority-vote graded,
+  with per-prompt disagreement reported as flicker. The ladder below predates
+  that change — it was measured under the old single-run-per-prompt behavior
+  and has not been re-run at 3; treat it as indicative, not exact.
 
 Reproduce: `SKILL_ENGINE_RUN_EVAL=1 python3
 plugin/skill-engine/tests/grounded_rate.py
-examples/modelcontextprotocol-python-sdk-context` (real API spend, ~$0.20 per
-full run; add `--dry-run` to validate every corpus file under `research/` for
-free).
+examples/modelcontextprotocol-python-sdk-context` (real API spend, ~$0.60 per
+full run at the current 3-runs-per-prompt default; add `--dry-run` to validate
+every corpus file under `research/` for free).
 
 ## What the eval found, and how the navigator changed in response
 

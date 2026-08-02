@@ -474,6 +474,30 @@ def grade_record(record: dict) -> tuple[bool, str | None]:
     return (True, None)
 
 
+def aggregate_prompt_runs(prompt: dict, runs: list[dict]) -> dict:
+    """Reduce a prompt's 3 raw run-records to one per-prompt verdict.
+
+    `grounded` is a majority vote (≥2 of 3 grounded). `flicker` marks a
+    prompt whose 3 runs did not unanimously agree, so it can be reported
+    distinctly from a stable PASS or a stable FAIL rather than folded into
+    the aggregate rate silently. `marker` is the shared failure marker when
+    unanimous, or the literal "flicker" when not — `None` when unanimously
+    grounded.
+    """
+    graded = [grade_record(r) for r in runs]
+    votes = [grounded for grounded, _marker in graded]
+    flicker = len(set(votes)) > 1
+    return {
+        "prompt_id": prompt["id"],
+        "category": prompt["category"],
+        "prompt_text": prompt["text"],
+        "runs": runs,
+        "grounded": sum(votes) >= 2,
+        "flicker": flicker,
+        "marker": "flicker" if flicker else graded[0][1],
+    }
+
+
 def estimate_cost(records: list[dict]) -> float:
     total_in = sum(r.get("input_tokens", 0) for r in records)
     total_out = sum(r.get("output_tokens", 0) for r in records)
@@ -569,7 +593,12 @@ def main(argv: list[str]) -> int:
         print(f"[N/A]  grounded-rate: no .md files under {refs_dir.name}/")
         return 0
 
-    # Mock-response path (test-harness only).
+    # Mock-response path (test-harness only). Each corpus prompt maps to one
+    # `records[]` entry carrying exactly 3 raw runs — 3 model calls per
+    # prompt is the contract, not an average someone forgot to configure, so
+    # any other run count is rejected outright rather than graded on
+    # incomplete evidence.
+    records_by_prompt: list[tuple[dict, list[dict]]]
     if args.mock_responses is not None:
         try:
             mocks_doc = json.loads(args.mock_responses.read_text(encoding="utf-8"))
@@ -581,7 +610,18 @@ def main(argv: list[str]) -> int:
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
             print(f"[FAIL] grounded-rate: could not load --mock-responses: {e}")
             return 1
-        records = [run_prompt_mocked(refs_dir, p, m) for p, m in zip(prompts, mocks)]
+
+        records_by_prompt = []
+        for p, entry in zip(prompts, mocks):
+            entry_runs = entry.get("runs") if isinstance(entry, dict) else None
+            if not isinstance(entry_runs, list) or len(entry_runs) != 3:
+                n = len(entry_runs) if isinstance(entry_runs, list) else 0
+                print(f"[FAIL] grounded-rate: {corpus_name} --mock-responses prompt "
+                      f"{p['id']} has {n} run(s), expected exactly 3 runs per prompt")
+                return 1
+            records_by_prompt.append(
+                (p, [run_prompt_mocked(refs_dir, p, m) for m in entry_runs])
+            )
     else:
         # Live API path. Import here so --dry-run / --mock-responses don't require the SDK.
         try:
@@ -598,41 +638,45 @@ def main(argv: list[str]) -> int:
         tool_def = build_tool_def(allowed)
         system_prompt = build_system_prompt(library, skill_md)
 
-        records: list[dict] = []
+        # 3 independent calls per prompt — no seed/temperature parameter
+        # exists to vary, so re-invoking the same call 3 times is the whole
+        # mechanism (mirrors chapter 12's routing-eval harness).
+        records_by_prompt = []
         for prompt in prompts:
-            rec = run_prompt(
-                client, refs_dir, system_prompt, tool_def, prompt,
-                model=args.model,
-                max_tokens=args.max_tokens,
-                max_tool_turns=args.max_tool_turns,
-                per_prompt_timeout_s=args.per_prompt_timeout_s,
-            )
-            records.append(rec)
+            runs = [
+                run_prompt(
+                    client, refs_dir, system_prompt, tool_def, prompt,
+                    model=args.model,
+                    max_tokens=args.max_tokens,
+                    max_tool_turns=args.max_tool_turns,
+                    per_prompt_timeout_s=args.per_prompt_timeout_s,
+                )
+                for _ in range(3)
+            ]
+            records_by_prompt.append((prompt, runs))
+
+    aggregated = [aggregate_prompt_runs(p, runs) for p, runs in records_by_prompt]
 
     # All-errored runner-failure path: "no prompts gradable" — implemented
-    # as: every record carries an `error`. An outage
-    # where each prompt opens a reference and *then* errors (timeout / turn-cap
-    # / APIError) is still a runner failure; the prior `not references_opened`
-    # conjunct mis-reported it as a content FAIL (exit 1). Token counts don't
-    # gate this.
-    if records and all("error" in r for r in records):
+    # as: every run of every prompt carries an `error`. A corpus where each
+    # prompt had 1-of-3 runs error and 2-of-3 succeed is not an outage and
+    # must not exit 2 — the gate looks at every raw run, not each prompt's
+    # majority.
+    if aggregated and all("error" in run for agg in aggregated for run in agg["runs"]):
         print("[FAIL] grounded-rate: all prompts errored — runner failure")
-        for r in records:
-            _, marker = grade_record(r)
-            text_prefix = r["prompt_text"][:PROMPT_PREFIX_WIDTH]
-            print(f"  {r['prompt_id']} [{marker}]:  {text_prefix}")
+        for agg in aggregated:
+            text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+            print(f"  {agg['prompt_id']} [{agg['marker']}]:  {text_prefix}")
         return 2
 
-    # Grade.
-    graded: list[tuple[dict, bool, str | None]] = []
-    for r in records:
-        grounded, marker = grade_record(r)
-        graded.append((r, grounded, marker))
-
-    grounded_count = sum(1 for (_, g, _) in graded if g)
-    total = len(records)
+    # Grade. Prompt-level, not run-level — 3 raw records per prompt no
+    # longer inflate the denominator, and the aggregate rate is the
+    # per-prompt majority vote, not a raw run-level average.
+    grounded_count = sum(1 for agg in aggregated if agg["grounded"])
+    total = len(aggregated)
     rate = grounded_count / total if total else 0.0
-    cost = estimate_cost(records)
+    all_runs = [run for agg in aggregated for run in agg["runs"]]
+    cost = estimate_cost(all_runs)
     rate_pct = rate * 100
     threshold_pct = args.threshold * 100
 
@@ -657,7 +701,7 @@ def main(argv: list[str]) -> int:
                 0o600,
             )
             with os.fdopen(fd, "w", encoding="utf-8") as fp:
-                json.dump({"summary": summary, "records": records}, fp, indent=2)
+                json.dump({"summary": summary, "records": aggregated}, fp, indent=2)
         except OSError as e:
             print(f"warning: could not write --results-json {args.results_json}: {e}",
                   file=sys.stderr)
@@ -672,15 +716,23 @@ def main(argv: list[str]) -> int:
     if rate >= args.threshold:
         print(f"[PASS] grounded-rate: {rate_pct:.1f}% ({grounded_count}/{total} prompts grounded) "
               f"≥{threshold_pct:.0f}% threshold (cost: ${cost:.2f}){corpus_tag}")
+        for agg in aggregated:
+            if agg["flicker"]:
+                text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+                print(f"  {agg['prompt_id']} [flicker]:  {text_prefix}")
         return 0
 
     print(f"[FAIL] grounded-rate: {rate_pct:.1f}% ({grounded_count}/{total} prompts grounded) "
           f"below {threshold_pct:.0f}% threshold (cost: ${cost:.2f}){corpus_tag}")
-    for r, grounded, marker in graded:
-        if grounded:
+    for agg in aggregated:
+        if agg["flicker"]:
+            text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+            print(f"  {agg['prompt_id']} [flicker]:  {text_prefix}")
+    for agg in aggregated:
+        if agg["grounded"] or agg["flicker"]:
             continue
-        text_prefix = r["prompt_text"][:PROMPT_PREFIX_WIDTH]
-        print(f"  {r['prompt_id']} [{marker}]:  {text_prefix}")
+        text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+        print(f"  {agg['prompt_id']} [{agg['marker']}]:  {text_prefix}")
     return 1
 
 
