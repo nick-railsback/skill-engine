@@ -89,8 +89,9 @@ fi
 #   plugin/skill-engine/agents/*.md       (directory currently absent;
 #                                          covered again if reintroduced)
 #   plugin/skill-engine/bin/*.sh
-#   plugin/skill-engine/tests/*.sh        (this file is implicitly excluded
-#                                          via the path-equality check below)
+#   plugin/skill-engine/tests/*.sh        (top level only, as written — this
+#                                          file is implicitly excluded via
+#                                          the path-equality check below)
 #   plugin/skill-engine/engine-bootstrap-templates/*  (every file, except
 #                                          the two excluded templates that
 #                                          legitimately carry user-side
@@ -102,14 +103,35 @@ fi
 #   engine-bootstrap-templates/release-command.md.template
 #   engine-bootstrap-templates/pre-commit.sh.template
 #
+# The tests/ find is depth-1, matching the scope above rather than the
+# recursive form it used to carry. The doctrine is about what the ENGINE
+# does to a repository the user owns; a per-feature runner under
+# tests/<name>/ builds throwaway fixture repos in a tmpdir by design —
+# git init, add, commit against a directory it created and deletes — and is
+# not engine code by any reading. Only two calls in that whole tree touch
+# this repo itself, `diff` and `rev-parse`, both read-only. The recursive
+# find never surfaced any of it because the pattern could not see
+# `git -C <dir> <verb>`; widening the pattern without narrowing the scope
+# would have traded one silent false negative for ~70 false positives and
+# taught the next reader to disable the check.
+#
 # Prose-mention guard: matches inside HTML comments (<!-- ... -->) and inside
 # Markdown code spans (`...`) are stripped per-line before verb extraction so
 # narration like "the engine does not `git add`" does not trip the lint.
+#
+# Verb extraction lives in tests/lib/git_verb_scan.sh, which this feeds a
+# file list and whose candidates the allow-list below filters. It is a
+# separate script so it can be exercised against fixtures covering every
+# invocation form (tests/doctrine-git-verbs/run.sh) rather than only
+# against whatever this repo happens to contain — which is how the
+# `git -C <dir> <verb>` blind spot survived: the form was absent from the
+# scanned files at the moment the pattern was written, so nothing here
+# could show it was unmatched.
 git_readonly_scan() {
   local f rel
   local -a scan_files=()
-  # Collect (and exclude) first, then hand the whole set to a single awk
-  # invocation. The previous form forked one awk per file — dozens of process
+  # Collect (and exclude) first, then hand the whole set to a single scan.
+  # The pre-extraction form forked one awk per file — dozens of process
   # spawns per CI run across skills/ + agents/ + bin/ + tests/ + templates/.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
@@ -122,39 +144,7 @@ git_readonly_scan() {
     scan_files+=("$f")
   done
   [ "${#scan_files[@]}" -eq 0 ] && return 0
-  # FNR (per-file line number) and FILENAME give the same file:line prefix the
-  # per-file form produced; rel is derived by stripping the literal PLUGIN_ROOT
-  # prefix via substr (length-based, so a metachar in the path can't matter).
-  awk -v root="$PLUGIN_ROOT/" '
-    FNR == 1 { rel = substr(FILENAME, length(root) + 1) }
-    {
-      line = $0
-      # Strip single-line HTML comments.
-      gsub(/<!--[^>]*-->/, "", line)
-      # Strip Markdown code spans (paired backticks on the same line).
-      gsub(/`[^`]*`/, "", line)
-      # Strip shell line comments. Engine shell files legitimately describe
-      # git verbs in prose ("...the global/system git config..."), and a
-      # comment cannot invoke anything. Applied after the code-span strip so
-      # a span containing '#' has already gone.
-      sub(/#.*$/, "", line)
-      # Strip double-quoted literals carrying no command substitution, so a
-      # verb named inside a diagnostic message is not read as an invocation.
-      # Forms that can actually run something -- $(...) and backticks -- are
-      # deliberately left in place and still scanned. Known limit, pinned
-      # rather than implied away: `bash -c "git push"` is not caught here.
-      while (match(line, /"[^"$`]*"/)) {
-        line = substr(line, 1, RSTART - 1) " " substr(line, RSTART + RLENGTH)
-      }
-      # Extract executable git verbs. \<git\> + whitespace + lowercase verb.
-      while (match(line, /(^|[[:space:]]|[(;&|])git[[:space:]]+[a-z][a-z-]*/)) {
-        token = substr(line, RSTART, RLENGTH)
-        sub(/.*git[[:space:]]+/, "", token)
-        print rel ":" FNR ":" token
-        line = substr(line, RSTART + RLENGTH)
-      }
-    }
-  ' "${scan_files[@]}"
+  bash "$SCRIPT_DIR/lib/git_verb_scan.sh" --root "$PLUGIN_ROOT/" "${scan_files[@]}"
 }
 
 # Known git verbs filter: the candidate-match `git <token>` is only a real
@@ -168,7 +158,7 @@ readonly_violations=$(
     find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
     find "$PLUGIN_ROOT/agents" -type f -name '*.md' 2>/dev/null
     find "$PLUGIN_ROOT/bin" -type f -name '*.sh' 2>/dev/null
-    find "$PLUGIN_ROOT/tests" -type f -name '*.sh' 2>/dev/null
+    find "$PLUGIN_ROOT/tests" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
     find "$PLUGIN_ROOT/engine-bootstrap-templates" -type f 2>/dev/null
   } | git_readonly_scan | awk -F: '
     BEGIN {
