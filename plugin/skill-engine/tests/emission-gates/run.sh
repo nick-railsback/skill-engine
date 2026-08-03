@@ -184,6 +184,87 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────────────
+# The cap measures the whole description, whatever YAML scalar style it is
+# written in.
+#
+# `description:` is a YAML key, and YAML has more than one way to write a
+# long string value. A folded scalar (`>-`) or a literal one (`|-`) puts the
+# text on the indented lines that follow the key — which is exactly how a
+# long description gets written once it stops fitting comfortably on one
+# line, and exactly the "pasted paragraph" the cap exists to catch. A cap
+# that reads one line measures the `>-` marker and reports 2 bytes.
+#
+# The fixture builder here writes the navigator directly rather than going
+# through build_min_ctx, because the whole point is a description that is
+# not a single `description: <value>` line.
+# ────────────────────────────────────────────────────────────────────────
+
+# build_ctx_folded <root> <style> <indented-body-bytes> — a minimal
+# contextualizer whose navigator description is a multi-line YAML scalar of
+# the given style ('>-' or '|-') carrying <n> bytes of indented text.
+build_ctx_folded() {
+  local root="$1" style="$2" n="$3"
+  mkdir -p "$root/research"
+  printf '{"schema_version":1,"sources":[]}\n' > "$root/research/source-paths.json"
+  {
+    printf -- '---\n'
+    printf 'name: acme-context\n'
+    printf 'description: %s\n' "$style"
+    printf '  %s\n' "$(bytes_of 'a' "$n")"
+    printf -- '---\n\n# Acme\n'
+  } > "$root/SKILL.md"
+}
+
+for style_label in folded literal; do
+  case "$style_label" in
+    folded)  style='>-' ;;
+    literal) style='|-' ;;
+  esac
+
+  root_fold_over="$(mktemp -d -t skill-engine-emission-gates.XXXXXX)"
+  created_dirs+=("$root_fold_over")
+  build_ctx_folded "$root_fold_over" "$style" 2000
+  out_fold_over="$(run_verify "$root_fold_over")"; rc_fold_over=$?
+
+  ok=1
+  [ "$rc_fold_over" -ne 0 ] || ok=0
+  printf '%s' "$out_fold_over" | grep -q '1024' || ok=0
+  report "$ok" "description cap: a $style_label ($style) scalar carrying 2000 bytes fails the cap instead of measuring the style marker"
+
+  root_fold_under="$(mktemp -d -t skill-engine-emission-gates.XXXXXX)"
+  created_dirs+=("$root_fold_under")
+  build_ctx_folded "$root_fold_under" "$style" 100
+  run_verify "$root_fold_under" >/dev/null; rc_fold_under=$?
+
+  ok=0
+  [ "$rc_fold_under" -eq 0 ] && ok=1
+  report "$ok" "description cap: a $style_label ($style) scalar comfortably under the cap still passes"
+done
+
+# A multi-line description is measured by its content, not by the raw bytes
+# of the block: the continuation lines' indentation is YAML syntax, and a
+# cap that counted it would flag a description on how deeply it happens to
+# be nested. 1024 bytes of text indented by two spaces per line must not
+# fail on the indentation alone.
+root_fold_edge="$(mktemp -d -t skill-engine-emission-gates.XXXXXX)"
+created_dirs+=("$root_fold_edge")
+mkdir -p "$root_fold_edge/research"
+printf '{"schema_version":1,"sources":[]}\n' > "$root_fold_edge/research/source-paths.json"
+{
+  printf -- '---\n'
+  printf 'name: acme-context\n'
+  printf 'description: >-\n'
+  # 8 lines of 127 'a' plus the newline each folds to a space: 8*127 + 7
+  # joining spaces = 1023 bytes of content.
+  for _ in 1 2 3 4 5 6 7 8; do printf '  %s\n' "$(bytes_of 'a' 127)"; done
+  printf -- '---\n\n# Acme\n'
+} > "$root_fold_edge/SKILL.md"
+run_verify "$root_fold_edge" >/dev/null; rc_fold_edge=$?
+ok=0
+[ "$rc_fold_edge" -eq 0 ] && ok=1
+report "$ok" "description cap: continuation-line indentation is YAML syntax, not description bytes (1023 bytes of text across 8 indented lines passes)"
+
+# ────────────────────────────────────────────────────────────────────────
 # nav_ok is "the navigator was located and parsed", not "Check 3 passed".
 #
 # Checks 4 (catalog-bijection), catalog-density and skill-json-trijection

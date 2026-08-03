@@ -149,6 +149,56 @@ extract_frontmatter() {
   ' "$1" 2>/dev/null
 }
 
+# Helper: the whole value of the frontmatter's `description` key, read from
+# extract_frontmatter's output on stdin, with each line's leading
+# indentation removed and the lines joined by a single byte.
+#
+# Reading only the key's own line does not measure a YAML description. YAML
+# spells a long string value several ways, and the two that matter here put
+# the text on the indented lines BELOW the key: a folded scalar
+# (`description: >-`) and a literal one (`description: |-`). On the key's
+# line those leave a two-byte style marker, so a pasted 4 KB paragraph
+# measures 2 bytes and passes any ceiling — including, exactly, the ceiling
+# written to catch pasted paragraphs. A plain scalar continued onto indented
+# lines evades it identically. All three are one shape: the key's line, then
+# every line indented under it, up to the next top-level key.
+#
+# Joining with one byte per line is what YAML itself does — a folded
+# scalar's newlines become spaces, a literal one's stay newlines — so the
+# count matches the real value for the shapes that occur. A blank line
+# inside a folded scalar is the one divergence; it is not counted, which
+# loses a byte per paragraph break and cannot be used to hide anything.
+extract_description() {
+  awk '
+    BEGIN { state = 0; n = 0 }
+    state == 0 && /^description:[[:space:]]/ {
+      head = $0
+      sub(/^description:[[:space:]]*/, "", head)
+      # A block scalar header is syntax, not content: | or >, with an
+      # optional indentation indicator and/or chomping modifier.
+      if (head ~ /^[>|][0-9+-]*$/) head = ""
+      if (head != "") { n++; parts[n] = head }
+      state = 1
+      next
+    }
+    state == 1 {
+      if ($0 ~ /^[[:space:]]*$/) next
+      if ($0 ~ /^[[:space:]]/) {
+        body = $0
+        sub(/^[[:space:]]+/, "", body)
+        n++; parts[n] = body
+        next
+      }
+      state = 2
+    }
+    END {
+      out = ""
+      for (i = 1; i <= n; i++) out = (i == 1) ? parts[i] : out " " parts[i]
+      printf "%s", out
+    }
+  '
+}
+
 # Extract scheme + host + port from a URL. POSIX-portable.
 url_origin() {
   printf '%s' "$1" | sed -E 's#^(https?://[^/]+).*#\1#'
@@ -444,9 +494,7 @@ else
   elif ! printf '%s\n' "$fm" | grep -qE '^description:[[:space:]]+'; then
     fail "$nav_rel frontmatter missing required key: description"
   else
-    desc_line=$(printf '%s\n' "$fm" | grep -E '^description:[[:space:]]+' | head -1)
-    desc_val="${desc_line#description:}"
-    desc_val="${desc_val#"${desc_val%%[![:space:]]*}"}"
+    desc_val=$(printf '%s\n' "$fm" | extract_description)
     desc_bytes=$(printf '%s' "$desc_val" | wc -c | tr -d ' ')
     # Set before the cap is judged, not inside the passing branch. nav_ok
     # is the located-and-parseable flag Checks 4, 8 and 9 short-circuit on,
