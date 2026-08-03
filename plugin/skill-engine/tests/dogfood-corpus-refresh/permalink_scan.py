@@ -15,10 +15,24 @@ stdout):
     local git object store: does `<path>` exist at `<sha>`, and does
     `<end>` fall within that blob's line count (`start <= end`, `end <=
     line_count`). No semantic / fuzzy content comparison is attempted —
-    structural resolution only,
+    structural resolution only. `--resolve-at <rev>` moves that resolution
+    off the cited sha and onto a revision the caller names, for the case
+    where the cited sha no longer resolves locally at all (see below),
   - the sorted set of distinct repo paths the corpus cites, so a caller can
     diff those paths across a commit range and decide whether the pin is
     still current in substance rather than merely in sha.
+
+This repo squash-merges, so a corpus pinned on a feature branch cites a sha
+that stops resolving locally the moment the branch is merged and deleted —
+the object is unreachable, and `actions/checkout` fetches refs, not
+unreachable objects. Resolving every citation at the cited sha is then
+impossible for a reason no re-run can fix. `--resolve-at <rev>` is the
+substitute a caller in that state uses: a squash-merge leaves the merged
+tree equal to the branch tip's, so the same paths and line ranges still have
+a real thing to resolve against. The check keeps its teeth — a range that
+overruns the file, or a path that no longer exists, still fails — it just
+asks the question of a revision that exists. See pin_state.py for the
+classifier that decides which of the two modes applies.
 
 Read-only: never writes to the files it scans or to the git repository.
 Stdlib only, no network I/O.
@@ -26,7 +40,7 @@ Stdlib only, no network I/O.
 Usage:
     python3 permalink_scan.py <references_dir> --repo-root <path> \\
         --expected-sha <sha> [--owner-repo OWNER/REPO] \\
-        [--max-failures N]
+        [--resolve-at REV] [--max-failures N]
 
 Exit code is always 0 — this is a data-gathering scan, not a pass/fail
 gate; the caller applies its own assertions to the emitted JSON.
@@ -96,19 +110,29 @@ def line_count_at(repo_root: Path, sha: str, path: str) -> int | None:
     return content.stdout.count(b"\n")
 
 
-def structural_check(repo_root: Path, hits: list[dict]) -> tuple[int, list[dict]]:
+def structural_check(
+    repo_root: Path, hits: list[dict], resolve_at: str | None = None
+) -> tuple[int, list[dict]]:
     """Returns (ok_count, failures). failures is a list of dicts adding a
-    "reason" key to the offending permalink's own fields."""
+    "reason" key to the offending permalink's own fields.
+
+    resolve_at, when given, is the revision every permalink resolves
+    against instead of the sha it cites."""
     cache: dict[tuple[str, str], int | None] = {}
     ok = 0
     failures: list[dict] = []
     for hit in hits:
-        key = (hit["sha"], hit["path"])
+        rev = resolve_at if resolve_at is not None else hit["sha"]
+        # The failure text names where resolution was attempted, so a
+        # degraded run's diagnostics can never read as if the cited sha
+        # had been consulted.
+        where = "cited sha" if resolve_at is None else f"rev {resolve_at}"
+        key = (rev, hit["path"])
         if key not in cache:
-            cache[key] = line_count_at(repo_root, hit["sha"], hit["path"])
+            cache[key] = line_count_at(repo_root, rev, hit["path"])
         lc = cache[key]
         if lc is None:
-            failures.append({**hit, "reason": "path does not exist at cited sha"})
+            failures.append({**hit, "reason": f"path does not exist at {where}"})
             continue
         if not (1 <= hit["start"] <= hit["end"]):
             failures.append({**hit, "reason": "start does not precede end"})
@@ -116,7 +140,7 @@ def structural_check(repo_root: Path, hits: list[dict]) -> tuple[int, list[dict]
         if hit["end"] > lc:
             failures.append({
                 **hit,
-                "reason": f"end line {hit['end']} exceeds file's {lc} lines at cited sha",
+                "reason": f"end line {hit['end']} exceeds file's {lc} lines at {where}",
             })
             continue
         ok += 1
@@ -129,6 +153,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--expected-sha", required=True)
     parser.add_argument("--owner-repo", default=DEFAULT_OWNER_REPO)
+    parser.add_argument("--resolve-at", default=None,
+                        help="Resolve every permalink's path and line range "
+                             "at this revision instead of at the sha it "
+                             "cites. For the post-squash-merge case, where "
+                             "the cited sha no longer names a local object.")
     parser.add_argument("--max-failures", type=int, default=20,
                          help="Cap on structural failures included in the "
                          "JSON output (diagnostic only; the count is exact).")
@@ -146,11 +175,17 @@ def main(argv: list[str]) -> int:
         len(distinct_shas) == 1 and distinct_shas[0] == args.expected_sha
     )
 
-    ok_count, failures = structural_check(args.repo_root, hits)
+    ok_count, failures = structural_check(args.repo_root, hits, args.resolve_at)
 
     result = {
         "file_count": len(sorted(refs.glob("*.md"))),
         "permalink_count": len(hits),
+        # Which revision the structural check actually consulted: the
+        # string the caller passed to --resolve-at, or null for the
+        # default "each permalink's own cited sha". Emitted so a degraded
+        # run is legible in the output itself and cannot be mistaken for a
+        # strict one by anything reading this JSON.
+        "resolved_at": args.resolve_at,
         "old_pinned_sha": OLD_PINNED_SHA,
         "stale_hits": stale_hits,
         "distinct_shas": distinct_shas,

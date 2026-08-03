@@ -22,6 +22,7 @@ REFERENCES_DIR="$REPO_ROOT/.claude/skills/skill-engine-context/references"
 CI_LOCAL_SH="$REPO_ROOT/scripts/ci-local.sh"
 PERMALINK_SCAN="$SCRIPT_DIR/permalink_scan.py"
 WIRING_SCAN="$SCRIPT_DIR/staleness_wiring_scan.py"
+PIN_STATE="$SCRIPT_DIR/pin_state.py"
 
 SOURCE_ID="nick-railsback-skill-engine"
 # The recorded date this same pin held before a refresh — a literal fact
@@ -32,6 +33,7 @@ OLD_RECORDED_DATE="2026-07-17"
 
 pass_count=0
 fail_count=0
+note_count=0
 
 section() {
   printf '\n── %s ──\n' "$1"
@@ -40,6 +42,20 @@ section() {
 pass() {
   printf '  PASS  %s\n' "$1"
   pass_count=$((pass_count + 1))
+}
+
+# A check that could not be asked in its strict form, and was answered by a
+# named substitute instead. Counted separately from PASS and printed in the
+# summary so a degraded run is visible at a glance rather than reading as a
+# clean one; it does not gate, because the substitute did run and did hold.
+note() {
+  local label="$1"
+  shift
+  printf '  NOTE  %s\n' "$label"
+  if [ "$#" -gt 0 ]; then
+    printf '        %s\n' "$@"
+  fi
+  note_count=$((note_count + 1))
 }
 
 fail() {
@@ -76,7 +92,7 @@ jq_field() {
 
 section "supporting files present"
 
-for f in "$SOURCE_PATHS_JSON" "$CI_LOCAL_SH" "$PERMALINK_SCAN" "$WIRING_SCAN"; do
+for f in "$SOURCE_PATHS_JSON" "$CI_LOCAL_SH" "$PERMALINK_SCAN" "$WIRING_SCAN" "$PIN_STATE"; do
   if [ -f "$f" ]; then
     pass "present: ${f#"$REPO_ROOT"/}"
   else
@@ -113,12 +129,33 @@ ENTRY_JSON="$(jq -c --arg id "$SOURCE_ID" '.sources[] | select(.id == $id)' "$SO
 ENTRY_SHA="$(jq_field "$ENTRY_JSON" '.lifecycle.last_checked_sha // empty')"
 ENTRY_DATE="$(jq_field "$ENTRY_JSON" '.lifecycle.last_checked // empty')"
 
+# Classify the pin before anything consults it. Which assertions below are
+# even askable depends on this, and so does which revision the permalink
+# scan can resolve against.
+PIN_STATE_JSON=""
+if [ -f "$PIN_STATE" ]; then
+  PIN_STATE_JSON="$(python3 "$PIN_STATE" --repo-root "$REPO_ROOT" \
+    --sha "${ENTRY_SHA:-__no_pin_recorded__}" 2>/dev/null || true)"
+fi
+PIN_STATE_VALUE="$(jq_field "$PIN_STATE_JSON" '.state // empty')"
+
+# A pin whose object is gone cannot be the revision permalinks resolve
+# against — nothing local can answer for it. HEAD can, and after a
+# squash-merge HEAD's tree is the branch tip's tree, so the same paths and
+# line ranges have a real thing to resolve against. `--resolve-at` is
+# passed only in that state; a resolvable pin is still checked at the pin.
+RESOLVE_AT_ARGS=()
+if [ "$PIN_STATE_VALUE" = "unresolvable" ]; then
+  RESOLVE_AT_ARGS=(--resolve-at HEAD)
+fi
+
 # The permalink scan runs before the pin assertions because those assertions
 # need its `cited_paths` — the set of repo paths the corpus actually quotes.
 SCAN_OUT=""
 if [ -f "$PERMALINK_SCAN" ] && [ -d "$REFERENCES_DIR" ]; then
   SCAN_OUT="$(python3 "$PERMALINK_SCAN" "$REFERENCES_DIR" --repo-root "$REPO_ROOT" \
-    --expected-sha "${ENTRY_SHA:-__no_pin_recorded__}" 2>/dev/null || true)"
+    --expected-sha "${ENTRY_SHA:-__no_pin_recorded__}" \
+    ${RESOLVE_AT_ARGS[@]+"${RESOLVE_AT_ARGS[@]}"} 2>/dev/null || true)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -141,28 +178,61 @@ fi
 # plus a content check (no cited path changed between the pin and HEAD).
 # The looser question of *how far* behind the pin has drifted is already
 # owned, report-only, by the staleness script asserted further down.
+#
+# Both of those need the pin's commit object to still exist locally, and
+# there is one recurring, unavoidable state where it does not. The pin is
+# necessarily recorded on the feature branch that harvests the corpus, and
+# this repo squash-merges: after the merge the branch's commits are not on
+# main's first-parent line, and once the branch ref is deleted the object is
+# unreachable — `actions/checkout` with `fetch-depth: 0` fetches every ref
+# and no unreachable object, so CI on main cannot see it at all. Asserting
+# ancestry unconditionally therefore turns the `tests` job red on main the
+# moment this merges, for a reason no re-run can fix and no amount of fetch
+# depth can reach; only a re-pin can, and the corpus cannot be re-pinned to
+# a commit that does not exist until after it is merged.
+#
+# So the pin's state is classified first (pin_state.py) and the assertions
+# below follow it:
+#
+#   ancestor      Strict tier, exactly as before: ancestry holds, and the
+#                 cited-path diff between the pin and HEAD runs.
+#   divergent     Hard failure. The object resolves but belongs to a branch
+#                 this history never took up — a fabricated or foreign pin,
+#                 which is the defect the ancestry check was written for.
+#   unresolvable  The post-squash-merge state. Neither assertion can be
+#                 asked, so both are NOTEd and answered by a substitute
+#                 that does not need the pin: every permalink's path and
+#                 line range must resolve at HEAD instead (asserted in the
+#                 next section, which is passed --resolve-at HEAD in this
+#                 state and records `resolved_at` in its own output). That
+#                 substitute has real teeth — a deleted path or a range
+#                 overrunning its file still fails — it just asks the
+#                 question of a revision that exists.
 # ---------------------------------------------------------------------------
 
 section "pin refreshed"
 
-PIN_IS_ANCESTOR="no"
-if [ -n "$ENTRY_SHA" ] && git -C "$REPO_ROOT" merge-base --is-ancestor "$ENTRY_SHA" HEAD 2>/dev/null; then
-  PIN_IS_ANCESTOR="yes"
-fi
-
-if [ "$PIN_IS_ANCESTOR" = "yes" ]; then
-  pass "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history"
-else
-  fail "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history" \
-    "lifecycle.last_checked_sha=${ENTRY_SHA:-<missing>} is not an ancestor of HEAD=${HEAD_SHA:-<unresolved>}"
-fi
+case "$PIN_STATE_VALUE" in
+  ancestor)
+    pass "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history"
+    ;;
+  unresolvable)
+    note "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history" \
+      "lifecycle.last_checked_sha=${ENTRY_SHA:-<missing>} names no commit object here — squash-merged away, or never written." \
+      "Substituted: every permalink resolves structurally at HEAD=${HEAD_SHA:-<unresolved>} (next section). Re-pin the corpus to restore the strict check."
+    ;;
+  *)
+    fail "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history" \
+      "lifecycle.last_checked_sha=${ENTRY_SHA:-<missing>} is not an ancestor of HEAD=${HEAD_SHA:-<unresolved>} (pin state: ${PIN_STATE_VALUE:-<unclassified>})"
+    ;;
+esac
 
 # Intersect the corpus's cited paths with everything that changed between
 # the pin and HEAD. A non-empty intersection means the corpus quotes a file
 # that has moved on without it — the real staleness this section guards.
 CITED_PATHS="$(jq_field "$SCAN_OUT" '.cited_paths // [] | .[]')"
 DRIFTED_PATHS=""
-if [ "$PIN_IS_ANCESTOR" = "yes" ] && [ -n "$CITED_PATHS" ]; then
+if [ "$PIN_STATE_VALUE" = "ancestor" ] && [ -n "$CITED_PATHS" ]; then
   CHANGED_SINCE_PIN="$(git -C "$REPO_ROOT" diff --name-only "$ENTRY_SHA" HEAD 2>/dev/null || true)"
   while IFS= read -r cited; do
     [ -n "$cited" ] || continue
@@ -172,7 +242,10 @@ if [ "$PIN_IS_ANCESTOR" = "yes" ] && [ -n "$CITED_PATHS" ]; then
   done <<< "$CITED_PATHS"
 fi
 
-if [ "$PIN_IS_ANCESTOR" = "yes" ] && [ -n "$CITED_PATHS" ] && [ -z "$DRIFTED_PATHS" ]; then
+if [ "$PIN_STATE_VALUE" = "unresolvable" ]; then
+  note "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit" \
+    "there is no pinned commit to diff against; substituted by structural resolution at HEAD (next section)"
+elif [ "$PIN_STATE_VALUE" = "ancestor" ] && [ -n "$CITED_PATHS" ] && [ -z "$DRIFTED_PATHS" ]; then
   pass "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit"
 else
   fail "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit" \
@@ -228,10 +301,11 @@ else
     "distinct shas found: $(jq_field "$SCAN_OUT" '.distinct_shas // [] | join(", ")') — expected only: $(jq_field "$SCAN_OUT" '.expected_sha // "?"')"
 fi
 
+RESOLVED_AT="$(jq_field "$SCAN_OUT" '.resolved_at // "the sha it cites"')"
 if jq_check "$SCAN_OUT" '.structural_fail_count == 0'; then
-  pass "reference corpus: every permalink's path + line range resolves structurally at the sha it cites"
+  pass "reference corpus: every permalink's path + line range resolves structurally at $RESOLVED_AT"
 else
-  fail "reference corpus: every permalink's path + line range resolves structurally at the sha it cites" \
+  fail "reference corpus: every permalink's path + line range resolves structurally at $RESOLVED_AT" \
     "$(jq_field "$SCAN_OUT" '.structural_fail_count // "?"') of $(jq_field "$SCAN_OUT" '.permalink_count // "?"') permalinks failed; sample: $(jq_field "$SCAN_OUT" '[.structural_failures_sample[]? | "\(.file):\(.path)#L\(.start)-L\(.end) — \(.reason)"] | join(" | ")')"
 fi
 
@@ -298,6 +372,7 @@ fi
 
 echo
 echo "Passed: $pass_count"
+echo "Noted:  $note_count"
 echo "Failed: $fail_count"
 
 [ "$fail_count" -eq 0 ]
