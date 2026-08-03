@@ -40,9 +40,8 @@ that corpus and its permalink-density lint expects upstream citations.
   around it, or report it as a failure.
 - **Replace template placeholders in place.** When generating reference files,
   substitute into the placeholder — never append content after it.
-- **SHA-pin every source reference.** See
-  [invariants](references/nick-railsback-skill-engine-invariants.md) for the
-  permalink form and what enforces it.
+- **SHA-pin every source reference.** The permalink form and what enforces it
+  are in the `invariants` reference below.
 
 ## Catalog
 

@@ -10,7 +10,7 @@
     { "path": "references/nick-railsback-skill-engine-monorepo.md", "status": "added", "sha_before": null, "sha_after": "223cd3e" },
     { "path": "references/nick-railsback-skill-engine-versioning.md", "status": "added", "sha_before": null, "sha_after": "c0f7026" },
     { "path": "references/nick-railsback-skill-engine-evaluation-and-audit.md", "status": "added", "sha_before": null, "sha_after": "e991ba8" },
-    { "path": "SKILL.md", "status": "modified", "sha_before": "d143464", "sha_after": "3118475" },
+    { "path": "SKILL.md", "status": "modified", "sha_before": "d143464", "sha_after": "68eebb0" },
     { "path": "research/source-paths.json", "status": "modified", "sha_before": "2ab486d", "sha_after": "8c62d28" },
     { "path": "verify.sh", "status": "unchanged", "sha_before": "ad111f5", "sha_after": "ad111f5" },
     { "path": "research/.research-state.json", "status": "unchanged", "sha_before": "48e4ce3", "sha_after": "48e4ce3" }
