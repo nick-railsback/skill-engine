@@ -43,6 +43,11 @@ set -uo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Navigator description: byte cap enforced by Check 3. Generous ceiling
+# meant to catch a pasted paragraph, not to constrain a well-written
+# WHEN-form trigger sentence.
+NAV_DESCRIPTION_MAX_BYTES=1024
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 CTX_ROOT="${CTX_ROOT:-$SCRIPT_DIR}"
 
@@ -142,6 +147,56 @@ extract_frontmatter() {
       if (saw_close == 0) exit 2
     }
   ' "$1" 2>/dev/null
+}
+
+# Helper: the whole value of the frontmatter's `description` key, read from
+# extract_frontmatter's output on stdin, with each line's leading
+# indentation removed and the lines joined by a single byte.
+#
+# Reading only the key's own line does not measure a YAML description. YAML
+# spells a long string value several ways, and the two that matter here put
+# the text on the indented lines BELOW the key: a folded scalar
+# (`description: >-`) and a literal one (`description: |-`). On the key's
+# line those leave a two-byte style marker, so a pasted 4 KB paragraph
+# measures 2 bytes and passes any ceiling — including, exactly, the ceiling
+# written to catch pasted paragraphs. A plain scalar continued onto indented
+# lines evades it identically. All three are one shape: the key's line, then
+# every line indented under it, up to the next top-level key.
+#
+# Joining with one byte per line is what YAML itself does — a folded
+# scalar's newlines become spaces, a literal one's stay newlines — so the
+# count matches the real value for the shapes that occur. A blank line
+# inside a folded scalar is the one divergence; it is not counted, which
+# loses a byte per paragraph break and cannot be used to hide anything.
+extract_description() {
+  awk '
+    BEGIN { state = 0; n = 0 }
+    state == 0 && /^description:[[:space:]]/ {
+      head = $0
+      sub(/^description:[[:space:]]*/, "", head)
+      # A block scalar header is syntax, not content: | or >, with an
+      # optional indentation indicator and/or chomping modifier.
+      if (head ~ /^[>|][0-9+-]*$/) head = ""
+      if (head != "") { n++; parts[n] = head }
+      state = 1
+      next
+    }
+    state == 1 {
+      if ($0 ~ /^[[:space:]]*$/) next
+      if ($0 ~ /^[[:space:]]/) {
+        body = $0
+        sub(/^[[:space:]]+/, "", body)
+        n++; parts[n] = body
+        next
+      }
+      state = 2
+    }
+    END {
+      out = ""
+      for (i = 1; i <= n; i++) out = (i == 1) ? parts[i] : out " " parts[i]
+      printf "%s", out
+    }
+  '
 }
 
 # Extract scheme + host + port from a URL. POSIX-portable.
@@ -439,8 +494,24 @@ else
   elif ! printf '%s\n' "$fm" | grep -qE '^description:[[:space:]]+'; then
     fail "$nav_rel frontmatter missing required key: description"
   else
-    pass "$nav_rel exists with valid frontmatter (name + description)"
+    desc_val=$(printf '%s\n' "$fm" | extract_description)
+    desc_bytes=$(printf '%s' "$desc_val" | wc -c | tr -d ' ')
+    # Set before the cap is judged, not inside the passing branch. nav_ok
+    # is the located-and-parseable flag Checks 4, 8 and 9 short-circuit on,
+    # and their skip messages say so — "requires navigator SKILL.md",
+    # "navigator SKILL.md not located". By this line the navigator has been
+    # found, its frontmatter parsed, and both required keys read, so those
+    # messages are already false. An over-cap description is a separate
+    # quality failure: it must fail Check 3 on its own terms and leave the
+    # downstream checks free to run, rather than turning one real failure
+    # into three false diagnoses and hiding any catalog break in the same
+    # tree behind them.
     nav_ok=1
+    if [ "$desc_bytes" -gt "$NAV_DESCRIPTION_MAX_BYTES" ]; then
+      fail "$nav_rel description is $desc_bytes bytes, over the ${NAV_DESCRIPTION_MAX_BYTES}-byte cap"
+    else
+      pass "$nav_rel exists with valid frontmatter (name + description, ${desc_bytes}/${NAV_DESCRIPTION_MAX_BYTES} bytes)"
+    fi
   fi
 fi
 

@@ -4,9 +4,16 @@ set -euo pipefail
 # pre-commit.sh.template - opt-in git pre-commit hook for the skill-engine
 #
 # What this hook does:
-#   Runs `bash templates/verify.sh` before every commit. If any verify check
-#   fails, the commit is aborted (non-zero exit). This gives the same green-bar
-#   discipline the release ritual asks for, just earlier in the loop.
+#   Runs every stamped contextualizer's `verify.sh` before each commit —
+#   `.claude/skills/<slug>-context/verify.sh`, the location engine-bootstrap
+#   stamps it to. If any verify check fails, the commit is aborted (non-zero
+#   exit). This gives the same green-bar discipline the release ritual asks
+#   for, just earlier in the loop.
+#
+#   A repo with no stamped contextualizer is an error, not a no-op: this hook
+#   exists to gate commits on a green corpus, and one that cannot find a corpus
+#   has nothing to gate. It says so and exits non-zero rather than passing
+#   silently.
 #
 # What this hook is NOT:
 #   It is not CI. The skill-engine deliberately does not ship CI (the release
@@ -14,8 +21,11 @@ set -euo pipefail
 #   reviewer convenience, not a release gate.
 #
 # How to install (opt-in; the project does not auto-install):
-#   cp templates/pre-commit.sh.template .git/hooks/pre-commit
+#   cp plugin/skill-engine/engine-bootstrap-templates/pre-commit.sh.template \
+#     .git/hooks/pre-commit
 #   chmod +x .git/hooks/pre-commit
+#   (the source path is inside your installed skill-engine plugin; see
+#    docs/06-release-doctrine.md § the pre-commit hook)
 #
 # How to uninstall:
 #   rm .git/hooks/pre-commit
@@ -36,16 +46,36 @@ if [ -z "$REPO_ROOT" ]; then
   exit 1
 fi
 
-VERIFY_SCRIPT="$REPO_ROOT/templates/verify.sh"
-if [ ! -f "$VERIFY_SCRIPT" ]; then
-  echo "pre-commit: $VERIFY_SCRIPT not found; skipping" >&2
-  exit 0
+# engine-bootstrap stamps verify.sh to .claude/skills/<slug>-context/verify.sh.
+# A monorepo can hold several stamped contextualizers, so glob rather than
+# resolve one path: every match runs, and any failure aborts the commit.
+shopt -s nullglob
+VERIFY_SCRIPTS=("$REPO_ROOT"/.claude/skills/*-context/verify.sh)
+shopt -u nullglob
+
+if [ "${#VERIFY_SCRIPTS[@]}" -eq 0 ]; then
+  echo "pre-commit: no contextualizer verify.sh found under" >&2
+  echo "  $REPO_ROOT/.claude/skills/*-context/verify.sh" >&2
+  echo "  This hook gates commits on a green corpus; with nothing to verify it" >&2
+  echo "  fails rather than passing silently." >&2
+  echo "  Scaffold one with the engine-bootstrap workflow, or uninstall the" >&2
+  echo "  hook: \`rm .git/hooks/pre-commit\`" >&2
+  exit 1
 fi
 
-if ! bash "$VERIFY_SCRIPT"; then
+verify_failed=0
+for VERIFY_SCRIPT in "${VERIFY_SCRIPTS[@]}"; do
+  if ! bash "$VERIFY_SCRIPT"; then
+    echo "" >&2
+    echo "pre-commit: ${VERIFY_SCRIPT#"$REPO_ROOT/"} failed" >&2
+    verify_failed=1
+  fi
+done
+
+if [ "$verify_failed" -ne 0 ]; then
   echo "" >&2
-  echo "pre-commit: verify.sh failed; commit aborted" >&2
-  echo "  Re-run \`bash templates/verify.sh\` for full output." >&2
+  echo "pre-commit: verify failed; commit aborted" >&2
+  echo "  Re-run the verify.sh named above for full output." >&2
   echo "  To bypass once (rare, deliberate): \`git commit --no-verify\`" >&2
   exit 1
 fi

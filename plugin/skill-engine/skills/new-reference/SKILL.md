@@ -1,6 +1,6 @@
 ---
 name: new-reference
-description: Register one new reference in an existing contextualizer without a full discover pass.
+description: Use when a single topic is already identified and a full DISCOVER pass would be overkill, to register one new reference in an existing contextualizer.
 ---
 
 # New reference
@@ -32,7 +32,7 @@ recorded only when the contextualizer follows a non-default branch
 for a branch at registration time — the maintainer can supply
 `"branch": "<name>"` in the proposed entry directly during the
 approval gesture, or edit `source-paths.json` after approval. Field
-schema and regex enforcement: [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md) §"source-paths.json entry shape".
+schema and regex enforcement: [`02-artifact-contract.md`](../../docs/02-artifact-contract.md) §"source-paths.json entry shape".
 
 For `web-doc` sources, citations pin three values: `source_url` (from the
 fetched URL), `content_hash` (`sha256(file)[:8]`), and `crawl_date` (ISO-8601
@@ -54,43 +54,7 @@ resolves relative to whichever directory matches. Before reading or
 writing anything, locate the root by searching all three install levels
 in order:
 
-<!-- doctrine:locator-block:start -->
-```bash
-set -euo pipefail
-# <name> resolves per this skill's "Selecting a contextualizer" section;
-# substitute the empty string when no contextualizer was named.
-name="<name>"
-ctx_roots=$(
-  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
-    [ -d "$root" ] || continue
-    # Quoted "${name:-*}" reaches find unexpanded: a named invocation
-    # matches exactly <name>-context, a bare one globs *-context.
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name:-*}-context" 2>/dev/null
-  done
-)
-# `|| true`: grep -c prints 0 but exits 1 on zero matches; without the
-# guard, pipefail+errexit abort the block right here and the zero-match
-# diagnostics below are dead code (a bare exit 1, no message).
-n=$(printf '%s\n' "$ctx_roots" | grep -c . || true)
-if [ "$n" -eq 0 ] && [ -n "$name" ]; then
-  echo "No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed."
-  exit 1
-elif [ "$n" -eq 0 ]; then
-  echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
-  exit 1
-elif [ "$n" -gt 1 ] && [ -n "$name" ]; then
-  # Same slug installed at more than one level: the first root in the
-  # search order above wins (user, then local-user, then project).
-  CTX_ROOT=$(printf '%s\n' "$ctx_roots" | head -n1)
-elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers found; rerun naming one (see 'Selecting a contextualizer' in this skill):"
-  printf '%s\n' "$ctx_roots"
-  exit 1
-else
-  CTX_ROOT="$ctx_roots"
-fi
-```
-<!-- doctrine:locator-block:end -->
+Run the script in [`shared/locator-block.md`](../../shared/locator-block.md) verbatim before proceeding.
 
 ```bash
 CTX_PROPOSED="${CTX_ROOT}.proposed"
@@ -129,13 +93,13 @@ cleanly, so this run never layers onto a stale proposed tree.
 ## Doctrine surface
 
 The complete NEW protocol — resource registration, initial crawl, reference
-authoring, catalog update, validation — lives in chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md) under
+authoring, catalog update, validation — lives in chapter [`03-engine.md`](../../docs/03-engine.md) under
 `## Workflow patterns (how each menu item runs)` and the `## Workflow: NEW`
-section of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
+section of [`maintenance-agent.md.template`](../../engine-bootstrap-templates/maintenance-agent.md.template).
 
 The artifact contract a new reference must satisfy (frontmatter, filename
 conventions, catalog bijection; the byte-equality fixture is pre-fixture-harness
-aspirational) is documented in [`02-artifact-contract.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md).
+aspirational) is documented in [`02-artifact-contract.md`](../../docs/02-artifact-contract.md).
 
 ## Cadence
 
@@ -144,7 +108,7 @@ Ad-hoc, whenever the domain grows a new topic the catalog does not yet cover.
 ## Invariants
 
 Pre-stage validation runs before the proposal is finalized: catalog
-bijection, no-frontmatter, `verify.sh`. See chapter [`03-engine.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/03-engine.md)
+bijection, no-frontmatter, `verify.sh`. See chapter [`03-engine.md`](../../docs/03-engine.md)
 `## Pre-approval validation (the load-bearing contract)`. (Byte-equality
 fixture refresh and the full test-suite harness are pre-fixture-harness aspirational —
 the pre-fixture-harness three-check gate ends with `verify.sh`.)

@@ -34,7 +34,13 @@ Two things, both load-bearing:
 2. **A post-run summary** for the author — paragraph-form,
    ≤30 lines, four components:
    - **Coverage report.** What was read; what references emit; what
-     each reference covers. Cite content by path+content-hash.
+     each reference covers. Cite content by path+content-hash. Also
+     the home of the **minimal-essence justification**: when a covered
+     source legitimately warrants zero — or fewer than three —
+     references, the report states that as a terminal outcome, in the
+     shape defined in the discover skill's
+     [`proposal-and-post-run.md`](../skills/discover/references/proposal-and-post-run.md)
+     reference.
    - **Skip-reasoning.** Files and companion sources that were
      considered but excluded, with reasons. Empty-skip case
      allowed ("Nothing of note was skipped.").

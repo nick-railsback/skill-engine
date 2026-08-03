@@ -1,0 +1,98 @@
+{
+  "_note": "Three grounded records (reference opened AND SHA/tag-pinned permalink in final text). Sized for a 3-prompt corpus; used for the train corpus and for the unsplit corpus. All grounded -> 100% >= 0.80 -> [PASS] exit 0.",
+  "records": [
+    {
+      "runs": [
+        {
+          "references_opened": [
+            "alpha.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "See https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py for the import path.",
+          "input_tokens": 1200,
+          "output_tokens": 60
+        },
+        {
+          "references_opened": [
+            "alpha.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "See https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py for the import path.",
+          "input_tokens": 1200,
+          "output_tokens": 60
+        },
+        {
+          "references_opened": [
+            "alpha.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "See https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py for the import path.",
+          "input_tokens": 1200,
+          "output_tokens": 60
+        }
+      ]
+    },
+    {
+      "runs": [
+        {
+          "references_opened": [
+            "beta.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "The migration steps are at https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/MIGRATION.md.",
+          "input_tokens": 1300,
+          "output_tokens": 70
+        },
+        {
+          "references_opened": [
+            "beta.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "The migration steps are at https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/MIGRATION.md.",
+          "input_tokens": 1300,
+          "output_tokens": 70
+        },
+        {
+          "references_opened": [
+            "beta.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "The migration steps are at https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/MIGRATION.md.",
+          "input_tokens": 1300,
+          "output_tokens": 70
+        }
+      ]
+    },
+    {
+      "runs": [
+        {
+          "references_opened": [
+            "gamma.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Signature defined at https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py (tag-pinned).",
+          "input_tokens": 1150,
+          "output_tokens": 65
+        },
+        {
+          "references_opened": [
+            "gamma.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Signature defined at https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py (tag-pinned).",
+          "input_tokens": 1150,
+          "output_tokens": 65
+        },
+        {
+          "references_opened": [
+            "gamma.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Signature defined at https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py (tag-pinned).",
+          "input_tokens": 1150,
+          "output_tokens": 65
+        }
+      ]
+    }
+  ]
+}

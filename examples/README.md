@@ -19,6 +19,24 @@ your own install.*
 | [inspect-ai-context](inspect-ai-context/) | **Safety-adjacency** — UK AISI's eval framework, generated against both the git source and the live docs portal. Covers tasks, datasets, solvers, scorers, models, tools, agents, sandboxing, logs, and the CLI/API reference. | Multi-source synthesis (git + web-doc). |
 | [langchain-context](langchain-context/) | **Scale with honest framing** — a polyrepo (v1 / classic / in-tree & out-of-tree partners / companion repos) that explicitly admits where it stops: the LangChain.js port ships as a thin orientation pointer, not full coverage. | Scale + the engine's honesty-under-scale property. |
 
+## Navigator size budget
+
+Each navigator's `SKILL.md` has a first-5,120-byte standing-instructions
+budget (`../plugin/skill-engine/docs/02-artifact-contract.md` § Navigator
+size budget), measured by `plugin/skill-engine/tests/navigator_budget.py`
+and reported — never gated — every time `bash scripts/ci-local.sh
+examples` runs. All four navigators below are over budget today. This
+chunk does not modify any of them: they were emitted by earlier engine
+versions and do not reflect current doctrine; whether to shrink them or
+revisit the budget itself is an open question, not settled here.
+
+| Navigator | Standing-instructions bytes | Budget | Verdict |
+|---|---|---|---|
+| `.claude/skills/skill-engine-context/SKILL.md` | 7,048 | 5,120 | over budget |
+| `examples/inspect-ai-context/SKILL.md` | 6,425 | 5,120 | over budget |
+| `examples/langchain-context/SKILL.md` | 8,001 | 5,120 | over budget |
+| `examples/modelcontextprotocol-python-sdk-context/SKILL.md` | 6,659 | 5,120 | over budget |
+
 ## Validating an example yourself
 
 1. Pick a claim from a reference file that the user would be hurt by if it were wrong.

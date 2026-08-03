@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "query": "What fields does verify.sh require on every source-paths.json entry, and which ones are gated to just the git-managed or web-doc kinds?",
+      "expected": "nick-railsback-skill-engine-artifact-contract",
+      "notes": "Tests whether a precise required-fields/schema question routes to the artifact-contract reference's field table rather than the invariants reference, which covers verify.sh's named checks generally but not the per-field source-entries schema.",
+      "persona": "domain-expert"
+    },
+    {
+      "query": "I want to register a new documentation source in my config file — what fields am I supposed to fill in, and does it matter if I use a URL or a local folder path?",
+      "expected": "nick-railsback-skill-engine-artifact-contract",
+      "notes": "A technical reader unfamiliar with this tool's own vocabulary describing the source-paths.json entry shape and the url-vs-path kind rules in generic terms.",
+      "persona": "domain-naive-technical"
+    },
+    {
+      "query": "Why can't I just add a little header block to the top of a reference file the way I do in other markdown docs I've written?",
+      "expected": "nick-railsback-skill-engine-artifact-contract",
+      "notes": "Plain-language framing of the no-YAML-frontmatter rule for reference files, phrased as a \"why can't I\" without using the word frontmatter.",
+      "persona": "non-technical"
+    },
+    {
+      "query": "When the update process finds new content, does it overwrite my current skill files right away, or does it save the changes somewhere I can look at first?",
+      "expected": "nick-railsback-skill-engine-discover-refresh",
+      "notes": "Asks about the staging/proposed-dir model in generic software terms (\"overwrite right away\" vs \"save somewhere to look at first\") without naming DISCOVER, REFRESH, or .proposed/.",
+      "persona": "domain-naive-technical"
+    },
+    {
+      "query": "If nothing has changed upstream, does running the refresh again just take forever re-checking everything, or does it know to skip?",
+      "expected": "nick-railsback-skill-engine-discover-refresh",
+      "notes": "Plain-language question about the idempotency no-op gate — tests whether non-jargon \"does it know to skip\" phrasing still routes to the pipeline reference over the overview's higher-level workflow list.",
+      "persona": "non-technical"
+    },
+    {
+      "query": "How would I know whether the answers I'm getting are actually backed by real source material, versus the assistant just making something up?",
+      "expected": "nick-railsback-skill-engine-evaluation-and-audit",
+      "notes": "Grounded-citation-rate framing (Check 8) in end-user language, distinguishing the grounding half of this reference from its routing-eval half.",
+      "persona": "non-technical"
+    },
+    {
+      "query": "Of the four reference invariants, which ones does verify.sh actually check mechanically versus rely on reviewer discipline for?",
+      "expected": "nick-railsback-skill-engine-invariants",
+      "notes": "Directly targets the enforced-vs-specified split (first-5K/TOC as authoring discipline, depth-1 inside catalog-bijection, SHA-pin via a separate lint) that this reference's opening section states explicitly.",
+      "persona": "domain-expert"
+    },
+    {
+      "query": "Is there a size limit on how much always-on instruction text a skill can carry, and what happens if I go over it?",
+      "expected": "nick-railsback-skill-engine-invariants",
+      "notes": "Plain-terms phrasing of the first-5K invariant and its silent-truncation failure mode.",
+      "persona": "domain-naive-technical"
+    },
+    {
+      "query": "How does the monorepo adapter restore the Phase 1 SHA short-circuit at the slice level instead of the whole-repo level?",
+      "expected": "nick-railsback-skill-engine-monorepo",
+      "notes": "Names the path-scoped-SHA mechanism precisely, distinguishing it from the coverage-heuristic half of the same reference.",
+      "persona": "domain-expert"
+    },
+    {
+      "query": "What are the actual files and folders that get created when I set one of these skills up?",
+      "expected": "nick-railsback-skill-engine-overview",
+      "notes": "Targets the contextualizer mental model's four-part filesystem shape at a level a generalist engineer would ask, without invoking \"navigator\" or \"catalog\" by name.",
+      "persona": "domain-naive-technical"
+    },
+    {
+      "query": "In plain terms, what problem does this tool actually solve for our team?",
+      "expected": "nick-railsback-skill-engine-overview",
+      "notes": "The canonical \"what is this\" orientation question — should resolve to the start-here overview over any narrower reference.",
+      "persona": "non-technical"
+    },
+    {
+      "query": "What's the design rationale for goal-given delegation over a fixed pipeline, and what actually binds output quality if the model isn't following a prescribed set of steps?",
+      "expected": "nick-railsback-skill-engine-principles",
+      "notes": "Deliberately mirrors the surface topic of the discover-refresh goal-given-posture entry but should route to principles — the general design-philosophy framing — rather than the pipeline-specific mechanics reference; a near-duplicate pair testing the navigator's disambiguation, not a routing accident.",
+      "persona": "domain-expert"
+    },
+    {
+      "query": "Why doesn't the tool just go fetch and clone everything it finds on its own — why does it keep asking me first?",
+      "expected": "nick-railsback-skill-engine-principles",
+      "notes": "Plain-terms question about the consent-gated materialization principle.",
+      "persona": "domain-naive-technical"
+    },
+    {
+      "query": "If a new version of this tool comes out, is it going to break the skill setup I already have working?",
+      "expected": "nick-railsback-skill-engine-versioning",
+      "notes": "Plain-language forward-compatibility question — targets the \"how a stamped contextualizer evolves across majors\" section.",
+      "persona": "non-technical"
+    },
+    {
+      "query": "What does the apply gate actually check in REVIEW.md before it will let a staged proposal promote to the live tree?",
+      "expected": "nick-railsback-skill-engine-workflows",
+      "notes": "Targets the two literal-content checks (Step 1 blanks, Step 2 placeholder) apply runs before promotion, distinct from the review command's own predict-then-compare pass.",
+      "persona": "domain-expert"
+    }
+  ]
+}

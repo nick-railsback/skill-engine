@@ -3,9 +3,9 @@
 # Asserts two committed facts:
 #   (a) the bundled .claude/settings.json ships an explicitly empty hooks
 #       block (zero hooks injected into the user's settings); and
-#   (b) the plugin manifest declares exactly one allowlisted hook — a
-#       single SessionStart bootstrap command, one matcher group, one
-#       command. Any extra event key, matcher group, or command fails.
+#   (b) the plugin manifest declares zero hooks. Any hook at all —
+#       restored or newly added, any event key, any matcher group, any
+#       command — fails.
 # The check is two jq reads of small committed files — trivially
 # sub-second. A failure is meant to be self-explaining (names the file
 # and the unexpected shape) so a red CI run needs no spelunking.
@@ -41,26 +41,21 @@ elif ! jq -e '.hooks == {}' "$SETTINGS_FILE" >/dev/null 2>&1; then
   fail=1
 fi
 
-# Assertion (b): manifest declares exactly one allowlisted hook.
+# Assertion (b): plugin manifest declares zero hooks.
+# Tolerant '(.hooks // {}) == {}', not strict — spec.md criterion 1 allows
+# either an explicit empty object or the key's outright absence, unlike
+# assertion (a)'s settings file, where the empty block itself is the
+# visible commitment. Deleting the manifest's hooks key entirely (this
+# chunk's own approach) must pass this check, not just emptying it.
 if [ ! -f "$MANIFEST_FILE" ]; then
   echo "hooks-audit: FAIL — plugin manifest not found at $MANIFEST_FILE" >&2
   fail=1
-else
-  if ! jq -e '(.hooks | keys) == ["SessionStart"]' "$MANIFEST_FILE" >/dev/null 2>&1; then
-    echo "hooks-audit: FAIL — $MANIFEST_FILE: .hooks must declare only the key \"SessionStart\". Found keys: $(jq -c 'try (.hooks | keys) catch "<.hooks is absent or not an object>"' "$MANIFEST_FILE" 2>/dev/null)" >&2
-    fail=1
-  fi
-  if ! jq -e '.hooks.SessionStart | length == 1' "$MANIFEST_FILE" >/dev/null 2>&1; then
-    echo "hooks-audit: FAIL — $MANIFEST_FILE: .hooks.SessionStart must hold exactly one matcher group. Found: $(jq -c '.hooks.SessionStart | if type == "array" then length else "<not an array: \(type)>" end' "$MANIFEST_FILE" 2>/dev/null)" >&2
-    fail=1
-  fi
-  if ! jq -e '.hooks.SessionStart[0].hooks | length == 1' "$MANIFEST_FILE" >/dev/null 2>&1; then
-    echo "hooks-audit: FAIL — $MANIFEST_FILE: .hooks.SessionStart's matcher group must hold exactly one command. Found: $(jq -c 'try (.hooks.SessionStart[0].hooks | length) catch "<SessionStart has an unexpected shape>"' "$MANIFEST_FILE" 2>/dev/null)" >&2
-    fail=1
-  fi
+elif ! jq -e '(.hooks // {}) == {}' "$MANIFEST_FILE" >/dev/null 2>&1; then
+  echo "hooks-audit: FAIL — $MANIFEST_FILE: .hooks is not empty. Found: $(jq -c 'try .hooks catch "<.hooks is not an object>"' "$MANIFEST_FILE" 2>/dev/null)" >&2
+  fail=1
 fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "hooks-audit: OK — settings ship zero hooks; manifest declares only the allowlisted SessionStart bootstrap."
+  echo "hooks-audit: OK — settings ship zero hooks; manifest declares zero hooks."
 fi
 exit "$fail"

@@ -1,0 +1,24 @@
+{
+  "navigator": "skill-engine-context",
+  "schema_version": 1,
+  "started_at": "2026-08-02T09:02:08Z",
+  "runs_per_query": 3,
+  "entries": [
+    {"query": "What fields does verify.sh require on every source-paths.json entry, and which ones are gated to just the git-managed or web-doc kinds?", "expected": "nick-railsback-skill-engine-artifact-contract", "persona": "domain-expert", "runs": ["pass", "pass", "pass"]},
+    {"query": "I want to register a new documentation source in my config file — what fields am I supposed to fill in, and does it matter if I use a URL or a local folder path?", "expected": "nick-railsback-skill-engine-artifact-contract", "persona": "domain-naive-technical", "runs": ["pass", "pass", "pass"]},
+    {"query": "Why can't I just add a little header block to the top of a reference file the way I do in other markdown docs I've written?", "expected": "nick-railsback-skill-engine-artifact-contract", "persona": "non-technical", "runs": ["fail", "pass", "fail"]},
+    {"query": "When the update process finds new content, does it overwrite my current skill files right away, or does it save the changes somewhere I can look at first?", "expected": "nick-railsback-skill-engine-discover-refresh", "persona": "domain-naive-technical", "runs": ["pass", "pass", "pass"]},
+    {"query": "If nothing has changed upstream, does running the refresh again just take forever re-checking everything, or does it know to skip?", "expected": "nick-railsback-skill-engine-discover-refresh", "persona": "non-technical", "runs": ["pass", "pass", "pass"]},
+    {"query": "How would I know whether the answers I'm getting are actually backed by real source material, versus the assistant just making something up?", "expected": "nick-railsback-skill-engine-evaluation-and-audit", "persona": "non-technical", "runs": ["pass", "fail", "pass"]},
+    {"query": "Of the four reference invariants, which ones does verify.sh actually check mechanically versus rely on reviewer discipline for?", "expected": "nick-railsback-skill-engine-invariants", "persona": "domain-expert", "runs": ["pass", "pass", "pass"]},
+    {"query": "Is there a size limit on how much always-on instruction text a skill can carry, and what happens if I go over it?", "expected": "nick-railsback-skill-engine-invariants", "persona": "domain-naive-technical", "runs": ["pass", "pass", "pass"]},
+    {"query": "How does the monorepo adapter restore the Phase 1 SHA short-circuit at the slice level instead of the whole-repo level?", "expected": "nick-railsback-skill-engine-monorepo", "persona": "domain-expert", "runs": ["pass", "pass", "pass"]},
+    {"query": "What are the actual files and folders that get created when I set one of these skills up?", "expected": "nick-railsback-skill-engine-overview", "persona": "domain-naive-technical", "runs": ["pass", "pass", "pass"]},
+    {"query": "In plain terms, what problem does this tool actually solve for our team?", "expected": "nick-railsback-skill-engine-overview", "persona": "non-technical", "runs": ["pass", "pass", "pass"]},
+    {"query": "What's the design rationale for goal-given delegation over a fixed pipeline, and what actually binds output quality if the model isn't following a prescribed set of steps?", "expected": "nick-railsback-skill-engine-principles", "persona": "domain-expert", "runs": ["fail", "fail", "fail"]},
+    {"query": "Why doesn't the tool just go fetch and clone everything it finds on its own — why does it keep asking me first?", "expected": "nick-railsback-skill-engine-principles", "persona": "domain-naive-technical", "runs": ["fail", "fail", "fail"]},
+    {"query": "If a new version of this tool comes out, is it going to break the skill setup I already have working?", "expected": "nick-railsback-skill-engine-versioning", "persona": "non-technical", "runs": ["pass", "pass", "pass"]},
+    {"query": "What does the apply gate actually check in REVIEW.md before it will let a staged proposal promote to the live tree?", "expected": "nick-railsback-skill-engine-workflows", "persona": "domain-expert", "runs": ["pass", "pass", "pass"]}
+  ],
+  "ended_at": "2026-08-02T09:22:18Z"
+}

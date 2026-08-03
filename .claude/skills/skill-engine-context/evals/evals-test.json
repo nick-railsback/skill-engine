@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "query": "Why does DISCOVER hand the model a goal instead of a fixed Stage 0/1/2 worker dispatch, and what binds output quality if there's no prescribed pipeline?",
+      "expected": "nick-railsback-skill-engine-discover-refresh",
+      "notes": "Probes the goal-given posture section directly, using this reference's own vocabulary (Stage 0/1/2, goal-given posture) rather than the adjacent principles reference, which states the same idea in more general design terms.",
+      "persona": "domain-expert"
+    },
+    {
+      "query": "Which CI check keeps plugin.json, marketplace.json, and the README version badge from drifting out of agreement with each other?",
+      "expected": "nick-railsback-skill-engine-versioning",
+      "notes": "Names the doctrine.sh version-parity check precisely — a held-out generalization check for a query pattern (\"which CI check enforces X\") the train set exercises on a different reference (apply's REVIEW.md gate).",
+      "persona": "domain-expert"
+    },
+    {
+      "query": "Why does the routing test run each question three separate times instead of just once?",
+      "expected": "nick-railsback-skill-engine-evaluation-and-audit",
+      "notes": "Targets the three-runs-per-query rationale (flicker detection under non-deterministic routing) using plain \"test\"/\"question\" vocabulary instead of \"eval harness\"/\"entry.\"",
+      "persona": "domain-naive-technical"
+    },
+    {
+      "query": "What's the actual difference between the command that lets me look at proposed changes and the one that makes them permanent?",
+      "expected": "nick-railsback-skill-engine-workflows",
+      "notes": "Plain-terms review-vs-apply distinction, without naming either command — a held-out phrasing of the same workflows territory the train set probes from the apply-gate-internals angle.",
+      "persona": "domain-naive-technical"
+    },
+    {
+      "query": "Our main codebase is really one giant repo with a bunch of unrelated projects mixed together — will that confuse the tool about what actually changed?",
+      "expected": "nick-railsback-skill-engine-monorepo",
+      "notes": "Plain-language framing of the one-repo-equals-one-unit problem the monorepo adapter exists to solve, held out to check generalization beyond the train set's slice-mechanics phrasing of the same reference.",
+      "persona": "non-technical"
+    },
+    {
+      "query": "What do I need to do to get my first working setup running?",
+      "expected": "nick-railsback-skill-engine-overview",
+      "notes": "Targets the three-install-levels/workflow-lifecycle quickstart pointer rather than the full per-command workflows reference, which is the deeper follow-up, not the first stop.",
+      "persona": "non-technical"
+    }
+  ]
+}

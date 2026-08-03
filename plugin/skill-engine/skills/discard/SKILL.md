@@ -1,6 +1,6 @@
 ---
 name: discard
-description: Discard a staged proposal without promoting it.
+description: Use when a staged proposal doesn't warrant promotion, or was ticked reject in REVIEW.md Step 3, to remove the proposed staging directory without touching the live contextualizer.
 ---
 
 # Discard

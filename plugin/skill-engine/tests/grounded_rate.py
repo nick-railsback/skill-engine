@@ -1,12 +1,25 @@
 #!/usr/bin/env python3
 """Grounded-citation rate eval (SELF-AUDIT Check 8).
 
-For each `needs_reference` prompt in `$CTX_ROOT/research/eval-prompts.json`,
-run the contextualizer's SKILL.md as the system prompt against Claude Haiku
-4.5 with a single `read_reference` tool. Grade each response on whether the
-model (a) opened ≥1 reference AND (b) emitted a SHA-pinned or tag-pinned
-GitHub permalink in its final response text. Surface `grounded_rate` as a
-single SELF-AUDIT findings-table row.
+For each `needs_reference` prompt in one corpus file under
+`$CTX_ROOT/research/`, run the contextualizer's SKILL.md as the system prompt
+against Claude Haiku 4.5 with a single `read_reference` tool. Grade each
+response on whether the model (a) opened ≥1 reference AND (b) emitted a
+SHA-pinned or tag-pinned GitHub permalink in its final response text. Surface
+`grounded_rate` as a single SELF-AUDIT findings-table row.
+
+A contextualizer may keep one corpus (`research/eval-prompts.json`) or split it
+into a train set and a held-out set. The two invocation modes treat that
+differently, deliberately:
+
+    --dry-run       a keyless schema gate over EVERY corpus in research/. It
+                    calls no model and costs nothing, so a corpus it skips is a
+                    corpus gated by nothing until a paid live run trips over it.
+    a grading run   scores EXACTLY ONE corpus and names it on the verdict line.
+                    The train set by default; the held-out set only when named
+                    with --corpus. A rate averaged across a tuned set and a
+                    held-out set means nothing, and an unlabeled rate can be
+                    misattributed to the other set later.
 
 Opt-in: SELF-AUDIT's bash entry checks `SKILL_ENGINE_RUN_EVAL` before
 invoking this script. The script itself does not check the env var — it
@@ -52,6 +65,17 @@ PRICE_INPUT_PER_MTOK = 1.0
 PRICE_OUTPUT_PER_MTOK = 5.0
 
 PROMPT_PREFIX_WIDTH = 60
+
+# What makes a file under research/ a corpus. Filename-shaped, not
+# content-sniffed: research/ is a mixed-artifact directory (source-paths.json,
+# review-state.json, .research-state.json, ...) whose sidecars carry
+# `schema_version: 1` of their own, so "every *.json is a corpus" would report
+# unrelated artifacts as schema-invalid corpora. Sniffing fails the other way —
+# a genuinely malformed corpus and a non-corpus file are indistinguishable by
+# content, so a sniff must either miss the first or flag the second.
+CORPUS_GLOB = "eval-prompts*.json"
+TRAIN_CORPUS = "eval-prompts-train.json"
+UNSPLIT_CORPUS = "eval-prompts.json"
 
 # Producer-side error sentinels shared with grade_record. Module-level so a
 # rewording in one site can't silently demote a marker in the other.
@@ -109,6 +133,88 @@ def load_and_validate_prompts(prompts_path: Path) -> tuple[list[dict] | None, st
             if field not in p or not isinstance(p[field], str) or not p[field].strip():
                 return (None, f"prompts[{i}] missing or whitespace-only field {field!r}")
     return (prompts, None)
+
+
+# ----- Corpus discovery and selection ------------------------------------
+
+def discover_corpora(research_dir: Path) -> list[Path]:
+    """Every corpus file directly under `research/`, in deterministic order.
+
+    Nothing has to be registered anywhere for a split pair to be found, and
+    `eval-prompts.json` still matches — which is what keeps every forker who
+    followed the published "place the file at
+    `<CTX_ROOT>/research/eval-prompts.json`" instruction working unchanged.
+    """
+    if not research_dir.is_dir():
+        return []
+    return sorted(p for p in research_dir.glob(CORPUS_GLOB) if p.is_file())
+
+
+def select_corpus(research_dir: Path, requested: str | None) -> tuple[Path | None, str | None]:
+    """Pick the single corpus a grading run scores. Returns (path, error).
+
+    Resolution order, first match wins:
+
+      1. `--corpus NAME` -> `research/NAME`. A name that does not resolve is an
+         error, never an N/A: a typo must not degrade into "no eval prompts
+         defined" for a run whose caller believed it was grading something.
+      2. the train corpus, when this context root is split.
+      3. the unsplit corpus, for every contextualizer that never split.
+      4. nothing -- the caller reports N/A.
+
+    A held-out corpus appears in no auto-selection rule, so reaching it costs a
+    deliberate act. That is the whole point of splitting: tuning against the
+    answer key should require effort, which means a physical split rather than a
+    convention. Exactly one corpus is ever returned, so "no invocation grades
+    the union" is structural rather than a check that could be edited away.
+    """
+    if requested is not None:
+        path = research_dir / requested
+        if not path.is_file():
+            return (None, f"corpus not found: research/{requested}")
+        return (path, None)
+    for name in (TRAIN_CORPUS, UNSPLIT_CORPUS):
+        candidate = research_dir / name
+        if candidate.is_file():
+            return (candidate, None)
+    return (None, None)
+
+
+def run_dry_run(research_dir: Path, requested: str | None) -> int:
+    """Keyless schema gate over every corpus in `research/`. Returns an exit code.
+
+    Every corpus is validated and reported *before* the exit code is decided:
+    first-failure-abort would hide the second file's status behind the first
+    file's error, and the point of the gate is that no corpus goes unvalidated.
+    """
+    if requested is not None:
+        path = research_dir / requested
+        if not path.is_file():
+            print(f"[FAIL] grounded-rate: corpus not found: research/{requested}")
+            return 1
+        corpora = [path]
+    else:
+        corpora = discover_corpora(research_dir)
+
+    if not corpora:
+        print("[N/A]  grounded-rate: no eval prompts defined (research/eval-prompts.json absent)")
+        return 0
+
+    any_invalid = False
+    for path in corpora:
+        prompts, err = load_and_validate_prompts(path)
+        if err is not None:
+            print(f"[FAIL] grounded-rate: {path.name} schema invalid — {err}")
+            any_invalid = True
+            continue
+        if not prompts:
+            print(f"[N/A]  grounded-rate: {path.name} has 0 prompts")
+            continue
+        print(f"[DRY-RUN] grounded-rate: {len(prompts)} prompt(s) parsed from {path}")
+        for p in prompts:
+            text_prefix = p["text"][:PROMPT_PREFIX_WIDTH]
+            print(f"  {p['id']} [{p['category']}]:  {text_prefix}")
+    return 1 if any_invalid else 0
 
 
 # ----- Tool surface ------------------------------------------------------
@@ -368,6 +474,57 @@ def grade_record(record: dict) -> tuple[bool, str | None]:
     return (True, None)
 
 
+def aggregate_prompt_runs(prompt: dict, runs: list[dict]) -> dict:
+    """Reduce a prompt's 3 raw run-records to one per-prompt verdict.
+
+    `grounded` is a majority vote (≥2 of 3 grounded). `flicker` marks a
+    prompt whose 3 runs did not unanimously agree, so it can be reported
+    distinctly from a stable PASS or a stable FAIL rather than folded into
+    the aggregate rate silently.
+
+    `marker` is:
+        None                    unanimously grounded
+        "flicker"               the runs disagreed on the verdict
+        "<marker>"              the runs agreed on the verdict AND on why
+        "mixed:<a>+<b>+..."     the runs agreed the prompt failed, but not
+                                on why; every distinct reason, sorted
+
+    That last case is not exotic. `flicker` is computed from the boolean
+    votes alone, so three failing runs are "unanimous" however differently
+    they failed — and taking the marker from run 1 then reports a partial
+    outage as a navigator defect. A prompt whose first run opened no
+    reference and whose other two died on a rate limit reads as
+    `n03 [no-reference-opened]`, and the maintainer retunes SKILL.md
+    against a signal that was two-thirds infrastructure. The all-errored
+    exit-2 gate does not catch it either: that requires an error on every
+    run of every prompt.
+
+    Naming every distinct reason keeps the infrastructure failure visible,
+    which is the part that changes what the reader does next.
+    """
+    graded = [grade_record(r) for r in runs]
+    votes = [grounded for grounded, _marker in graded]
+    flicker = len(set(votes)) > 1
+    markers = sorted({marker for _grounded, marker in graded if marker is not None})
+    if flicker:
+        marker = "flicker"
+    elif not markers:
+        marker = None
+    elif len(markers) == 1:
+        marker = markers[0]
+    else:
+        marker = "mixed:" + "+".join(markers)
+    return {
+        "prompt_id": prompt["id"],
+        "category": prompt["category"],
+        "prompt_text": prompt["text"],
+        "runs": runs,
+        "grounded": sum(votes) >= 2,
+        "flicker": flicker,
+        "marker": marker,
+    }
+
+
 def estimate_cost(records: list[dict]) -> float:
     total_in = sum(r.get("input_tokens", 0) for r in records)
     total_out = sum(r.get("output_tokens", 0) for r in records)
@@ -389,8 +546,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
                         help=f"grounded_rate ≥ threshold = PASS. Default {DEFAULT_THRESHOLD}.")
     parser.add_argument("--api-key-source", choices=("keychain", "env"), default="keychain")
+    parser.add_argument("--corpus", default=None, metavar="NAME",
+                        help=f"Grade the corpus file NAME under <ctx_root>/research/. "
+                             f"Without it a grading run scores {TRAIN_CORPUS} when "
+                             f"present, else {UNSPLIT_CORPUS} — a held-out corpus is "
+                             f"reachable only by naming it here.")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Validate prompts file and exit; do not call the API.")
+                        help="Validate every corpus file under research/ and exit; "
+                             "do not call the API.")
     parser.add_argument("--results-json", type=Path, default=None,
                         help="Write full per-prompt records to PATH.")
     # Internal-only flag for the test harness — replays pre-recorded responses.
@@ -403,28 +566,43 @@ def main(argv: list[str]) -> int:
         print(f"[FAIL] grounded-rate: CTX_ROOT is not a directory: {ctx_root}")
         return 1
 
-    prompts_path = ctx_root / "research" / "eval-prompts.json"
+    research_dir = ctx_root / "research"
     refs_dir = ctx_root / "references"
     skill_md_path = ctx_root / "SKILL.md"
+
+    # --dry-run short-circuits above single-corpus selection (no API key, no
+    # network): it is a gate over every corpus, not over the one that would be
+    # graded.
+    if args.dry_run:
+        return run_dry_run(research_dir, args.corpus)
+
+    # A grading run scores exactly one corpus.
+    prompts_path, select_err = select_corpus(research_dir, args.corpus)
+    if select_err is not None:
+        print(f"[FAIL] grounded-rate: {select_err}")
+        return 1
+    if prompts_path is None:
+        # Two N/A texts, because one silent N/A over a directory that visibly
+        # contains prompts is the confusing case.
+        found = discover_corpora(research_dir)
+        if found:
+            print("[N/A]  grounded-rate: no default corpus in research/ (found "
+                  f"{', '.join(p.name for p in found)}) — name one with --corpus")
+        else:
+            print("[N/A]  grounded-rate: no eval prompts defined (research/eval-prompts.json absent)")
+        return 0
+    corpus_name = prompts_path.name
 
     # Schema validation / N/A paths.
     prompts, err = load_and_validate_prompts(prompts_path)
     if err is not None:
-        print(f"[FAIL] grounded-rate: eval-prompts.json schema invalid — {err}")
+        print(f"[FAIL] grounded-rate: {corpus_name} schema invalid — {err}")
         return 1
     if prompts is None:
         print("[N/A]  grounded-rate: no eval prompts defined (research/eval-prompts.json absent)")
         return 0
     if len(prompts) == 0:
-        print("[N/A]  grounded-rate: eval-prompts.json has 0 prompts")
-        return 0
-
-    # --dry-run short-circuit (no API key, no network).
-    if args.dry_run:
-        print(f"[DRY-RUN] grounded-rate: {len(prompts)} prompt(s) parsed from {prompts_path}")
-        for p in prompts:
-            text_prefix = p["text"][:PROMPT_PREFIX_WIDTH]
-            print(f"  {p['id']} [{p['category']}]:  {text_prefix}")
+        print(f"[N/A]  grounded-rate: {corpus_name} has 0 prompts")
         return 0
 
     # Library slug for system prompt.
@@ -442,7 +620,12 @@ def main(argv: list[str]) -> int:
         print(f"[N/A]  grounded-rate: no .md files under {refs_dir.name}/")
         return 0
 
-    # Mock-response path (test-harness only).
+    # Mock-response path (test-harness only). Each corpus prompt maps to one
+    # `records[]` entry carrying exactly 3 raw runs — 3 model calls per
+    # prompt is the contract, not an average someone forgot to configure, so
+    # any other run count is rejected outright rather than graded on
+    # incomplete evidence.
+    records_by_prompt: list[tuple[dict, list[dict]]]
     if args.mock_responses is not None:
         try:
             mocks_doc = json.loads(args.mock_responses.read_text(encoding="utf-8"))
@@ -454,7 +637,18 @@ def main(argv: list[str]) -> int:
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
             print(f"[FAIL] grounded-rate: could not load --mock-responses: {e}")
             return 1
-        records = [run_prompt_mocked(refs_dir, p, m) for p, m in zip(prompts, mocks)]
+
+        records_by_prompt = []
+        for p, entry in zip(prompts, mocks):
+            entry_runs = entry.get("runs") if isinstance(entry, dict) else None
+            if not isinstance(entry_runs, list) or len(entry_runs) != 3:
+                n = len(entry_runs) if isinstance(entry_runs, list) else 0
+                print(f"[FAIL] grounded-rate: {corpus_name} --mock-responses prompt "
+                      f"{p['id']} has {n} run(s), expected exactly 3 runs per prompt")
+                return 1
+            records_by_prompt.append(
+                (p, [run_prompt_mocked(refs_dir, p, m) for m in entry_runs])
+            )
     else:
         # Live API path. Import here so --dry-run / --mock-responses don't require the SDK.
         try:
@@ -471,41 +665,45 @@ def main(argv: list[str]) -> int:
         tool_def = build_tool_def(allowed)
         system_prompt = build_system_prompt(library, skill_md)
 
-        records: list[dict] = []
+        # 3 independent calls per prompt — no seed/temperature parameter
+        # exists to vary, so re-invoking the same call 3 times is the whole
+        # mechanism (mirrors chapter 12's routing-eval harness).
+        records_by_prompt = []
         for prompt in prompts:
-            rec = run_prompt(
-                client, refs_dir, system_prompt, tool_def, prompt,
-                model=args.model,
-                max_tokens=args.max_tokens,
-                max_tool_turns=args.max_tool_turns,
-                per_prompt_timeout_s=args.per_prompt_timeout_s,
-            )
-            records.append(rec)
+            runs = [
+                run_prompt(
+                    client, refs_dir, system_prompt, tool_def, prompt,
+                    model=args.model,
+                    max_tokens=args.max_tokens,
+                    max_tool_turns=args.max_tool_turns,
+                    per_prompt_timeout_s=args.per_prompt_timeout_s,
+                )
+                for _ in range(3)
+            ]
+            records_by_prompt.append((prompt, runs))
+
+    aggregated = [aggregate_prompt_runs(p, runs) for p, runs in records_by_prompt]
 
     # All-errored runner-failure path: "no prompts gradable" — implemented
-    # as: every record carries an `error`. An outage
-    # where each prompt opens a reference and *then* errors (timeout / turn-cap
-    # / APIError) is still a runner failure; the prior `not references_opened`
-    # conjunct mis-reported it as a content FAIL (exit 1). Token counts don't
-    # gate this.
-    if records and all("error" in r for r in records):
+    # as: every run of every prompt carries an `error`. A corpus where each
+    # prompt had 1-of-3 runs error and 2-of-3 succeed is not an outage and
+    # must not exit 2 — the gate looks at every raw run, not each prompt's
+    # majority.
+    if aggregated and all("error" in run for agg in aggregated for run in agg["runs"]):
         print("[FAIL] grounded-rate: all prompts errored — runner failure")
-        for r in records:
-            _, marker = grade_record(r)
-            text_prefix = r["prompt_text"][:PROMPT_PREFIX_WIDTH]
-            print(f"  {r['prompt_id']} [{marker}]:  {text_prefix}")
+        for agg in aggregated:
+            text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+            print(f"  {agg['prompt_id']} [{agg['marker']}]:  {text_prefix}")
         return 2
 
-    # Grade.
-    graded: list[tuple[dict, bool, str | None]] = []
-    for r in records:
-        grounded, marker = grade_record(r)
-        graded.append((r, grounded, marker))
-
-    grounded_count = sum(1 for (_, g, _) in graded if g)
-    total = len(records)
+    # Grade. Prompt-level, not run-level — 3 raw records per prompt no
+    # longer inflate the denominator, and the aggregate rate is the
+    # per-prompt majority vote, not a raw run-level average.
+    grounded_count = sum(1 for agg in aggregated if agg["grounded"])
+    total = len(aggregated)
     rate = grounded_count / total if total else 0.0
-    cost = estimate_cost(records)
+    all_runs = [run for agg in aggregated for run in agg["runs"]]
+    cost = estimate_cost(all_runs)
     rate_pct = rate * 100
     threshold_pct = args.threshold * 100
 
@@ -530,23 +728,38 @@ def main(argv: list[str]) -> int:
                 0o600,
             )
             with os.fdopen(fd, "w", encoding="utf-8") as fp:
-                json.dump({"summary": summary, "records": records}, fp, indent=2)
+                json.dump({"summary": summary, "records": aggregated}, fp, indent=2)
         except OSError as e:
             print(f"warning: could not write --results-json {args.results_json}: {e}",
                   file=sys.stderr)
 
+    # The corpus identifier goes at the END of the verdict line so every
+    # substring this repo documents or asserts survives verbatim. It is printed
+    # unconditionally, including for an unsplit context root: a forker who
+    # records an unlabeled number, then splits later, is exactly where the
+    # pre-split figures in eval-results.md are.
+    corpus_tag = f" [corpus: {corpus_name}]"
+
     if rate >= args.threshold:
         print(f"[PASS] grounded-rate: {rate_pct:.1f}% ({grounded_count}/{total} prompts grounded) "
-              f"≥{threshold_pct:.0f}% threshold (cost: ${cost:.2f})")
+              f"≥{threshold_pct:.0f}% threshold (cost: ${cost:.2f}){corpus_tag}")
+        for agg in aggregated:
+            if agg["flicker"]:
+                text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+                print(f"  {agg['prompt_id']} [flicker]:  {text_prefix}")
         return 0
 
     print(f"[FAIL] grounded-rate: {rate_pct:.1f}% ({grounded_count}/{total} prompts grounded) "
-          f"below {threshold_pct:.0f}% threshold (cost: ${cost:.2f})")
-    for r, grounded, marker in graded:
-        if grounded:
+          f"below {threshold_pct:.0f}% threshold (cost: ${cost:.2f}){corpus_tag}")
+    for agg in aggregated:
+        if agg["flicker"]:
+            text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+            print(f"  {agg['prompt_id']} [flicker]:  {text_prefix}")
+    for agg in aggregated:
+        if agg["grounded"] or agg["flicker"]:
             continue
-        text_prefix = r["prompt_text"][:PROMPT_PREFIX_WIDTH]
-        print(f"  {r['prompt_id']} [{marker}]:  {text_prefix}")
+        text_prefix = agg["prompt_text"][:PROMPT_PREFIX_WIDTH]
+        print(f"  {agg['prompt_id']} [{agg['marker']}]:  {text_prefix}")
     return 1
 
 

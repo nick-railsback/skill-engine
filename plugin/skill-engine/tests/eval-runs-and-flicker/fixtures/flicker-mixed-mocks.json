@@ -1,0 +1,26 @@
+{
+  "_note": "Three prompts, one of each kind: n01 unanimously grounded (3/3), n02 unanimously not grounded (0/3), n03 splits 2-1 grounded (a flickering entry). Majority-vote rate = 2/3 prompts grounded ~= 66.7%, below the 80% threshold. n03 must be surfaced distinctly from n02 -- both are non-unanimous-PASS in the naive sense, but only n03 disagreed across its own three runs.",
+  "records": [
+    {
+      "runs": [
+        {"references_opened": ["alpha.md"], "turns_used": 1, "final_response_text": "The `Alpha` class lives at https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py.", "input_tokens": 1200, "output_tokens": 60},
+        {"references_opened": ["alpha.md"], "turns_used": 1, "final_response_text": "See https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py for Alpha's import path.", "input_tokens": 1180, "output_tokens": 58},
+        {"references_opened": ["alpha.md"], "turns_used": 1, "final_response_text": "Alpha's path is documented at https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/alpha.py.", "input_tokens": 1210, "output_tokens": 61}
+      ]
+    },
+    {
+      "runs": [
+        {"references_opened": [], "turns_used": 0, "final_response_text": "The migration guide describes a few breaking changes; nothing specific comes to mind.", "input_tokens": 820, "output_tokens": 30},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "There were some v1->v2 breaking changes, generally speaking.", "input_tokens": 815, "output_tokens": 29},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Migration mostly involves renamed arguments, as I recall.", "input_tokens": 825, "output_tokens": 31}
+      ]
+    },
+    {
+      "runs": [
+        {"references_opened": ["gamma.md"], "turns_used": 1, "final_response_text": "The `Gamma` interface signature is defined at https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py (tag-pinned).", "input_tokens": 1150, "output_tokens": 70},
+        {"references_opened": ["gamma.md"], "turns_used": 1, "final_response_text": "Gamma's signature: https://github.com/foo/bar/blob/v1.2.3/pkg/gamma.py.", "input_tokens": 1140, "output_tokens": 68},
+        {"references_opened": [], "turns_used": 0, "final_response_text": "Gamma is a standard interface — no specific implementation detail to surface here.", "input_tokens": 800, "output_tokens": 30}
+      ]
+    }
+  ]
+}

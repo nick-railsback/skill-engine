@@ -161,7 +161,7 @@ The renderer is **deterministic**: the same `results-*.json` file produces ident
 
 ## The three templates
 
-Three drop-in templates ship with the plugin under `plugin/skill-engine/engine-bootstrap-templates/eval/` (or browse them at <https://github.com/nick-railsback/skill-engine/tree/main/plugin/skill-engine/engine-bootstrap-templates/eval>). A scaffolded contextualizer copies them into its own tree and fills in the placeholders.
+Three drop-in templates ship with the plugin under `plugin/skill-engine/engine-bootstrap-templates/eval/` (or browse them at <https://github.com/nick-railsback/skill-engine/tree/main/plugin/skill-engine/engine-bootstrap-templates/eval>). `engine-bootstrap` copies them into every fresh contextualizer's own tree automatically — the `<area-domain>` placeholder is already substituted with the contextualizer's own slug by the time a maintainer sees them.
 
 | Template | Role |
 |---|---|
@@ -192,4 +192,4 @@ The framework's scope is deliberately narrow. Things it does not do:
 * **Evaluate reference content quality.** Evals stress-test routing — did the navigator point at the right reference? — not whether the reference itself is correct, complete, or up-to-date. The freshness story is in [03-engine.md](03-engine.md) and [08-discover-pipeline.md](08-discover-pipeline.md).
 * **Score absolute description quality.** Evals are relative. A 90% pass rate is meaningful only against a prior measurement, not as a standalone judgement. The framework reports deltas, not letter grades.
 * **Replace human review.** A passing eval set does not authorise a description change to land without review. The renderer's output is an input to review, not a substitute.
-* **Ship a fixed eval set.** Each contextualizer authors its own. The framework ships the schema, the methodology, and the templates; the entries themselves belong to the navigator.
+* **Ship a fixed eval set. Each contextualizer authors its own.** `engine-bootstrap` seeds one entry per registered source as an edited-not-trusted starting point (see its exit message), not a finished, ready-to-run corpus. The framework ships the schema, the methodology, and the templates; the entries themselves belong to the navigator.

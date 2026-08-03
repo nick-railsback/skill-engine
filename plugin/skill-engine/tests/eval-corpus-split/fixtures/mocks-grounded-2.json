@@ -1,0 +1,67 @@
+{
+  "_note": "Two grounded records. Sized for the 2-prompt held-out corpus. All grounded -> 100% >= 0.80 -> [PASS] exit 0. The record COUNT is load-bearing: --mock-responses requires len(records) == len(prompts), so a run that graded the 3-prompt train corpus or the 5-prompt union could not consume this file.",
+  "records": [
+    {
+      "runs": [
+        {
+          "references_opened": [
+            "alpha.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Held-out answer one: https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/held.py",
+          "input_tokens": 900,
+          "output_tokens": 40
+        },
+        {
+          "references_opened": [
+            "alpha.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Held-out answer one: https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/held.py",
+          "input_tokens": 900,
+          "output_tokens": 40
+        },
+        {
+          "references_opened": [
+            "alpha.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Held-out answer one: https://github.com/foo/bar/blob/0123456789abcdef0123456789abcdef01234567/pkg/held.py",
+          "input_tokens": 900,
+          "output_tokens": 40
+        }
+      ]
+    },
+    {
+      "runs": [
+        {
+          "references_opened": [
+            "beta.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Held-out answer two: https://github.com/foo/bar/blob/v1.2.3/pkg/held_two.py",
+          "input_tokens": 950,
+          "output_tokens": 45
+        },
+        {
+          "references_opened": [
+            "beta.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Held-out answer two: https://github.com/foo/bar/blob/v1.2.3/pkg/held_two.py",
+          "input_tokens": 950,
+          "output_tokens": 45
+        },
+        {
+          "references_opened": [
+            "beta.md"
+          ],
+          "turns_used": 1,
+          "final_response_text": "Held-out answer two: https://github.com/foo/bar/blob/v1.2.3/pkg/held_two.py",
+          "input_tokens": 950,
+          "output_tokens": 45
+        }
+      ]
+    }
+  ]
+}

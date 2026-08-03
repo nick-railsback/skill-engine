@@ -52,7 +52,15 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 — the dogfood-corpus-refresh oracle reads blobs at the
+      # sha its permalinks cite and asks whether that sha is an ancestor of
+      # HEAD. Under the default depth-1 checkout the pinned commit is not in
+      # the object store at all, so every one of those assertions fails for
+      # want of history rather than for want of correctness. Only this job
+      # needs it; shellcheck, json-validate, and doctrine read the worktree.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Run all test suites (tests/*/run.sh + hooks-audit)

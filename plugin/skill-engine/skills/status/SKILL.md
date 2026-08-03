@@ -1,6 +1,6 @@
 ---
 name: status
-description: List a contextualizer's reference freshness and any pending review work.
+description: Use when picking up a contextualizer after a gap, or checking reference freshness and pending review work at a glance — read-only, safe to run anytime.
 ---
 
 # Status
@@ -23,43 +23,7 @@ resolves relative to whichever directory matches. Before reading
 anything, locate the root by searching all three install levels in
 order:
 
-<!-- doctrine:locator-block:start -->
-```bash
-set -euo pipefail
-# <name> resolves per this skill's "Selecting a contextualizer" section;
-# substitute the empty string when no contextualizer was named.
-name="<name>"
-ctx_roots=$(
-  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
-    [ -d "$root" ] || continue
-    # Quoted "${name:-*}" reaches find unexpanded: a named invocation
-    # matches exactly <name>-context, a bare one globs *-context.
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name:-*}-context" 2>/dev/null
-  done
-)
-# `|| true`: grep -c prints 0 but exits 1 on zero matches; without the
-# guard, pipefail+errexit abort the block right here and the zero-match
-# diagnostics below are dead code (a bare exit 1, no message).
-n=$(printf '%s\n' "$ctx_roots" | grep -c . || true)
-if [ "$n" -eq 0 ] && [ -n "$name" ]; then
-  echo "No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed."
-  exit 1
-elif [ "$n" -eq 0 ]; then
-  echo "No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first."
-  exit 1
-elif [ "$n" -gt 1 ] && [ -n "$name" ]; then
-  # Same slug installed at more than one level: the first root in the
-  # search order above wins (user, then local-user, then project).
-  CTX_ROOT=$(printf '%s\n' "$ctx_roots" | head -n1)
-elif [ "$n" -gt 1 ]; then
-  echo "Multiple contextualizers found; rerun naming one (see 'Selecting a contextualizer' in this skill):"
-  printf '%s\n' "$ctx_roots"
-  exit 1
-else
-  CTX_ROOT="$ctx_roots"
-fi
-```
-<!-- doctrine:locator-block:end -->
+Run the script in [`shared/locator-block.md`](../../shared/locator-block.md) verbatim before proceeding.
 
 ### Selecting a contextualizer
 
@@ -119,11 +83,11 @@ fi
 ## Doctrine surface
 
 The STATUS workflow — what it renders, how it sorts, when it pre-renders vs.
-runs on demand — lives in chapter [`04-delivery.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/04-delivery.md) and the `## Workflow: STATUS`
-section of [`maintenance-agent.md.template`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/maintenance-agent.md.template).
+runs on demand — lives in chapter [`04-delivery.md`](../../docs/04-delivery.md) and the `## Workflow: STATUS`
+section of [`maintenance-agent.md.template`](../../engine-bootstrap-templates/maintenance-agent.md.template).
 
 The freshness categories (fresh, stale, critical) and their default thresholds
-are documented in chapter [`05-invariants.md`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/05-invariants.md).
+are documented in chapter [`05-invariants.md`](../../docs/05-invariants.md).
 
 ## Cadence
 
@@ -178,7 +142,21 @@ them as a hint in the Cache section, but do not delete.
 `~/.cache/skill-engine/web-doc/`:
 | source_id | crawl_id | page_count | crawl_date | decay_remaining |
 |---|---|---|---|---|
-| ... | ... | ... | ... | ... |
+
+```bash
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/skill-engine"
+decay_json=$(python3 "$CLAUDE_PLUGIN_ROOT/tests/decay_check.py" research/source-paths.json "$cache_root" 2>/dev/null)
+row_count=$(printf '%s' "$decay_json" | jq 'length' 2>/dev/null); row_count=${row_count:-0}
+if [ "$row_count" -eq 0 ]; then
+  printf '(No web-doc sources with a cached, decay-checkable snapshot yet.)\n'
+else
+  printf '%s' "$decay_json" | jq -r '
+    .[] | "| \(.source_id) | \(.crawl_id) | \(.page_count) | \(.crawl_date) | " +
+    (if .state == "non_expiring" then "no expiry"
+     elif .state == "past_budget" then "\(.days) days past decay budget"
+     else "\(.days) days remaining" end) + " |"'
+fi
+```
 
 Old flat-layout entries (if present — directories sitting directly at the
 cache root rather than under `git-managed/` or `web-doc/`):
@@ -188,6 +166,39 @@ cache root rather than under `git-managed/` or `web-doc/`):
 
 (The old-layout listing exists until the user runs the REFRESH migration
 prompt or `clean-cache`.)
+
+## Provenance probe (`--probe`)
+
+`/skill-engine:status <name> --probe` is an opt-in check: without
+`--probe`, STATUS's behavior is exactly as documented above — it does
+not fetch upstream. With `--probe`, STATUS runs one upstream check per
+in-scope `git-managed` source in `research/source-paths.json` and
+reports whether the locally recorded SHA still matches upstream today,
+without waiting for a full REFRESH pass:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/tests/status_probe.py" research/source-paths.json
+```
+
+For each in-scope `git-managed` source (the same filter REFRESH's own
+pre-flight uses: `status` confirmed or proposed, not archived, upstream
+lifecycle state not removed), render one line from the script's JSON:
+
+- **current** — the live SHA matches the recorded `last_checked_sha`.
+- **mismatch** — the live SHA differs; show both the recorded SHA and
+  the live SHA so the user can see how far behind it is.
+- **never been probed** — `last_checked_sha` is null; this source has
+  no prior probe on record, reported distinctly rather than compared
+  against an absent value.
+- **error** — the probe itself failed (unreachable remote, no such branch); shown inline with the diagnostic. One source's error does not stop the remaining in-scope sources from being probed and reported.
+
+With zero in-scope `git-managed` sources, print `Nothing to probe.`
+rather than no output.
+
+`--probe` does not write `source-paths.json` — `lifecycle.last_checked_sha`
+and `lifecycle.last_checked` are unchanged by this command. It does not
+modify anything; it only reports. Persisting a probe result is REFRESH's
+job, not this one's.
 
 ## Invariants
 

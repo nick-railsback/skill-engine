@@ -33,14 +33,14 @@ This is the risk that most defines `skill-engine`, so it is named here rather th
 
 **The honest residual.** That control is *process-enforced, not sandbox-enforced.* The engine ships no auto-apply code path and every workflow routes changes through review — but the guarantee is the operator (and the assistant) actually performing that review, not a mechanism that makes skipping it impossible. Treat a proposal sourced from an upstream you do not control with the scrutiny you would give a pull request from a stranger: read the diff, not just the summary. Pin to reviewed SHAs, and re-review on drift rather than rubber-stamping a refresh.
 
-### The one hook we ship, and why we ship no others
+### Why we ship zero hooks
 
-The plugin declares exactly one hook: a `SessionStart` bootstrap hook, declared inline in the plugin manifest's `hooks` key (`plugin/skill-engine/.claude-plugin/plugin.json`). It does one thing — hydrate the engine's own state. On a fresh session it creates `${CLAUDE_PLUGIN_DATA}/state/current.json` if it is absent, validates that it parses as JSON if it is present, and emits a one-line notice on stderr. It guards on `CLAUDE_PLUGIN_DATA` and `jq` being available, touches only the plugin's own data directory, and always exits 0, so it can never block a session. The inline-`hooks` form is idiomatic per the official plugin examples ([`anthropics/claude-plugins-official`](https://github.com/anthropics/claude-plugins-official)) and conforms to the current plugin-manifest schema.
+The plugin declares zero hooks — not one allowlisted hook, none at all. Hooks fire automatically on your events; an engine that registered even a narrowly-scoped hook would be acting without a prompt on every session, and this project doesn't ask for that kind of standing trust when nothing the engine does needs it. `using-skill-engine` and the other workflow-routing skills already decide what to do by reading the filesystem (`.claude/skills/*-context/`) when they're invoked, not by hydrating state ahead of time — so there is no session-start work worth a hook's cost.
 
-The engine ships no other hooks, and it injects none into your `.claude/settings.json`. Hooks fire automatically on your events; an engine that quietly registered hooks in your settings would be acting without a prompt — exactly the trust this project refuses to ask for. That refusal rests on three layers:
+That refusal rests on three layers:
 
 - **Doctrine** — the project's standing rule that the engine adds no hooks to your settings and mutates no git state on your behalf.
-- **The `make hooks-audit` target** — a check that fails if the plugin's declared hooks drift from the single one documented here. It runs locally in under five seconds (`make hooks-audit`) and in CI on every pull request, so drift surfaces as a failing check rather than something a reviewer has to remember to look for.
+- **The `make hooks-audit` target** — a check that fails if the plugin's declared hooks drift from zero. It runs locally in under five seconds (`make hooks-audit`) and in CI on every pull request, so drift surfaces as a failing check rather than something a reviewer has to remember to look for.
 - **The empty `hooks` block** in the bundled `.claude/settings.json` — a committed, zero-hook settings file whose every future change shows up in `git diff`. This is the layer you can read right now.
 
 ### What this policy does not promise

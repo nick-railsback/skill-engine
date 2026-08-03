@@ -89,8 +89,9 @@ fi
 #   plugin/skill-engine/agents/*.md       (directory currently absent;
 #                                          covered again if reintroduced)
 #   plugin/skill-engine/bin/*.sh
-#   plugin/skill-engine/tests/*.sh        (this file is implicitly excluded
-#                                          via the path-equality check below)
+#   plugin/skill-engine/tests/*.sh        (top level only, as written — this
+#                                          file is implicitly excluded via
+#                                          the path-equality check below)
 #   plugin/skill-engine/engine-bootstrap-templates/*  (every file, except
 #                                          the two excluded templates that
 #                                          legitimately carry user-side
@@ -102,14 +103,35 @@ fi
 #   engine-bootstrap-templates/release-command.md.template
 #   engine-bootstrap-templates/pre-commit.sh.template
 #
+# The tests/ find is depth-1, matching the scope above rather than the
+# recursive form it used to carry. The doctrine is about what the ENGINE
+# does to a repository the user owns; a per-feature runner under
+# tests/<name>/ builds throwaway fixture repos in a tmpdir by design —
+# git init, add, commit against a directory it created and deletes — and is
+# not engine code by any reading. Only two calls in that whole tree touch
+# this repo itself, `diff` and `rev-parse`, both read-only. The recursive
+# find never surfaced any of it because the pattern could not see
+# `git -C <dir> <verb>`; widening the pattern without narrowing the scope
+# would have traded one silent false negative for ~70 false positives and
+# taught the next reader to disable the check.
+#
 # Prose-mention guard: matches inside HTML comments (<!-- ... -->) and inside
 # Markdown code spans (`...`) are stripped per-line before verb extraction so
 # narration like "the engine does not `git add`" does not trip the lint.
+#
+# Verb extraction lives in tests/lib/git_verb_scan.sh, which this feeds a
+# file list and whose candidates the allow-list below filters. It is a
+# separate script so it can be exercised against fixtures covering every
+# invocation form (tests/doctrine-git-verbs/run.sh) rather than only
+# against whatever this repo happens to contain — which is how the
+# `git -C <dir> <verb>` blind spot survived: the form was absent from the
+# scanned files at the moment the pattern was written, so nothing here
+# could show it was unmatched.
 git_readonly_scan() {
   local f rel
   local -a scan_files=()
-  # Collect (and exclude) first, then hand the whole set to a single awk
-  # invocation. The previous form forked one awk per file — dozens of process
+  # Collect (and exclude) first, then hand the whole set to a single scan.
+  # The pre-extraction form forked one awk per file — dozens of process
   # spawns per CI run across skills/ + agents/ + bin/ + tests/ + templates/.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
@@ -122,26 +144,7 @@ git_readonly_scan() {
     scan_files+=("$f")
   done
   [ "${#scan_files[@]}" -eq 0 ] && return 0
-  # FNR (per-file line number) and FILENAME give the same file:line prefix the
-  # per-file form produced; rel is derived by stripping the literal PLUGIN_ROOT
-  # prefix via substr (length-based, so a metachar in the path can't matter).
-  awk -v root="$PLUGIN_ROOT/" '
-    FNR == 1 { rel = substr(FILENAME, length(root) + 1) }
-    {
-      line = $0
-      # Strip single-line HTML comments.
-      gsub(/<!--[^>]*-->/, "", line)
-      # Strip Markdown code spans (paired backticks on the same line).
-      gsub(/`[^`]*`/, "", line)
-      # Extract executable git verbs. \<git\> + whitespace + lowercase verb.
-      while (match(line, /(^|[[:space:]]|[(;&|])git[[:space:]]+[a-z][a-z-]*/)) {
-        token = substr(line, RSTART, RLENGTH)
-        sub(/.*git[[:space:]]+/, "", token)
-        print rel ":" FNR ":" token
-        line = substr(line, RSTART + RLENGTH)
-      }
-    }
-  ' "${scan_files[@]}"
+  bash "$SCRIPT_DIR/lib/git_verb_scan.sh" --root "$PLUGIN_ROOT/" "${scan_files[@]}"
 }
 
 # Known git verbs filter: the candidate-match `git <token>` is only a real
@@ -155,7 +158,7 @@ readonly_violations=$(
     find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
     find "$PLUGIN_ROOT/agents" -type f -name '*.md' 2>/dev/null
     find "$PLUGIN_ROOT/bin" -type f -name '*.sh' 2>/dev/null
-    find "$PLUGIN_ROOT/tests" -type f -name '*.sh' 2>/dev/null
+    find "$PLUGIN_ROOT/tests" -maxdepth 1 -type f -name '*.sh' 2>/dev/null
     find "$PLUGIN_ROOT/engine-bootstrap-templates" -type f 2>/dev/null
   } | git_readonly_scan | awk -F: '
     BEGIN {
@@ -327,23 +330,41 @@ elif [ "$claimed" != "$actual_count" ]; then
   fail=1
 fi
 
-# 7. Example verify.sh copies stay byte-identical to the template.
-# Doctrine: each examples/<slug>/verify.sh is a verbatim copy of
+# 7. Stamped verify.sh copies stay byte-identical to the template.
+# Doctrine: every stamped verify.sh in this repo is a verbatim copy of
 # engine-bootstrap-templates/verify.sh. The example-COUNT check above does
 # not inspect verify.sh content, so without this a template edit that misses
-# the copies would silently leave 4 diverging ~1,100-line scripts.
+# the copies would silently leave diverging ~1,300-line scripts.
+#
+# The copy set comes from scripts/stamped-verify-copies.sh, shared with
+# `make sync`. It is not only examples/: this repo dogfoods the engine, so
+# .claude/skills/<slug>-context/verify.sh is a stamped copy on exactly the
+# same terms. When this check carried its own glob over examples/ and sync
+# carried a second one, the dogfood copy sat outside the detector and the
+# fix at once, and shipped tracked as an older revision of the template.
 tmpl="$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh"
+inventory="$REPO_ROOT/scripts/stamped-verify-copies.sh"
 if [ ! -f "$tmpl" ]; then
-  echo "FAIL: engine-bootstrap-templates/verify.sh missing — cannot check example copies."
+  echo "FAIL: engine-bootstrap-templates/verify.sh missing — cannot check stamped copies."
+  fail=1
+elif [ ! -f "$inventory" ]; then
+  echo "FAIL: scripts/stamped-verify-copies.sh missing — cannot enumerate stamped copies."
   fail=1
 else
+  copies=$(bash "$inventory" 2>/dev/null)
+  # An empty inventory would pass the loop below without comparing
+  # anything. There is always at least the shipped examples.
+  if [ -z "$copies" ]; then
+    echo "FAIL: scripts/stamped-verify-copies.sh listed no verify.sh copies — the drift check would be vacuous."
+    fail=1
+  fi
   while IFS= read -r ex; do
     [ -n "$ex" ] || continue
     if ! cmp -s "$tmpl" "$ex"; then
-      echo "FAIL: ${ex#"$REPO_ROOT/"} diverges from engine-bootstrap-templates/verify.sh — re-sync the copy."
+      echo "FAIL: ${ex#"$REPO_ROOT/"} diverges from engine-bootstrap-templates/verify.sh — run \`make sync\`."
       fail=1
     fi
-  done < <(find "$REPO_ROOT/examples" -mindepth 2 -maxdepth 2 -name verify.sh 2>/dev/null)
+  done <<< "$copies"
 fi
 
 # 8. Version parity across the release surfaces.
@@ -417,52 +438,55 @@ if [ -n "$flat_cache_refs" ]; then
   fail=1
 fi
 
-# 10. The shared contextualizer-locator block stays byte-identical across
-# the five locator skills.
-# Doctrine: discover, refresh, status, self-audit, and new-reference share
-# one root-resolution bash block, fenced by doctrine:locator-block
-# sentinels; discover/SKILL.md is the designated master. The
-# using-skill-engine router deliberately ships a different variant (it
-# lists and asks instead of exiting) and is NOT in the identity set.
-# Same enforcement idea as check 7's verify.sh byte-compare: shared prompt
-# logic that relied on discipline alone has already forked once (the
-# cache-layout split this file's check 9 now pins).
-locator_master="$PLUGIN_ROOT/skills/discover/SKILL.md"
-extract_locator() {
-  awk '
-    /<!-- doctrine:locator-block:start -->/ { inblock=1; next }
-    /<!-- doctrine:locator-block:end -->/   { inblock=0 }
-    inblock { print }
-  ' "$1"
-}
-locator_master_block=$(extract_locator "$locator_master")
-if [ -z "$locator_master_block" ]; then
-  echo "FAIL: no doctrine:locator-block sentinels in skills/discover/SKILL.md (the locator master) — cannot check the copies."
+# 10. The contextualizer-locator script lives in exactly one shared file;
+# none of the five locator skills inlines it, and each links to it instead.
+# Doctrine: discover, refresh, status, self-audit, and new-reference used to
+# carry a byte-identical copy of one root-resolution bash block, which this
+# check enforced with a byte-compare across all five (plus a sentinel-
+# balance guard so an unterminated fence couldn't blind that compare). The
+# block now lives in exactly one tracked file — shared/locator-block.md —
+# so there is nothing left for five copies to diverge from, and the
+# byte-compare and its guard are retired outright rather than reworked into
+# a no-op. What a single shared copy still needs enforced: the shared file
+# must exist and actually carry the locator script, not a stub or an empty
+# placeholder (grepped for two literal strings pulled from the script's own
+# error paths, so a bad move or a truncation fails loud rather than passing
+# vacuously); none of the five skills' SKILL.md may still carry the block
+# inline — its fenced sentinels or its literal script text surviving in a
+# SKILL.md would mean the move was a copy, not a move; and each of the five
+# skills' SKILL.md must link to the shared file instead of inlining it.
+# Whether that link actually resolves to a real file on disk is check 15's
+# job — a Markdown link target beginning `../../` already matches this
+# pointer's shape — so link resolution is not re-checked here.
+locator_shared="$PLUGIN_ROOT/shared/locator-block.md"
+locator_sentence_1='No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed.'
+locator_sentence_2='No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first.'
+
+if [ ! -f "$locator_shared" ]; then
+  echo "FAIL: shared/locator-block.md is missing — the locator script has no single shared home."
   fail=1
-else
-  for locator_skill in refresh status self-audit new-reference; do
-    if [ "$(extract_locator "$PLUGIN_ROOT/skills/$locator_skill/SKILL.md")" != "$locator_master_block" ]; then
-      echo "FAIL: skills/$locator_skill/SKILL.md locator block diverges from skills/discover/SKILL.md — re-sync the fenced doctrine:locator-block region."
-      fail=1
-    fi
-  done
+elif ! grep -qF -- "$locator_sentence_1" "$locator_shared" || ! grep -qF -- "$locator_sentence_2" "$locator_shared"; then
+  echo "FAIL: shared/locator-block.md exists but does not contain the locator script (its distinguishing 'No contextualizer …' text is missing)."
+  fail=1
 fi
 
-# 10b. Sentinel-balance guard for check 10 (mirrors check 5b): an
-# unterminated :start would swallow the rest of the file into the
-# extracted block, making the byte-compare meaningless rather than loud.
-locator_imbalance=$(awk -v root="$PLUGIN_ROOT/" '
-  function flush() { if (prev != "" && s != e) printf "%s: %d start / %d end\n", prev, s, e }
-  FNR == 1 { flush(); prev = substr(FILENAME, length(root) + 1); s = 0; e = 0 }
-  /<!-- doctrine:locator-block:start -->/ { s++ }
-  /<!-- doctrine:locator-block:end -->/   { e++ }
-  END { flush() }
-' "$PLUGIN_ROOT"/skills/*/SKILL.md)
-if [ -n "$locator_imbalance" ]; then
-  echo "FAIL: unbalanced doctrine:locator-block sentinels (would blind check 10)."
-  echo "$locator_imbalance" | awk '{ print "  " $0 }'
-  fail=1
-fi
+for locator_skill in discover refresh status self-audit new-reference; do
+  skill_md="$PLUGIN_ROOT/skills/$locator_skill/SKILL.md"
+  locator_inline_line=$(grep -nF \
+    -e '<!-- doctrine:locator-block:start -->' \
+    -e '<!-- doctrine:locator-block:end -->' \
+    -e "$locator_sentence_1" \
+    -e "$locator_sentence_2" \
+    "$skill_md" 2>/dev/null | head -1 | cut -d: -f1)
+  if [ -n "$locator_inline_line" ]; then
+    echo "FAIL: skills/$locator_skill/SKILL.md:$locator_inline_line still inlines the locator block — move it to shared/locator-block.md and link to it instead."
+    fail=1
+  fi
+  if ! grep -qF -- '](../../shared/locator-block.md' "$skill_md" 2>/dev/null; then
+    echo "FAIL: skills/$locator_skill/SKILL.md does not link to ../../shared/locator-block.md."
+    fail=1
+  fi
+done
 
 # 11. Every bundled example's Claims policy carries the load-bearing
 # sentences from the navigator template.
@@ -483,6 +507,611 @@ while IFS= read -r ex_skill; do
     fi
   done
 done < <(find "$REPO_ROOT/examples" -mindepth 2 -maxdepth 2 -name SKILL.md -not -path '*/.*' 2>/dev/null)
+
+# 12. No tracked file names the feature-planning docs tree.
+# Doctrine: this repo's feature-planning documents live in a directory that is
+# excluded per-clone via .git/info/exclude and is never committed. A tracked
+# file naming a path under it is a pointer that resolves on exactly one
+# machine, written in vocabulary no reader of this repo can look up.
+#
+# The trap is structural, not careless. A planning workflow that pins test
+# files by hash needs those tests tracked, while the documents they were
+# derived from stay untracked — so the natural way to head such a test, citing
+# the document it implements, produces a committed dangling pointer every time.
+# Nothing upstream detects it and the machine-local pre-push hook scrubs an
+# unrelated token set, so this check is the only mechanical guard.
+#
+# Scope is every tracked file (git ls-files): the trap is about being
+# committed, not about living in any particular directory. -H forces the
+# filename prefix even when xargs hands grep a single-file final batch, which
+# otherwise yields unprefixed lines that defeat both the exclusion and the
+# report. This file is the one exclusion, because a grep must name what it
+# searches for; keep it the only one, and state the rule here in the abstract
+# rather than quoting a real offending path -- a check whose own comment
+# violates it is not a check. If the planning docs ever become tracked, delete
+# this check outright instead of exempting files from it.
+chunk_doc_refs=$(
+  cd "$REPO_ROOT" && git ls-files -z \
+    | xargs -0 grep -HInF 'docs/chunks/' 2>/dev/null \
+    | grep -v '^plugin/skill-engine/tests/doctrine\.sh:'
+)
+if [ -n "$chunk_doc_refs" ]; then
+  echo "FAIL: a tracked file names the untracked feature-planning docs tree — the pointer dangles in every other clone."
+  echo "$chunk_doc_refs" | awk -F: '{ printf "  %s:%s\n", $1, $2 }'
+  echo "  Tracked artifacts must stand alone: state the invariant, never cite the planning doc."
+  fail=1
+fi
+
+# 13. The always-loaded standing rules exist and name real targets.
+# Doctrine: CLAUDE.md is the one file a session loads before doing anything, so
+# what it says is instruction delivered ahead of any check that could correct
+# it. Two ways that goes wrong on an ordinary edit, neither of which anything
+# else in this repo would notice: the file goes missing, and the standing rules
+# have no always-loaded home; or a Makefile target is renamed underneath a rule
+# that names it, and the instruction sends every session to a target that does
+# not exist. Absence is a failure rather than a skip -- a check that goes quiet
+# exactly when its subject is deleted is the vacuous green this suite exists to
+# refuse. Anchored on the backticked `make <target>` form so ordinary prose
+# ("make sure") is not swept in.
+#
+# Tracked-ness is deliberately NOT asserted here, though it is what the rule
+# ultimately needs. This target runs before a commit -- that is its whole
+# purpose -- so requiring the file to be tracked would fail every run between
+# writing it and committing it, which is exactly when the maintainer runs this.
+# CI checks out tracked files only, so there the existence branch below already
+# means tracked; that is where the guarantee has to hold, and it does.
+claude_md="$REPO_ROOT/CLAUDE.md"
+if [ ! -f "$claude_md" ]; then
+  echo "FAIL: CLAUDE.md is absent — the repo's standing rules have no always-loaded home."
+  fail=1
+else
+  while IFS= read -r mk_target; do
+    [ -n "$mk_target" ] || continue
+    if ! grep -qE "^${mk_target}:" "$REPO_ROOT/Makefile" 2>/dev/null; then
+      echo "FAIL: CLAUDE.md names 'make $mk_target', which is not a target in Makefile — the always-loaded rules are stale."
+      fail=1
+    fi
+  done < <(grep -oE '`make [a-zA-Z0-9_.-]+`' "$claude_md" 2>/dev/null \
+    | tr -d '`' | awk '{ print $2 }' | sort -u)
+fi
+
+# 14. No SKILL.md doctrine pointer uses a GitHub blob/tree permalink into
+# this plugin's own shipped tree.
+# Doctrine: a doctrine pointer whose target already ships on disk inside the
+# installed plugin (a docs/*.md chapter, an engine-bootstrap-templates/*
+# file) must resolve as a local relative read, not a GitHub `blob/main` or
+# `tree/main` permalink that round-trips back out to this repo's hosted
+# copy of a file the user already has on disk. Closed-pattern shape, per
+# check 4's git-verb allow-list precedent, rather than a bare `grep
+# blob/main`: anchored on the full literal path prefix
+# `github.com/nick-railsback/skill-engine/(blob|tree)/main/plugin/skill-engine/`
+# so the two existing prose mentions of the anti-pattern itself —
+# discover/SKILL.md's and self-audit/SKILL.md's "`blob/main/...` URLs do not
+# satisfy the [SHA-pin] requirement" — do not trip it. Those sentences
+# describe a different invariant entirely (SHA-pinning permalinks inside a
+# user's own reference corpus, not this repo's doctrine pointers) and
+# neither line contains the `.../main/plugin/skill-engine/` prefix, so
+# anchoring on the prefix rather than the bare `blob/main` substring lets
+# them pass by construction.
+# Scope: tracked *.md files under skills/** only. docs/*.md cross-references
+# to other repo files and engine-bootstrap-templates/*.template
+# cross-references to each other carry their own blob/main and tree/main
+# links and are a different, unaudited surface this check does not police.
+doctrine_pointer_violations=$(
+  cd "$REPO_ROOT" && git ls-files -z -- 'plugin/skill-engine/skills/**/*.md' \
+    | xargs -0 grep -HInE 'github\.com/nick-railsback/skill-engine/(blob|tree)/main/plugin/skill-engine/' 2>/dev/null
+)
+if [ -n "$doctrine_pointer_violations" ]; then
+  echo "FAIL: SKILL.md contains a GitHub blob/tree permalink into the plugin's own shipped tree — convert to a local relative path (e.g. ../../docs/02-artifact-contract.md or ../../engine-bootstrap-templates/maintenance-agent.md.template)."
+  echo "$doctrine_pointer_violations" | awk -F: '{ printf "  %s:%s\n", $1, $2 }'
+  fail=1
+fi
+
+# 15. Every local relative doctrine pointer in a SKILL.md resolves to a real
+# file on disk.
+# Doctrine: a doctrine pointer written as a local relative path (rather than a
+# GitHub permalink — check 14's concern) is only a safe trade if something
+# keeps it honest. A relative path is a filesystem check, not a network
+# fetch, so nothing but the absence of a check was stopping this from being
+# asserted: a future rename or move of a docs/*.md chapter or an
+# engine-bootstrap-templates/* file that leaves a pointer dangling must be
+# caught here, the next time this suite runs, not discovered by someone
+# following a broken link.
+# Scope: tracked SKILL.md files under skills/** only, same as check 14.
+# Match shape: a Markdown link target beginning `../../` — the local
+# relative form the two existing self-audit pointers demonstrate
+# (../../docs/13-coverage-testing.md) — captured per-occurrence with its
+# line number, in the spirit of check 4's file:line reporting. A trailing
+# `#anchor` is stripped before the filesystem check, since anchors are not a
+# path component; the pointer is resolved against the citing file's own
+# directory (skills/<skill-name>/), matching how a relative Markdown link
+# resolves in any renderer.
+relative_link_matches=$(
+  cd "$REPO_ROOT" && git ls-files -z -- 'plugin/skill-engine/skills/**/SKILL.md' \
+    | while IFS= read -r -d '' f; do
+        awk -v rel="$f" '
+          {
+            line = $0
+            while (match(line, /\]\(\.\.\/\.\.\/[^)]*\)/)) {
+              target = substr(line, RSTART + 2, RLENGTH - 3)
+              sub(/#.*$/, "", target)
+              print rel ":" FNR ":" target
+              line = substr(line, RSTART + RLENGTH)
+            }
+          }
+        ' "$REPO_ROOT/$f"
+      done
+)
+relative_link_violations=""
+if [ -n "$relative_link_matches" ]; then
+  while IFS=: read -r rel_file rel_line rel_target; do
+    [ -n "$rel_file" ] || continue
+    skill_dir="$(dirname "$REPO_ROOT/$rel_file")"
+    if [ ! -f "$skill_dir/$rel_target" ]; then
+      relative_link_violations="${relative_link_violations}${rel_file}:${rel_line}: ${rel_target}
+"
+    fi
+  done <<< "$relative_link_matches"
+fi
+if [ -n "$relative_link_violations" ]; then
+  echo "FAIL: SKILL.md local relative doctrine pointer does not resolve to a file on disk."
+  printf '%s' "$relative_link_violations" | sed '/^$/d;s/^/  /'
+  fail=1
+fi
+
+# 16. Every shipped skill's description names a trigger condition, not a
+# bare label.
+# Doctrine: a SKILL.md `description:` frontmatter value states WHEN to invoke
+# the skill, not WHAT the skill is. A label-only description ("Delete the
+# cache." / "Register a reference.") gives the routing matcher nothing to
+# compare a query against, so the skill either fires too often or never; a
+# trigger-condition description ("Use when...") is what the matcher actually
+# needs. This is a syntactic floor, not a semantic verifier of trigger-
+# condition quality — a description can contain the word and still be a weak
+# trigger, which is a review-time judgment call, not a mechanical one; the
+# same boundary check 15 draws between a pointer resolving and a pointer
+# being the *right* one.
+# Scope: tracked SKILL.md files under skills/** only, same convention as
+# checks 14/15. Match shape: the `description:` frontmatter line's value must
+# contain a case-insensitive "when" — the word every existing WHEN-form
+# description in this repo already carries.
+description_when_violations=""
+while IFS= read -r -d '' f; do
+  [ -n "$f" ] || continue
+  desc_line=$(awk '
+    BEGIN { infm=0 }
+    /^---[[:space:]]*$/ { infm++; if (infm == 2) exit; next }
+    infm == 1 && /^description:/ { print; exit }
+  ' "$REPO_ROOT/$f")
+  if [ -z "$desc_line" ]; then
+    description_when_violations="${description_when_violations}${f}: no description: frontmatter field found
+"
+  elif ! printf '%s' "$desc_line" | grep -qiE 'when'; then
+    description_when_violations="${description_when_violations}${f}: ${desc_line}
+"
+  fi
+done < <(cd "$REPO_ROOT" && git ls-files -z -- 'plugin/skill-engine/skills/**/SKILL.md')
+if [ -n "$description_when_violations" ]; then
+  echo "FAIL: SKILL.md description: frontmatter names what the skill is, not when to invoke it (no case-insensitive 'when' found)."
+  printf '%s' "$description_when_violations" | sed '/^$/d;s/^/  /'
+  fail=1
+fi
+
+# 17. discover has a references/ directory carrying at least one tracked
+# Markdown file, and discover/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+discover_dir="$PLUGIN_ROOT/skills/discover"
+discover_skill_md="$discover_dir/SKILL.md"
+discover_refs_dir="$discover_dir/references"
+if [ ! -d "$discover_refs_dir" ]; then
+  echo "FAIL: skills/discover/references/ does not exist."
+  fail=1
+else
+  discover_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/discover/references/' | grep -E '\.md$')
+  if [ -z "$discover_refs_tracked_md" ]; then
+    echo "FAIL: skills/discover/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$discover_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$discover_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/discover/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 18. discover/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+discover_skill_md="$PLUGIN_ROOT/skills/discover/SKILL.md"
+if [ ! -f "$discover_skill_md" ]; then
+  echo "FAIL: skills/discover/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  discover_skill_bytes=$(wc -c < "$discover_skill_md" | tr -d ' ')
+  if [ "$discover_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/discover/SKILL.md is $discover_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 19. Content trimmed out of discover/SKILL.md lands in tracked files, not
+# the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of discover/SKILL.md plus everything under discover/references/
+# must not fall below 90% of the file's pre-split size — a floor a real
+# relocation cannot breach but a real deletion can.
+discover_dir="$PLUGIN_ROOT/skills/discover"
+discover_skill_md="$discover_dir/SKILL.md"
+discover_refs_dir="$discover_dir/references"
+discover_combined_bytes=0
+if [ -f "$discover_skill_md" ]; then
+  discover_combined_bytes=$(wc -c < "$discover_skill_md" | tr -d ' ')
+fi
+if [ -d "$discover_refs_dir" ]; then
+  while IFS= read -r -d '' discover_ref_file; do
+    discover_ref_bytes=$(wc -c < "$discover_ref_file" | tr -d ' ')
+    discover_combined_bytes=$((discover_combined_bytes + discover_ref_bytes))
+  done < <(find "$discover_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$discover_combined_bytes" -lt 31743 ]; then
+  echo "FAIL: discover/SKILL.md + discover/references/ combined is $discover_combined_bytes bytes — below the 31,743-byte (90% of the pre-split 35,270) floor."
+  fail=1
+fi
+
+# 20. discover's Doctrine surface section links the engine chapter that
+# documents subagent-dispatch doctrine.
+# Doctrine: a skill's Doctrine surface section is the map from the skill to
+# the fuller chapters that govern it. A chapter the skill's own behavior
+# depends on but the surface omits is a doctrine pointer that should exist
+# and does not — discover dispatches subagents under concurrency and
+# tool-isolation rules documented in 03-engine.md, so its Doctrine surface
+# must link that chapter.
+discover_skill_md="$PLUGIN_ROOT/skills/discover/SKILL.md"
+discover_surface_section=$(awk '/^## Doctrine surface/{f=1;next} /^## /{f=0} f' "$discover_skill_md" 2>/dev/null)
+if ! printf '%s' "$discover_surface_section" | grep -qF '03-engine.md'; then
+  echo "FAIL: skills/discover/SKILL.md's Doctrine surface section does not link 03-engine.md."
+  fail=1
+fi
+
+# 21. discover/SKILL.md's own body states the tool-isolation rule for any
+# subagent it dispatches.
+# Doctrine: exploration work a discover subagent performs is read-only —
+# Read, Glob, and Grep only, no write and no shell access — and that rule
+# must be stated in the file the model actually reads before deciding
+# whether to dispatch, not left to live only in a doctrine chapter the
+# model may or may not have loaded alongside it.
+discover_skill_md="$PLUGIN_ROOT/skills/discover/SKILL.md"
+if ! grep -qiE 'read[^a-z]{1,15}glob[^a-z]{1,15}grep' "$discover_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+write' "$discover_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+shell' "$discover_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/discover/SKILL.md does not state the Read/Glob/Grep-only, no-write/no-shell subagent isolation rule in its own body."
+  fail=1
+fi
+
+# 22. refresh has a references/ directory carrying at least one tracked
+# Markdown file, and refresh/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+refresh_dir="$PLUGIN_ROOT/skills/refresh"
+refresh_skill_md="$refresh_dir/SKILL.md"
+refresh_refs_dir="$refresh_dir/references"
+if [ ! -d "$refresh_refs_dir" ]; then
+  echo "FAIL: skills/refresh/references/ does not exist."
+  fail=1
+else
+  refresh_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/refresh/references/' | grep -E '\.md$')
+  if [ -z "$refresh_refs_tracked_md" ]; then
+    echo "FAIL: skills/refresh/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$refresh_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$refresh_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/refresh/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 23. engine-bootstrap has a references/ directory carrying at least one
+# tracked Markdown file, and engine-bootstrap/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+engine_bootstrap_dir="$PLUGIN_ROOT/skills/engine-bootstrap"
+engine_bootstrap_skill_md="$engine_bootstrap_dir/SKILL.md"
+engine_bootstrap_refs_dir="$engine_bootstrap_dir/references"
+if [ ! -d "$engine_bootstrap_refs_dir" ]; then
+  echo "FAIL: skills/engine-bootstrap/references/ does not exist."
+  fail=1
+else
+  engine_bootstrap_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/engine-bootstrap/references/' | grep -E '\.md$')
+  if [ -z "$engine_bootstrap_refs_tracked_md" ]; then
+    echo "FAIL: skills/engine-bootstrap/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$engine_bootstrap_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$engine_bootstrap_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/engine-bootstrap/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 24. refresh/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+refresh_skill_md="$PLUGIN_ROOT/skills/refresh/SKILL.md"
+if [ ! -f "$refresh_skill_md" ]; then
+  echo "FAIL: skills/refresh/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  refresh_skill_bytes=$(wc -c < "$refresh_skill_md" | tr -d ' ')
+  if [ "$refresh_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/refresh/SKILL.md is $refresh_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 25. engine-bootstrap/SKILL.md's own file size sits at or under the
+# router-sized ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+engine_bootstrap_skill_md="$PLUGIN_ROOT/skills/engine-bootstrap/SKILL.md"
+if [ ! -f "$engine_bootstrap_skill_md" ]; then
+  echo "FAIL: skills/engine-bootstrap/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  engine_bootstrap_skill_bytes=$(wc -c < "$engine_bootstrap_skill_md" | tr -d ' ')
+  if [ "$engine_bootstrap_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/engine-bootstrap/SKILL.md is $engine_bootstrap_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 26. Content trimmed out of refresh/SKILL.md lands in tracked files, not
+# the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of refresh/SKILL.md plus everything under refresh/references/
+# must not fall below 90% of the file's pre-split size — a floor a real
+# relocation cannot breach but a real deletion can.
+refresh_dir="$PLUGIN_ROOT/skills/refresh"
+refresh_skill_md="$refresh_dir/SKILL.md"
+refresh_refs_dir="$refresh_dir/references"
+refresh_combined_bytes=0
+if [ -f "$refresh_skill_md" ]; then
+  refresh_combined_bytes=$(wc -c < "$refresh_skill_md" | tr -d ' ')
+fi
+if [ -d "$refresh_refs_dir" ]; then
+  while IFS= read -r -d '' refresh_ref_file; do
+    refresh_ref_bytes=$(wc -c < "$refresh_ref_file" | tr -d ' ')
+    refresh_combined_bytes=$((refresh_combined_bytes + refresh_ref_bytes))
+  done < <(find "$refresh_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$refresh_combined_bytes" -lt 23381 ]; then
+  echo "FAIL: refresh/SKILL.md + refresh/references/ combined is $refresh_combined_bytes bytes — below the 23,381-byte (90% of the pre-split 25,979) floor."
+  fail=1
+fi
+
+# 27. Content trimmed out of engine-bootstrap/SKILL.md lands in tracked
+# files, not the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of engine-bootstrap/SKILL.md plus everything under
+# engine-bootstrap/references/ must not fall below 90% of the file's
+# pre-split size — a floor a real relocation cannot breach but a real
+# deletion can.
+engine_bootstrap_dir="$PLUGIN_ROOT/skills/engine-bootstrap"
+engine_bootstrap_skill_md="$engine_bootstrap_dir/SKILL.md"
+engine_bootstrap_refs_dir="$engine_bootstrap_dir/references"
+engine_bootstrap_combined_bytes=0
+if [ -f "$engine_bootstrap_skill_md" ]; then
+  engine_bootstrap_combined_bytes=$(wc -c < "$engine_bootstrap_skill_md" | tr -d ' ')
+fi
+if [ -d "$engine_bootstrap_refs_dir" ]; then
+  while IFS= read -r -d '' engine_bootstrap_ref_file; do
+    engine_bootstrap_ref_bytes=$(wc -c < "$engine_bootstrap_ref_file" | tr -d ' ')
+    engine_bootstrap_combined_bytes=$((engine_bootstrap_combined_bytes + engine_bootstrap_ref_bytes))
+  done < <(find "$engine_bootstrap_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$engine_bootstrap_combined_bytes" -lt 28581 ]; then
+  echo "FAIL: engine-bootstrap/SKILL.md + engine-bootstrap/references/ combined is $engine_bootstrap_combined_bytes bytes — below the 28,581-byte (90% of the pre-split 31,757) floor."
+  fail=1
+fi
+
+# 28. refresh's Doctrine surface section links the engine chapter that
+# documents subagent-dispatch doctrine.
+# Doctrine: a skill's Doctrine surface section is the map from the skill to
+# the fuller chapters that govern it. A chapter the skill's own behavior
+# depends on but the surface omits is a doctrine pointer that should exist
+# and does not — refresh dispatches subagents under concurrency and
+# tool-isolation rules documented in 03-engine.md, so its Doctrine surface
+# must link that chapter.
+refresh_skill_md="$PLUGIN_ROOT/skills/refresh/SKILL.md"
+refresh_surface_section=$(awk '/^## Doctrine surface/{f=1;next} /^## /{f=0} f' "$refresh_skill_md" 2>/dev/null)
+if ! printf '%s' "$refresh_surface_section" | grep -qF '03-engine.md'; then
+  echo "FAIL: skills/refresh/SKILL.md's Doctrine surface section does not link 03-engine.md."
+  fail=1
+fi
+
+# 29. refresh/SKILL.md's own body states the tool-isolation rule for any
+# subagent it dispatches.
+# Doctrine: exploration work a refresh subagent performs is read-only —
+# Read, Glob, and Grep only, no write and no shell access — and that rule
+# must be stated in the file the model actually reads before deciding
+# whether to dispatch, not left to live only in a doctrine chapter the
+# model may or may not have loaded alongside it.
+refresh_skill_md="$PLUGIN_ROOT/skills/refresh/SKILL.md"
+if ! grep -qiE 'read[^a-z]{1,15}glob[^a-z]{1,15}grep' "$refresh_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+write' "$refresh_skill_md" 2>/dev/null || \
+   ! grep -qiE 'no[[:space:]]+shell' "$refresh_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/refresh/SKILL.md does not state the Read/Glob/Grep-only, no-write/no-shell subagent isolation rule in its own body."
+  fail=1
+fi
+
+# 30. self-audit has a references/ directory carrying at least one tracked
+# Markdown file, and self-audit/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+self_audit_dir="$PLUGIN_ROOT/skills/self-audit"
+self_audit_skill_md="$self_audit_dir/SKILL.md"
+self_audit_refs_dir="$self_audit_dir/references"
+if [ ! -d "$self_audit_refs_dir" ]; then
+  echo "FAIL: skills/self-audit/references/ does not exist."
+  fail=1
+else
+  self_audit_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/self-audit/references/' | grep -E '\.md$')
+  if [ -z "$self_audit_refs_tracked_md" ]; then
+    echo "FAIL: skills/self-audit/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$self_audit_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$self_audit_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/self-audit/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 31. apply has a references/ directory carrying at least one tracked
+# Markdown file, and apply/SKILL.md links into it.
+# Doctrine: on-demand reference material for a skill lives under that
+# skill's own references/ directory, not folded permanently into the
+# always-loaded SKILL.md body. A references/ directory that is missing,
+# that holds no tracked file, or that nothing in SKILL.md points at, is
+# dead weight — the split only pays off once real content lives there and
+# the router actually sends the model to it.
+apply_dir="$PLUGIN_ROOT/skills/apply"
+apply_skill_md="$apply_dir/SKILL.md"
+apply_refs_dir="$apply_dir/references"
+if [ ! -d "$apply_refs_dir" ]; then
+  echo "FAIL: skills/apply/references/ does not exist."
+  fail=1
+else
+  apply_refs_tracked_md=$(cd "$REPO_ROOT" && git ls-files -- 'plugin/skill-engine/skills/apply/references/' | grep -E '\.md$')
+  if [ -z "$apply_refs_tracked_md" ]; then
+    echo "FAIL: skills/apply/references/ exists but contains no tracked Markdown file."
+    fail=1
+  fi
+fi
+if [ ! -f "$apply_skill_md" ] || ! grep -qE '\]\(\.?/?references/' "$apply_skill_md" 2>/dev/null; then
+  echo "FAIL: skills/apply/SKILL.md does not link to its references/ directory."
+  fail=1
+fi
+
+# 32. self-audit/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+self_audit_skill_md="$PLUGIN_ROOT/skills/self-audit/SKILL.md"
+if [ ! -f "$self_audit_skill_md" ]; then
+  echo "FAIL: skills/self-audit/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  self_audit_skill_bytes=$(wc -c < "$self_audit_skill_md" | tr -d ' ')
+  if [ "$self_audit_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/self-audit/SKILL.md is $self_audit_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 33. apply/SKILL.md's own file size sits at or under the router-sized
+# ceiling.
+# Doctrine: a skill's SKILL.md is read on every invocation before the model
+# reads a single byte of the user's source material, so its on-disk size is
+# a standing entry cost paid every time. 8,204 bytes — the largest of this
+# plugin's already router-sized skills — is the ceiling every SKILL.md is
+# held to.
+apply_skill_md="$PLUGIN_ROOT/skills/apply/SKILL.md"
+if [ ! -f "$apply_skill_md" ]; then
+  echo "FAIL: skills/apply/SKILL.md is missing — cannot check its size."
+  fail=1
+else
+  apply_skill_bytes=$(wc -c < "$apply_skill_md" | tr -d ' ')
+  if [ "$apply_skill_bytes" -gt 8204 ]; then
+    echo "FAIL: skills/apply/SKILL.md is $apply_skill_bytes bytes — over the 8,204-byte router-sized ceiling."
+    fail=1
+  fi
+fi
+
+# 34. Content trimmed out of self-audit/SKILL.md lands in tracked files, not
+# the void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of self-audit/SKILL.md plus everything under self-audit/references/
+# must not fall below 90% of the file's pre-split size — a floor a real
+# relocation cannot breach but a real deletion can.
+self_audit_dir="$PLUGIN_ROOT/skills/self-audit"
+self_audit_skill_md="$self_audit_dir/SKILL.md"
+self_audit_refs_dir="$self_audit_dir/references"
+self_audit_combined_bytes=0
+if [ -f "$self_audit_skill_md" ]; then
+  self_audit_combined_bytes=$(wc -c < "$self_audit_skill_md" | tr -d ' ')
+fi
+if [ -d "$self_audit_refs_dir" ]; then
+  while IFS= read -r -d '' self_audit_ref_file; do
+    self_audit_ref_bytes=$(wc -c < "$self_audit_ref_file" | tr -d ' ')
+    self_audit_combined_bytes=$((self_audit_combined_bytes + self_audit_ref_bytes))
+  done < <(find "$self_audit_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$self_audit_combined_bytes" -lt 20290 ]; then
+  echo "FAIL: self-audit/SKILL.md + self-audit/references/ combined is $self_audit_combined_bytes bytes — below the 20,290-byte (90% of the pre-split 22,545) floor."
+  fail=1
+fi
+
+# 35. Content trimmed out of apply/SKILL.md lands in tracked files, not the
+# void.
+# Doctrine: shrinking a SKILL.md by deleting its content is a different
+# change from shrinking it by relocating that content into references/
+# read on demand, and only the latter is a size split. The combined byte
+# count of apply/SKILL.md plus everything under apply/references/ must not
+# fall below 90% of the file's pre-split size — a floor a real relocation
+# cannot breach but a real deletion can.
+apply_dir="$PLUGIN_ROOT/skills/apply"
+apply_skill_md="$apply_dir/SKILL.md"
+apply_refs_dir="$apply_dir/references"
+apply_combined_bytes=0
+if [ -f "$apply_skill_md" ]; then
+  apply_combined_bytes=$(wc -c < "$apply_skill_md" | tr -d ' ')
+fi
+if [ -d "$apply_refs_dir" ]; then
+  while IFS= read -r -d '' apply_ref_file; do
+    apply_ref_bytes=$(wc -c < "$apply_ref_file" | tr -d ' ')
+    apply_combined_bytes=$((apply_combined_bytes + apply_ref_bytes))
+  done < <(find "$apply_refs_dir" -type f -print0 2>/dev/null)
+fi
+if [ "$apply_combined_bytes" -lt 15658 ]; then
+  echo "FAIL: apply/SKILL.md + apply/references/ combined is $apply_combined_bytes bytes — below the 15,658-byte (90% of the pre-split 17,398) floor."
+  fail=1
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo "All doctrine grep checks passed."

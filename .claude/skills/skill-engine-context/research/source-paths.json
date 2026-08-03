@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "nick-railsback-skill-engine",
+      "kind": "git-managed",
+      "url": "https://github.com/nick-railsback/skill-engine",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-08-03",
+        "last_checked_sha": "016a9d93f709594daa2911981b4ec67539c38bf5",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    }
+  ]
+}
