@@ -27,8 +27,8 @@
     "_comment_allow": "Read surface only. The engine reads installed skills and runs four read-only git invocations (diff --no-index, status, log, show), all of which the git.readonly lint whitelists as read-only — no mutating verb appears here."
   },
   "hooks": {},
-  "_comment_hooks": "Explicit empty hooks section. This bundled settings file registers zero hooks, and so does the plugin manifest — see SECURITY.md. This key is a visible commitment — any future hook proposal in this file appears as a diff.",
   "enabledPlugins": {
     "skill-engine@skill-engine-marketplace": true
-  }
+  },
+  "_comment_hooks": "Explicit empty hooks section. This bundled settings file registers zero hooks, and so does the plugin manifest — see SECURITY.md. This key is a visible commitment — any future hook proposal in this file appears as a diff."
 }
