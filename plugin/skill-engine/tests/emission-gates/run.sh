@@ -88,6 +88,49 @@ run_verify() {
   CTX_ROOT="$root" "$TEMPLATE" 2>&1
 }
 
+# build_ctx_with_refs <root> <description-value> — build_min_ctx plus the
+# three things the checks downstream of Check 3 need in order to have
+# anything to say: a references/ directory, a catalog whose rows do not
+# match it, and a SKILL.json. The catalog is deliberately broken (it links
+# references/beta.md, and references/alpha.md is on disk with no row), so a
+# run in which the downstream checks actually execute is loud about it and a
+# run in which they are suppressed is silent.
+build_ctx_with_refs() {
+  local root="$1" desc="$2"
+  build_min_ctx "$root" "$desc"
+  # A non-empty sources[] so catalog-density gets past its own
+  # "no sources to inspect" short-circuit and actually reaches the nav_ok
+  # gate — otherwise the assertion about its skip message is vacuous. The
+  # entry carries a url and no path, so density's per-source loop finds no
+  # directory to size and moves on; reaching the gate is the whole point.
+  cat > "$root/research/source-paths.json" <<'JSON'
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "acme",
+      "kind": "git",
+      "status": "confirmed",
+      "url": "https://github.com/example/acme",
+      "lifecycle": {"state": "harvested"}
+    }
+  ]
+}
+JSON
+  mkdir -p "$root/references"
+  printf '# Alpha\n\nBody.\n' > "$root/references/alpha.md"
+  {
+    printf -- '---\n'
+    printf 'name: acme-context\n'
+    printf 'description: %s\n' "$desc"
+    printf -- '---\n\n# Acme\n\n'
+    printf '## Catalog\n\n'
+    printf '| Reference | When |\n|---|---|\n'
+    printf '| [beta](references/beta.md) | never |\n'
+  } > "$root/SKILL.md"
+  printf '{"name":"acme-context","description":"x","catalog":[]}\n' > "$root/SKILL.json"
+}
+
 # ────────────────────────────────────────────────────────────────────────
 # description-length gate: a navigator description over a fixed byte cap
 # fails the gate; at/under the cap it is unaffected.
@@ -139,6 +182,66 @@ else
   [ "$rc_mb" -ne 0 ] && ok=1
   report "$ok" "description-length gate: cap is measured in UTF-8 bytes, not characters (600 two-byte chars = 1200 bytes exceeds the cap despite being under 1024 characters)"
 fi
+
+# ────────────────────────────────────────────────────────────────────────
+# nav_ok is "the navigator was located and parsed", not "Check 3 passed".
+#
+# Checks 4 (catalog-bijection), catalog-density and skill-json-trijection
+# all gate on nav_ok and, when it is unset, skip with a message pointing at
+# Check 3 — "requires navigator SKILL.md", "navigator SKILL.md not located".
+# Those messages are true only when the navigator is missing or unparseable.
+# A description over the byte cap is neither: the file was found, its
+# frontmatter parsed, and its name and description read. If the cap failure
+# leaves nav_ok unset, one real Check 3 failure turns into three false
+# diagnoses, and a genuine catalog break in the same tree is never reported
+# — the maintainer shortens the description, reruns, and only then learns
+# the corpus was broken all along. Under the stamped pre-commit hook, which
+# aborts on any verify.sh failure, that is a hard commit block whose stated
+# cause is wrong.
+# ────────────────────────────────────────────────────────────────────────
+
+root_capref="$(mktemp -d -t skill-engine-emission-gates.XXXXXX)"
+created_dirs+=("$root_capref")
+build_ctx_with_refs "$root_capref" "$desc_over_cap"
+out_capref="$(run_verify "$root_capref")"; rc_capref=$?
+
+ok=1
+[ "$rc_capref" -ne 0 ] || ok=0
+printf '%s' "$out_capref" | grep -q '1024' || ok=0
+report "$ok" "nav_ok: an over-cap description still fails the run, naming the byte cap"
+
+ok=1
+printf '%s' "$out_capref" | grep -qF 'Catalog bijection requires navigator SKILL.md' && ok=0
+report "$ok" "nav_ok: an over-cap description does not skip catalog-bijection as 'requires navigator SKILL.md'"
+
+ok=1
+printf '%s' "$out_capref" | grep -qF 'navigator SKILL.md not located' && ok=0
+report "$ok" "nav_ok: an over-cap description does not skip catalog-density as 'navigator SKILL.md not located'"
+
+ok=1
+printf '%s' "$out_capref" | grep -qF 'SKILL.json trijection requires navigator SKILL.md' && ok=0
+report "$ok" "nav_ok: an over-cap description does not skip skill-json-trijection as 'requires navigator SKILL.md'"
+
+# The point of not suppressing them: the break in this fixture's catalog has
+# to actually surface. references/alpha.md has no catalog row and the one
+# row present points at a references/beta.md that does not exist.
+ok=0
+printf '%s' "$out_capref" | grep -qF 'alpha' && printf '%s' "$out_capref" | grep -qi 'catalog' && ok=1
+report "$ok" "nav_ok: the catalog break in the same tree is reported alongside the cap failure, not hidden behind it"
+
+# The converse still has to hold: when the navigator really is unparseable,
+# the downstream checks must still skip, and still say why. Suppression is
+# correct here — this is the case those messages were written for.
+root_nofm="$(mktemp -d -t skill-engine-emission-gates.XXXXXX)"
+created_dirs+=("$root_nofm")
+build_ctx_with_refs "$root_nofm" "irrelevant"
+printf '# Acme\n\nNo frontmatter at all.\n' > "$root_nofm/SKILL.md"
+out_nofm="$(run_verify "$root_nofm")" || true
+
+ok=1
+printf '%s' "$out_nofm" | grep -qF 'Catalog bijection requires navigator SKILL.md' || ok=0
+printf '%s' "$out_nofm" | grep -qF 'SKILL.json trijection requires navigator SKILL.md' || ok=0
+report "$ok" "nav_ok: a navigator with no frontmatter at all does still suppress the downstream checks, with the message that fits"
 
 # ────────────────────────────────────────────────────────────────────────
 # Document-text cases: the merged-tree gate procedure and review's second

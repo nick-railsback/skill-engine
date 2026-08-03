@@ -448,11 +448,21 @@ else
     desc_val="${desc_line#description:}"
     desc_val="${desc_val#"${desc_val%%[![:space:]]*}"}"
     desc_bytes=$(printf '%s' "$desc_val" | wc -c | tr -d ' ')
+    # Set before the cap is judged, not inside the passing branch. nav_ok
+    # is the located-and-parseable flag Checks 4, 8 and 9 short-circuit on,
+    # and their skip messages say so — "requires navigator SKILL.md",
+    # "navigator SKILL.md not located". By this line the navigator has been
+    # found, its frontmatter parsed, and both required keys read, so those
+    # messages are already false. An over-cap description is a separate
+    # quality failure: it must fail Check 3 on its own terms and leave the
+    # downstream checks free to run, rather than turning one real failure
+    # into three false diagnoses and hiding any catalog break in the same
+    # tree behind them.
+    nav_ok=1
     if [ "$desc_bytes" -gt "$NAV_DESCRIPTION_MAX_BYTES" ]; then
       fail "$nav_rel description is $desc_bytes bytes, over the ${NAV_DESCRIPTION_MAX_BYTES}-byte cap"
     else
       pass "$nav_rel exists with valid frontmatter (name + description, ${desc_bytes}/${NAV_DESCRIPTION_MAX_BYTES} bytes)"
-      nav_ok=1
     fi
   fi
 fi
