@@ -125,6 +125,92 @@ else
     "only $link_count (references/...) links found"
 fi
 
+section "the auditor it runs is the auditor the engine ships"
+
+# The dogfood contextualizer's verify.sh is tracked in this repo, and it is
+# a stamped copy of engine-bootstrap-templates/verify.sh — the same
+# relationship every examples/<slug>/verify.sh has. Doctrine check 7 exists
+# because that relationship does not hold by itself: a template edit that
+# misses a copy leaves a ~1,300-line script quietly disagreeing with the one
+# it came from.
+#
+# Check 7, `make sync` and ci-local all discovered copies by globbing
+# `examples/`, so this one was outside every one of them at once. The repo
+# shipped, tracked, a contextualizer whose auditor disagreed with the
+# auditor it teaches — passing checks the shipped engine would fail, and
+# widening on every future template edit. Worse, pre-commit.sh.template
+# globs exactly `.claude/skills/*-context/verify.sh`, so a maintainer who
+# installs the stamped hook in this repo gates every commit on that stale
+# script.
+TEMPLATE="$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh"
+INVENTORY="$REPO_ROOT/scripts/stamped-verify-copies.sh"
+
+if [ -f "$TEMPLATE" ] && cmp -s "$TEMPLATE" "$CTX_VERIFY"; then
+  pass "the tracked verify.sh is byte-identical to engine-bootstrap-templates/verify.sh"
+else
+  fail "the tracked verify.sh is byte-identical to engine-bootstrap-templates/verify.sh" \
+    "run \`make sync\`; diff summary: $(diff "$TEMPLATE" "$CTX_VERIFY" 2>&1 | head -4 | tr '\n' '~')"
+fi
+
+# One inventory, not three hand-mirrored find expressions. Check 7 and
+# `make sync` are the detector and the fix for the same invariant, and they
+# drifted apart precisely because each carried its own glob.
+if [ -x "$INVENTORY" ]; then
+  pass "present and executable: scripts/stamped-verify-copies.sh"
+else
+  fail "present and executable: scripts/stamped-verify-copies.sh"
+fi
+
+if [ -x "$INVENTORY" ]; then
+  listed="$("$INVENTORY" 2>/dev/null)"
+
+  if printf '%s\n' "$listed" | grep -qxF "$CTX_VERIFY"; then
+    pass "the inventory lists this repo's own contextualizer, not only examples/"
+  else
+    fail "the inventory lists this repo's own contextualizer, not only examples/" \
+      "listed: $(printf '%s' "$listed" | tr '\n' ' ')"
+  fi
+
+  listed_examples=$(printf '%s\n' "$listed" | grep -c "/examples/" || true)
+  if [ "$listed_examples" -ge 3 ]; then
+    pass "the inventory still lists every examples/<slug>/verify.sh ($listed_examples found)"
+  else
+    fail "the inventory still lists every examples/<slug>/verify.sh" \
+      "only $listed_examples found under examples/"
+  fi
+
+  # Every listed copy must actually match — the inventory is only worth
+  # having if what it names is what gets compared.
+  drifted=""
+  while IFS= read -r copy; do
+    [ -n "$copy" ] || continue
+    cmp -s "$TEMPLATE" "$copy" || drifted="${drifted:+$drifted, }${copy#"$REPO_ROOT"/}"
+  done <<< "$listed"
+  if [ -z "$drifted" ]; then
+    pass "every copy the inventory names is byte-identical to the template"
+  else
+    fail "every copy the inventory names is byte-identical to the template" \
+      "diverged: $drifted"
+  fi
+fi
+
+# Wiring: the detector and the fix both have to read the shared inventory,
+# or the next path added to it is covered by one and not the other.
+DOCTRINE="$PLUGIN_ROOT/tests/doctrine.sh"
+MAKEFILE="$REPO_ROOT/Makefile"
+
+if grep -qF 'stamped-verify-copies.sh' "$DOCTRINE" 2>/dev/null; then
+  pass "doctrine.sh's drift check reads the shared inventory rather than its own glob"
+else
+  fail "doctrine.sh's drift check reads the shared inventory rather than its own glob"
+fi
+
+if grep -qF 'stamped-verify-copies.sh' "$MAKEFILE" 2>/dev/null; then
+  pass "the Makefile's sync target reads the shared inventory rather than its own glob"
+else
+  fail "the Makefile's sync target reads the shared inventory rather than its own glob"
+fi
+
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

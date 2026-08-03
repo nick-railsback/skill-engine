@@ -340,23 +340,41 @@ elif [ "$claimed" != "$actual_count" ]; then
   fail=1
 fi
 
-# 7. Example verify.sh copies stay byte-identical to the template.
-# Doctrine: each examples/<slug>/verify.sh is a verbatim copy of
+# 7. Stamped verify.sh copies stay byte-identical to the template.
+# Doctrine: every stamped verify.sh in this repo is a verbatim copy of
 # engine-bootstrap-templates/verify.sh. The example-COUNT check above does
 # not inspect verify.sh content, so without this a template edit that misses
-# the copies would silently leave 4 diverging ~1,100-line scripts.
+# the copies would silently leave diverging ~1,300-line scripts.
+#
+# The copy set comes from scripts/stamped-verify-copies.sh, shared with
+# `make sync`. It is not only examples/: this repo dogfoods the engine, so
+# .claude/skills/<slug>-context/verify.sh is a stamped copy on exactly the
+# same terms. When this check carried its own glob over examples/ and sync
+# carried a second one, the dogfood copy sat outside the detector and the
+# fix at once, and shipped tracked as an older revision of the template.
 tmpl="$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh"
+inventory="$REPO_ROOT/scripts/stamped-verify-copies.sh"
 if [ ! -f "$tmpl" ]; then
-  echo "FAIL: engine-bootstrap-templates/verify.sh missing — cannot check example copies."
+  echo "FAIL: engine-bootstrap-templates/verify.sh missing — cannot check stamped copies."
+  fail=1
+elif [ ! -f "$inventory" ]; then
+  echo "FAIL: scripts/stamped-verify-copies.sh missing — cannot enumerate stamped copies."
   fail=1
 else
+  copies=$(bash "$inventory" 2>/dev/null)
+  # An empty inventory would pass the loop below without comparing
+  # anything. There is always at least the shipped examples.
+  if [ -z "$copies" ]; then
+    echo "FAIL: scripts/stamped-verify-copies.sh listed no verify.sh copies — the drift check would be vacuous."
+    fail=1
+  fi
   while IFS= read -r ex; do
     [ -n "$ex" ] || continue
     if ! cmp -s "$tmpl" "$ex"; then
-      echo "FAIL: ${ex#"$REPO_ROOT/"} diverges from engine-bootstrap-templates/verify.sh — re-sync the copy."
+      echo "FAIL: ${ex#"$REPO_ROOT/"} diverges from engine-bootstrap-templates/verify.sh — run \`make sync\`."
       fail=1
     fi
-  done < <(find "$REPO_ROOT/examples" -mindepth 2 -maxdepth 2 -name verify.sh 2>/dev/null)
+  done <<< "$copies"
 fi
 
 # 8. Version parity across the release surfaces.

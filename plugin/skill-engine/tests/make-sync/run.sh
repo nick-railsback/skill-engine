@@ -17,11 +17,21 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 SRC_MAKEFILE="$REPO_ROOT/Makefile"
 SRC_TEMPLATE="$REPO_ROOT/plugin/skill-engine/engine-bootstrap-templates/verify.sh"
+SRC_INVENTORY="$REPO_ROOT/scripts/stamped-verify-copies.sh"
 EXAMPLE_NAMES=(
   inspect-ai-context
   langchain-context
   modelcontextprotocol-python-sdk-context
 )
+
+# A stamped verify.sh does not only live under examples/. This repo
+# dogfoods the engine, so it carries a contextualizer of its own at
+# .claude/skills/<slug>-context/ — the same path shape the stamped
+# pre-commit hook globs, and the same byte-identity relationship to the
+# template. It was outside sync's reach for as long as sync globbed
+# examples/, so the fixture carries one and every assertion below covers
+# it alongside the examples.
+DOGFOOD_REL=".claude/skills/dogfood-context/verify.sh"
 
 pass_count=0
 fail_count=0
@@ -43,8 +53,10 @@ trap cleanup_tmp EXIT
 # same as it would from the real repo root.
 build_fixture() {
   local scratch="$1"
-  mkdir -p "$scratch/plugin/skill-engine/engine-bootstrap-templates" "$scratch/examples"
+  mkdir -p "$scratch/plugin/skill-engine/engine-bootstrap-templates" "$scratch/examples" \
+    "$scratch/scripts" "$scratch/$(dirname "$DOGFOOD_REL")"
   cp "$SRC_MAKEFILE" "$scratch/Makefile"
+  cp "$SRC_INVENTORY" "$scratch/scripts/stamped-verify-copies.sh"
   cp "$SRC_TEMPLATE" "$scratch/plugin/skill-engine/engine-bootstrap-templates/verify.sh"
   local name
   for name in "${EXAMPLE_NAMES[@]}"; do
@@ -52,6 +64,12 @@ build_fixture() {
     cp "$scratch/plugin/skill-engine/engine-bootstrap-templates/verify.sh" \
       "$scratch/examples/$name/verify.sh"
   done
+  cp "$scratch/plugin/skill-engine/engine-bootstrap-templates/verify.sh" \
+    "$scratch/$DOGFOOD_REL"
+}
+
+fixture_dogfood() {
+  printf '%s/%s' "$1" "$DOGFOOD_REL"
 }
 
 fixture_template() {
@@ -85,6 +103,15 @@ for name in "${EXAMPLE_NAMES[@]}"; do
   fi
 done
 
+df_a="$(fixture_dogfood "$scratch_a")"
+if cmp -s "$tmpl_a" "$df_a"; then
+  printf '  PASS  %s matches edited template after make sync\n' "$DOGFOOD_REL"
+  pass_count=$((pass_count + 1))
+else
+  printf '  FAIL  %s does not match edited template after make sync\n' "$DOGFOOD_REL"
+  fail_count=$((fail_count + 1))
+fi
+
 echo
 echo "== diverged example copy is corrected =="
 scratch_b="$(mktemp -d -t skill-engine-make-sync.XXXXXX)"
@@ -103,6 +130,11 @@ printf '#!/usr/bin/env bash\n# diverged: entirely different content\n' > "$ex_la
 ex_mcp="$(fixture_example "$scratch_b" modelcontextprotocol-python-sdk-context)"
 head -c 20 "$tmpl_b" > "$ex_mcp"
 
+# The failure this repo actually shipped: a copy left at an older revision
+# of the template entirely, rather than edited afterwards.
+df_b="$(fixture_dogfood "$scratch_b")"
+printf '#!/usr/bin/env bash\n# diverged: an older revision of the template\n' > "$df_b"
+
 # Sanity: fixture setup actually diverged them (guards against a no-op edit
 # silently passing below).
 for name in "${EXAMPLE_NAMES[@]}"; do
@@ -112,6 +144,10 @@ for name in "${EXAMPLE_NAMES[@]}"; do
     fail_count=$((fail_count + 1))
   fi
 done
+if cmp -s "$tmpl_b" "$df_b"; then
+  printf '  FAIL  %s failed to diverge from template during fixture setup (test bug)\n' "$DOGFOOD_REL"
+  fail_count=$((fail_count + 1))
+fi
 
 sync_out_b="$(make -C "$scratch_b" sync 2>&1)" && sync_rc_b=0 || sync_rc_b=$?
 if [ "$sync_rc_b" -ne 0 ]; then
@@ -128,6 +164,14 @@ for name in "${EXAMPLE_NAMES[@]}"; do
     fail_count=$((fail_count + 1))
   fi
 done
+
+if cmp -s "$tmpl_b" "$df_b"; then
+  printf '  PASS  %s corrected to match template after make sync\n' "$DOGFOOD_REL"
+  pass_count=$((pass_count + 1))
+else
+  printf '  FAIL  %s still diverges from template after make sync\n' "$DOGFOOD_REL"
+  fail_count=$((fail_count + 1))
+fi
 
 echo
 echo "Passed: $pass_count"

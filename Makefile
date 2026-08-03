@@ -9,13 +9,15 @@ hooks-audit:
 ci-local:
 	bash scripts/ci-local.sh all
 
-# Propagates the verify.sh template into every shipped example.
+# Propagates the verify.sh template into every stamped copy.
 # doctrine.sh check 7 stays the drift detector; this is what fixes what it
-# catches instead of a hand copy per example. Dynamic discovery, not a
-# hardcoded list, mirrors check 7's own find so a later-added example is
-# covered without editing this target.
+# catches instead of a hand copy per contextualizer. Both read the same
+# inventory rather than each mirroring the other's find — mirrored globs
+# stopped being mirrors the moment a stamped copy appeared outside
+# examples/, and this repo's own dogfood contextualizer then sat outside the
+# detector and the fix simultaneously.
 sync:
-	@for f in $$(find examples -mindepth 2 -maxdepth 2 -name verify.sh); do \
+	@for f in $$(bash scripts/stamped-verify-copies.sh); do \
 		cp plugin/skill-engine/engine-bootstrap-templates/verify.sh "$$f"; \
 		echo "synced: $$f"; \
 	done
