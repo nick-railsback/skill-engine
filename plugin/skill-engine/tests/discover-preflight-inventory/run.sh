@@ -415,6 +415,88 @@ else
   fail "since-last-check: field is entirely absent (not null, not empty) when no prior sha is supplied, even against a real git repo"
 fi
 
+# ── since_last_check paths are repo paths, in every form git can print ──
+#
+# `git log --numstat` does not print plain paths unconditionally. It prints
+# a rename as the single field `dir/{old.md => new.md}`, and it C-quotes and
+# octal-escapes any path outside ASCII: `"docs/caf\303\251.md"`. Both split
+# into exactly three tab fields, so neither is caught by the malformed-row
+# guard, and both reach the emitted JSON verbatim.
+#
+# What consumes this is DISCOVER's pre-flight (cache-and-clone.md step 7),
+# which intersects these paths with the corpus shape to decide what to
+# re-harvest. A path in either of those forms matches nothing in
+# file_counts_by_dir or largest_files, so the files that actually changed
+# are silently dropped from the re-harvest and the corpus keeps stale
+# content for them — a source that renames a directory, or carries one
+# accented filename, quietly stops being refreshed.
+#
+# The fixture below is a single commit doing both: a git mv, and an edit to
+# a UTF-8-named file.
+sll_forms_repo="$TMPDIR_CASE/since-last-check-forms"
+mkdir -p "$sll_forms_repo/docs"
+git -C "$sll_forms_repo" init -q
+git -C "$sll_forms_repo" config user.email "test@example.com"
+git -C "$sll_forms_repo" config user.name "skill-engine tests"
+printf 'original\n' > "$sll_forms_repo/docs/old.md"
+printf 'accented\n' > "$sll_forms_repo/docs/café.md"
+printf 'plain\n' > "$sll_forms_repo/docs/plain.md"
+git -C "$sll_forms_repo" add -A
+git -C "$sll_forms_repo" commit -q -m "initial"
+sll_forms_base="$(git -C "$sll_forms_repo" rev-parse HEAD)"
+
+git -C "$sll_forms_repo" mv docs/old.md docs/new.md
+printf 'more\n' >> "$sll_forms_repo/docs/café.md"
+git -C "$sll_forms_repo" add -A
+git -C "$sll_forms_repo" commit -q -m "rename and edit"
+
+sll_forms_out="$(run_inventory "$sll_forms_repo" --last-checked-sha "$sll_forms_base")"
+
+# Fixture self-check: without it, an inventory that reported no changed
+# files at all would pass every negative assertion below.
+if jq_check "$sll_forms_out" '(.since_last_check.files | length) >= 2'; then
+  pass "since-last-check forms: the fixture's rename-and-edit commit does produce changed-file rows to inspect"
+else
+  fail "since-last-check forms: the fixture's rename-and-edit commit does produce changed-file rows to inspect" \
+    "$sll_forms_out"
+fi
+
+if jq_check "$sll_forms_out" '[.since_last_check.files[].path] | contains(["docs/café.md"])'; then
+  pass "since-last-check forms: a UTF-8 filename is reported as the real path, not C-quoted and octal-escaped"
+else
+  fail "since-last-check forms: a UTF-8 filename is reported as the real path, not C-quoted and octal-escaped" \
+    "$sll_forms_out"
+fi
+
+if jq_check "$sll_forms_out" '[.since_last_check.files[].path] | contains(["docs/new.md"])'; then
+  pass "since-last-check forms: a renamed file's new path is reported on its own, not folded into a {old => new} field"
+else
+  fail "since-last-check forms: a renamed file's new path is reported on its own, not folded into a {old => new} field" \
+    "$sll_forms_out"
+fi
+
+# Every emitted path has to be a path — something a consumer can match
+# against the corpus shape. This is the assertion that fails on BOTH of
+# git's decorated forms at once, whatever future form is added.
+if jq_check "$sll_forms_out" '
+    [.since_last_check.files[].path]
+    | all(test("^[^\"{}]*$") and (test(" => ") | not))
+'; then
+  pass "since-last-check forms: no emitted path carries git's display decoration (no quotes, no braces, no \" => \")"
+else
+  fail "since-last-check forms: no emitted path carries git's display decoration (no quotes, no braces, no \" => \")" \
+    "$sll_forms_out"
+fi
+
+# An untouched file must still be absent, so the fix cannot have been "emit
+# every path in the tree".
+if jq_check "$sll_forms_out" '[.since_last_check.files[].path] | index("docs/plain.md") == null'; then
+  pass "since-last-check forms: a file untouched by the commit is still excluded"
+else
+  fail "since-last-check forms: a file untouched by the commit is still excluded" \
+    "$sll_forms_out"
+fi
+
 sll_nongit_root="$TMPDIR_CASE/since-last-check-nongit"
 mkdir -p "$sll_nongit_root"
 printf 'x\n' > "$sll_nongit_root/a.txt"

@@ -163,8 +163,24 @@ def compute_since_last_check_git(root: Path, last_checked_sha: str) -> dict | No
             ["git", "-C", str(root), "rev-parse", "HEAD"],
             capture_output=True, text=True, check=True,
         ).stdout.strip()
+        # --numstat prints paths for a human by default, and two of its
+        # display forms are not paths at all: a rename collapses to the
+        # single field `dir/{old.md => new.md}`, and anything outside ASCII
+        # is C-quoted and octal-escaped to `"docs/caf\303\251.md"`. Both
+        # split into exactly three tab fields, so the malformed-row guard
+        # below waves them through, and both reach the caller as a `path`
+        # that matches nothing in the corpus shape it is meant to be
+        # intersected with — the changed files drop out of the re-harvest
+        # and the corpus keeps stale content for them, silently.
+        #
+        # --no-renames splits a rename back into its delete and its add,
+        # each a plain path and each one a real thing the consumer can act
+        # on. core.quotePath=false turns off the escaping. Set with -c
+        # rather than assumed from the environment: this must not depend on
+        # the user's git config.
         log_output = subprocess.run(
-            ["git", "-C", str(root), "log", "--numstat",
+            ["git", "-C", str(root), "-c", "core.quotePath=false",
+             "log", "--numstat", "--no-renames",
              "--pretty=format:%H", f"{last_checked_sha}..HEAD"],
             capture_output=True, text=True, check=True,
         ).stdout
