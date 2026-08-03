@@ -98,7 +98,7 @@ exactly one of them, so the rate carries the name of the set it came
 from and cannot later be misattributed to the other.
 
 On FAIL, the header is followed by one indented line per non-grounded
-prompt naming the prompt id, the first failure marker
+prompt naming the prompt id, the failure marker
 (`no-reference-opened`, `no-permalink-in-response`,
 `tool-turn-cap-exceeded`, `per-prompt-timeout`, `api-error`), and a
 60-char prefix of the prompt text:
@@ -107,6 +107,20 @@ prompt naming the prompt id, the first failure marker
   n02 [no-reference-opened]:  List the parameters of MCPServer.run() and their de
   n04 [no-permalink-in-response]:  What happens when an elicitation request time
 ```
+
+Three runs can agree a prompt failed and disagree about why — one run
+opening no reference while the other two die on a rate limit is a single
+FAIL vote three times over, not a flicker. That prompt's marker names
+every distinct reason, prefixed `mixed:` and sorted, so a partial outage
+cannot be read as a routing defect and retuned against:
+
+```
+  n03 [mixed:api-error+no-reference-opened]:  Q3: signature of Gamma's inte
+```
+
+The read is: any marker carrying `api-error`, `per-prompt-timeout`, or
+`tool-turn-cap-exceeded` is a statement about the run, not about the
+navigator. Rerun before concluding anything about the corpus.
 
 A prompt whose 3 runs did not unanimously agree — some grounded, some
 not — is reported distinctly, named `flicker` rather than folded into a

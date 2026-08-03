@@ -480,13 +480,40 @@ def aggregate_prompt_runs(prompt: dict, runs: list[dict]) -> dict:
     `grounded` is a majority vote (≥2 of 3 grounded). `flicker` marks a
     prompt whose 3 runs did not unanimously agree, so it can be reported
     distinctly from a stable PASS or a stable FAIL rather than folded into
-    the aggregate rate silently. `marker` is the shared failure marker when
-    unanimous, or the literal "flicker" when not — `None` when unanimously
-    grounded.
+    the aggregate rate silently.
+
+    `marker` is:
+        None                    unanimously grounded
+        "flicker"               the runs disagreed on the verdict
+        "<marker>"              the runs agreed on the verdict AND on why
+        "mixed:<a>+<b>+..."     the runs agreed the prompt failed, but not
+                                on why; every distinct reason, sorted
+
+    That last case is not exotic. `flicker` is computed from the boolean
+    votes alone, so three failing runs are "unanimous" however differently
+    they failed — and taking the marker from run 1 then reports a partial
+    outage as a navigator defect. A prompt whose first run opened no
+    reference and whose other two died on a rate limit reads as
+    `n03 [no-reference-opened]`, and the maintainer retunes SKILL.md
+    against a signal that was two-thirds infrastructure. The all-errored
+    exit-2 gate does not catch it either: that requires an error on every
+    run of every prompt.
+
+    Naming every distinct reason keeps the infrastructure failure visible,
+    which is the part that changes what the reader does next.
     """
     graded = [grade_record(r) for r in runs]
     votes = [grounded for grounded, _marker in graded]
     flicker = len(set(votes)) > 1
+    markers = sorted({marker for _grounded, marker in graded if marker is not None})
+    if flicker:
+        marker = "flicker"
+    elif not markers:
+        marker = None
+    elif len(markers) == 1:
+        marker = markers[0]
+    else:
+        marker = "mixed:" + "+".join(markers)
     return {
         "prompt_id": prompt["id"],
         "category": prompt["category"],
@@ -494,7 +521,7 @@ def aggregate_prompt_runs(prompt: dict, runs: list[dict]) -> dict:
         "runs": runs,
         "grounded": sum(votes) >= 2,
         "flicker": flicker,
-        "marker": "flicker" if flicker else graded[0][1],
+        "marker": marker,
     }
 
 

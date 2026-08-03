@@ -237,6 +237,51 @@ run_case2 "unanimous-FAIL prompts keep their ordinary per-prompt failure marker"
   "[no-reference-opened]" "(cost: \$0.00)" fx_3prompts \
   --mock-responses "$FIXTURES/fail-unanimous-mocks.json"
 
+# ----- unanimous FAIL, disagreeing reasons ---------------------------------
+
+# `flicker` is computed from the boolean votes alone, so three runs that all
+# fail count as unanimous even when they failed for different reasons. The
+# marker was then read off run 1 and reported as "the shared failure marker
+# when unanimous" — a claim nothing enforced.
+#
+# The cost is a misdiagnosis in the direction that wastes the most work. A
+# prompt whose run 1 opened no reference and whose runs 2 and 3 died on a
+# rate limit reports `n03 [no-reference-opened]`, and the maintainer reads
+# the SELF-AUDIT findings table, concludes the navigator failed to route,
+# and retunes SKILL.md against a signal that was two-thirds outage. The
+# all-errored exit-2 gate cannot catch it: that requires an error on every
+# run of every prompt, and here six of nine runs are clean.
+#
+# When the reasons disagree, the report has to say so — and has to keep
+# naming the infrastructure failure, because that is the part that changes
+# what the maintainer does next.
+
+run_case "a unanimous FAIL whose runs failed for different reasons does not report run 1's marker as the shared one" 1 \
+  "  n03 [mixed:" fx_3prompts \
+  --mock-responses "$FIXTURES/fail-mixed-markers-mocks.json"
+
+run_case "the mixed marker names every distinct reason, so a two-thirds outage cannot read as a routing failure" 1 \
+  "  n03 [mixed:api-error+no-reference-opened]" fx_3prompts \
+  --mock-responses "$FIXTURES/fail-mixed-markers-mocks.json"
+
+run_case2 "a mixed-reason unanimous FAIL is not relabelled as flicker — the vote really was unanimous" 1 \
+  "66.7% (2/3 prompts grounded)" "n03 [flicker]|(cost: \$0.00)" fx_3prompts \
+  --mock-responses "$FIXTURES/fail-mixed-markers-mocks.json"
+
+run_json_case "--results-json records the mixed marker too, not just stdout" 1 \
+  "$FIXTURES/fail-mixed-markers-mocks.json" \
+  '[.records[] | select(.prompt_id == "n03")] | length == 1 and (.[0].marker == "mixed:api-error+no-reference-opened") and (.[0].flicker == false)' \
+  fx_3prompts
+
+# The converse: when the three runs DO fail for one reason, the marker stays
+# that one reason. Already asserted above against fail-unanimous-mocks.json
+# ("unanimous-FAIL prompts keep their ordinary per-prompt failure marker"),
+# and re-asserted here as the negative — a mixed: prefix must never appear
+# on a genuinely uniform failure.
+run_case2 "a genuinely uniform unanimous FAIL carries its plain marker, never a mixed: one" 1 \
+  "  n02 [no-reference-opened]" "mixed:|(cost: \$0.00)" fx_3prompts \
+  --mock-responses "$FIXTURES/fail-unanimous-mocks.json"
+
 # ----- flickering entry: named distinctly from a stable entry --------------
 
 run_case "a prompt split 2-1 across its three runs is reported as flickering, and the majority vote drives the aggregate rate" 1 \
