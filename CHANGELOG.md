@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## [0.6.0] - 2026-08-03
+
+- change: the five largest engine skills — `discover` (35 KB), `engine-bootstrap` (32 KB), `refresh` (26 KB), `self-audit`, and `apply` — are split into routers under the navigator byte ceiling plus per-skill `references/` directories, so the engine practices the progressive disclosure it prescribes; every moved section was byte-diffed against the pre-edit file to prove nothing was lost in transit (`plugin/skill-engine/skills/*/`).
+- add: `status` gains an opt-in probe for whether a contextualizer's provenance is still current, plus decay visibility for web-doc sources — staleness becomes answerable without a model run (`plugin/skill-engine/skills/status/SKILL.md`, `plugin/skill-engine/tests/status_probe.py`).
+- add: `review` gains a hand-edit detector, so edits made directly to a live contextualizer since the last promotion surface at review time instead of being silently overwritten (`plugin/skill-engine/skills/review/SKILL.md`, `plugin/skill-engine/tests/hand_edit_check.py`).
+- add: a routing-eval harness that `engine-bootstrap` stamps at scaffold time, so a newly scaffolded contextualizer is measurable from its first commit rather than retrofitted; it covers the case where the correct answer is that no skill is warranted, the failure mode a positives-only corpus cannot see (`plugin/skill-engine/engine-bootstrap-templates/eval/`, `plugin/skill-engine/tests/no-skill-warranted/`).
+- add: deterministic gates on what DISCOVER emits — a length cap on navigator `description:` frontmatter, a colliding-name check against installed contextualizers, and a report-only navigator byte-budget linter wired into `make ci-local` that measures the over-budget navigators earlier engine versions emitted without rewriting them (`plugin/skill-engine/tests/navigator_budget.py`, `scripts/ci-local.sh`).
+- add: a DISCOVER pre-flight step that computes resource shape once as plain code and writes it to disk, so the reasoning that follows reads a recorded fact instead of re-deriving an estimate per run (`plugin/skill-engine/skills/discover/references/cache-and-clone.md`).
+- add: the grounded-citation rate is evaluated during `/release` against every bundled example carrying a corpus, as a non-gating report (`.claude/commands/release.md`, `plugin/skill-engine/tests/grounded_rate.py`).
+- change: eval corpora are split train/holdout so tuning passes cannot contaminate the reported number (`examples/*/research/eval-prompts-{train,test}.json`).
+- change: every doctrine pointer inside a shipped skill that names a path already present in the plugin install now points at that path instead of a `blob/main` URL — the install is self-contained and correct offline (`plugin/skill-engine/skills/*/SKILL.md`).
+- change: the locator block that had been duplicated across five skills now lives in one shared reference they link to, with a doctrine check that fails any skill re-inlining it (`plugin/skill-engine/shared/locator-block.md`, `plugin/skill-engine/tests/doctrine.sh`).
+- change: plugin skill frontmatter descriptions rewritten in the when-form the engine tells downstream authors to use (`plugin/skill-engine/skills/*/SKILL.md`).
+- change: `doctrine.sh` grew from 11 checks to 29, each mutation-tested by deleting it in a scratch copy and confirming the suite goes red (`plugin/skill-engine/tests/doctrine.sh`).
+- fix: the dogfood corpus pin oracle classifies by ref reachability rather than object presence. A squash-merged branch's commits linger in the object store until gc runs, so the old test reached opposite verdicts on the same corpus — `divergent` in a maintainer's clone, `unresolvable` in a fresh CI checkout — and turned `main` red on the merge that introduced it (`plugin/skill-engine/tests/dogfood-corpus-refresh/pin_state.py`, `plugin/skill-engine/tests/dogfood-pin-state/run.sh`).
+- fix: hook-audit dedupe, a `make sync` test for the bundled examples' `verify.sh`, and a `pre-commit.sh.template` correction (`plugin/skill-engine/tests/`, `plugin/skill-engine/engine-bootstrap-templates/`).
+
 ## [0.5.0] - 2026-06-11
 
 - add: contextualizer selection for the locator skills — `/skill-engine:{discover,refresh,status,self-audit,new-reference} <name>` names which contextualizer to operate on, unblocking multi-contextualizer installs that previously hard-stopped on ambiguity (`plugin/skill-engine/skills/*/SKILL.md`).

@@ -179,8 +179,9 @@ fi
 # The looser question of *how far* behind the pin has drifted is already
 # owned, report-only, by the staleness script asserted further down.
 #
-# Both of those need the pin's commit object to still exist locally, and
-# there is one recurring, unavoidable state where it does not. The pin is
+# Both of those need the pin to still be part of this repository's history
+# — not merely on disk — and there is one recurring, unavoidable state
+# where it is not. The pin is
 # necessarily recorded on the feature branch that harvests the corpus, and
 # this repo squash-merges: after the merge the branch's commits are not on
 # main's first-parent line, and once the branch ref is deleted the object is
@@ -218,7 +219,7 @@ case "$PIN_STATE_VALUE" in
     ;;
   unresolvable)
     note "source-paths.json's $SOURCE_ID entry: lifecycle.last_checked_sha is a real commit in this repo's history" \
-      "lifecycle.last_checked_sha=${ENTRY_SHA:-<missing>} names no commit object here — squash-merged away, or never written." \
+      "lifecycle.last_checked_sha=${ENTRY_SHA:-<missing>} is reachable from no ref here — squash-merged away, or never written." \
       "Substituted: every permalink resolves structurally at HEAD=${HEAD_SHA:-<unresolved>} (next section). Re-pin the corpus to restore the strict check."
     ;;
   *)

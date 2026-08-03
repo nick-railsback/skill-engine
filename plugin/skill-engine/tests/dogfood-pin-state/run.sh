@@ -22,13 +22,25 @@
 #
 #   ancestor      object present, and an ancestor of the named rev.
 #                 The pin is checkable; the oracle's strict tier applies.
-#   divergent     object present, NOT an ancestor. A pin from a foreign or
-#                 unmerged branch — a real defect, and the state the
-#                 original ancestry assertion was written to catch.
-#   unresolvable  object absent. The post-squash-merge state, and also what
-#                 a fabricated sha looks like. Nothing about the pin can be
-#                 checked; the oracle substitutes structural resolution
-#                 against HEAD, which is what --resolve-at exists for.
+#   divergent     object present, NOT an ancestor, and some ref still
+#                 contains it. A pin from a foreign or unmerged branch — a
+#                 real defect, and the state the original ancestry
+#                 assertion was written to catch.
+#   unresolvable  no ref contains the object. The post-squash-merge state,
+#                 and also what a fabricated sha looks like. Nothing about
+#                 the pin can be checked; the oracle substitutes structural
+#                 resolution against HEAD, which is what --resolve-at
+#                 exists for.
+#
+# The last two are separated by ref reachability, not by whether the object
+# is on disk, and the difference is not academic. Deleting a squash-merged
+# branch leaves its commits in the object store until gc runs, so a
+# presence test answers "yes, divergent" in the maintainer's clone for
+# weeks while a fresh CI checkout — which never fetched the object — answers
+# "no, unresolvable". One corpus, two verdicts, decided by whose disk it
+# sits on. That is how a merge to main went red through this classifier
+# despite the classifier existing to prevent it, and it is why the fixture
+# below asserts the deleted-but-not-yet-collected state on its own.
 #
 # Contract frozen here, since nothing upstream pins either interface:
 #
@@ -38,11 +50,14 @@
 #     applies its own assertions. Writes exactly one JSON object to stdout:
 #
 #       {"sha": "<as given>", "rev": "<as given, default HEAD>",
-#        "object_present": <bool>, "is_ancestor": <bool>,
+#        "object_present": <bool>, "ref_reachable": <bool>,
+#        "is_ancestor": <bool>,
 #        "state": "ancestor" | "divergent" | "unresolvable"}
 #
 #     is_ancestor is false whenever object_present is false — an absent
-#     object is never reported as an ancestor.
+#     object is never reported as an ancestor. ref_reachable is false
+#     whenever object_present is false, and is what separates 'divergent'
+#     from 'unresolvable' when the object is present but not an ancestor.
 #
 #   python3 permalink_scan.py <refs> --repo-root <p> --expected-sha <s>
 #           [--resolve-at <rev>]
@@ -220,6 +235,40 @@ git -C "$FIXTURE" merge -q --squash feature >/dev/null 2>&1
 git -C "$FIXTURE" commit -q -m "squash: feature"
 SQUASH="$(git -C "$FIXTURE" rev-parse HEAD)"
 git -C "$FIXTURE" branch -q -D feature
+
+# Assert the intermediate state before collecting it away. This is where a
+# maintainer's clone sits from the moment the PR merges until gc happens to
+# run — which may be never — and the fixture used to step straight over it,
+# which is why the presence-vs-reachability bug survived the suite.
+if git -C "$FIXTURE" cat-file -e "${F2}^{commit}" 2>/dev/null; then
+  pass "fixture: deleting the branch leaves the pinned commit's object on disk, uncollected"
+else
+  fail "fixture: deleting the branch leaves the pinned commit's object on disk, uncollected" \
+    "$F2 is already absent — the fixture skipped the state these two assertions exist to cover"
+fi
+
+out="$(pin_state "$F2")"
+if [ "$(json_field "$out" '.state')" = "unresolvable" ] \
+   && [ "$(json_field "$out" '.object_present')" = "true" ] \
+   && [ "$(json_field "$out" '.ref_reachable')" = "false" ]; then
+  pass "an orphaned pin still on disk classifies as 'unresolvable' — the same verdict a fresh checkout reaches, on the same corpus"
+else
+  fail "an orphaned pin still on disk classifies as 'unresolvable' — the same verdict a fresh checkout reaches, on the same corpus" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# The guard on that split: 'other' is still a live ref, so its tip must
+# stay 'divergent'. Reachability must not have folded the defect case into
+# the lifecycle case.
+out="$(pin_state "$O1")"
+if [ "$(json_field "$out" '.state')" = "divergent" ] \
+   && [ "$(json_field "$out" '.ref_reachable')" = "true" ]; then
+  pass "a pin on a branch that still exists stays 'divergent' — reachability narrowed the hard-fail arm without emptying it"
+else
+  fail "a pin on a branch that still exists stays 'divergent' — reachability narrowed the hard-fail arm without emptying it" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
 git -C "$FIXTURE" reflog expire --expire=now --expire-unreachable=now --all
 git -C "$FIXTURE" gc --prune=now --quiet
 
