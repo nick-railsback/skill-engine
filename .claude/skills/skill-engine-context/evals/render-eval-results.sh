@@ -27,7 +27,11 @@ export LC_ALL
 #        "error" (infra failure in run-eval.sh, not a navigator verdict) are
 #        excluded from the pass-vs-fail vote; an entry whose runs ALL errored
 #        is excluded from the pass-rate denominator and counted on its own
-#        "errored entries" line instead.
+#        "errored entries" line instead. An entry whose runs carry no
+#        recognised outcome at all — neither a verdict nor an error — is
+#        likewise excluded and counted on an "unaccounted entries" line. No
+#        entry ever leaves the report without a line naming it: a shrinking
+#        denominator with nothing explaining it reads as a clean sweep.
 #     3. Per-entry results: query, expected reference, runs, majority vote
 #        (pass, fail, or error), flicker flag.
 #     4. (If baseline provided) Delta section: regressions, gains, stabilised,
@@ -146,9 +150,25 @@ emit_records() {
       if (!in_entry) in_entry = 1
       p = extract($0, "persona")
     }
+    # Anchored on the "runs" key, not on "the first [ on the line". Entries
+    # are written one per line, so the same line also carries query,
+    # expected and persona — three free-text values authored by whoever
+    # wrote the eval corpus. Cutting at the first bracket hands the runs
+    # field to any of them that mentions one ("what does the [FLICKER]
+    # marker mean?"), and the resulting non-outcome votes nothing: the
+    # entry drops out of the pass-rate denominator with nothing in the
+    # report saying it went.
+    #
+    # The leading .* is greedy, so it anchors on the LAST "runs": [ on the
+    # line — which is where run-eval.sh puts the real one, it being the
+    # final field it writes. A bracket inside a value cannot spoof the
+    # anchor: JSON escapes a quote inside a string as \", so a literal
+    # "runs": [ in a query reaches this line as \"runs\": [ and does not
+    # match. The trailing cut at the first ] is then correct, because
+    # everything before it is inside the array.
     in_entry && /"runs"[[:space:]]*:[[:space:]]*\[/ {
       line = $0
-      sub(/^[^[]*\[/, "", line)
+      sub(/^.*"runs"[[:space:]]*:[[:space:]]*\[/, "", line)
       sub(/\].*$/, "", line)
       gsub(/[" ]/, "", line)
       runs = line
@@ -195,49 +215,52 @@ decide() {
 # sorts them deterministically.
 aggregate() {
   local records="$1"
-  local total_overall=0 pass_overall=0 error_overall=0
-  # Denominator: entries with at least one real (pass/fail) verdict.
-  # All-error entries are excluded and reported on their own line.
-  total_overall=$(awk -v US="$US" '
-    BEGIN{FS=US}
-    {
-      pass = 0; fail = 0
-      for (i = 4; i <= NF; i++) {
-        if ($i == "pass") pass++
-        if ($i == "fail") fail++
-      }
-      if (pass + fail > 0) c++
-    }
-    END{print c+0}
-  ' "$records")
-  pass_overall=$(awk -v US="$US" '
-    BEGIN{FS=US}
-    {
-      pass = 0; fail = 0
-      for (i = 4; i <= NF; i++) {
-        if ($i == "pass") pass++
-        if ($i == "fail") fail++
-      }
-      if (pass > fail) c++
-    }
-    END{print c+0}
-  ' "$records")
-  error_overall=$(awk -v US="$US" '
+  local pass_overall=0 total_overall=0 error_overall=0 unaccounted_overall=0
+  # Every entry lands in exactly one of three buckets, decided once:
+  #
+  #   counted       at least one pass/fail verdict. In the denominator, and
+  #                 in the numerator when passes outnumber fails.
+  #   errored       no verdict, but at least one "error" run. Infra failure
+  #                 in the runner, excluded from the pass rate and reported
+  #                 on its own line.
+  #   unaccounted   no verdict and no error either — nothing in this entry's
+  #                 runs is an outcome this renderer knows. A malformed
+  #                 results file, a hand edit, or a future runner writing an
+  #                 outcome added after this renderer was written.
+  #
+  # That third bucket is the point. Without it an entry falls out of every
+  # total at once and the report simply gets smaller: a corpus of 40 renders
+  # as `overall: 39 / 39` and reads as a clean sweep. The buckets are
+  # exhaustive and decided in one pass so they cannot drift apart into
+  # counting different things.
+  local counts
+  counts=$(awk -v US="$US" '
     BEGIN{FS=US}
     {
       pass = 0; fail = 0; err = 0
       for (i = 4; i <= NF; i++) {
         if ($i == "pass") pass++
-        if ($i == "fail") fail++
-        if ($i == "error") err++
+        else if ($i == "fail") fail++
+        else if ($i == "error") err++
       }
-      if (pass + fail == 0 && err > 0) c++
+      if (pass + fail > 0) {
+        total++
+        if (pass > fail) ok++
+      } else if (err > 0) {
+        errored++
+      } else {
+        unaccounted++
+      }
     }
-    END{print c+0}
+    END{ printf "%d %d %d %d\n", ok+0, total+0, errored+0, unaccounted+0 }
   ' "$records")
+  read -r pass_overall total_overall error_overall unaccounted_overall <<< "$counts"
   printf '  overall: %d / %d\n' "$pass_overall" "$total_overall"
   if [ "$error_overall" -gt 0 ]; then
     printf '  errored entries (excluded from pass rate): %d\n' "$error_overall"
+  fi
+  if [ "$unaccounted_overall" -gt 0 ]; then
+    printf '  unaccounted entries (no recognised run outcome): %d\n' "$unaccounted_overall"
   fi
 
   awk -v US="$US" '
