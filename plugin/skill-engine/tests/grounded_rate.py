@@ -37,18 +37,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
-# Import the canonical permalink regexes from Check 7 (single source of truth).
+# Import the canonical permalink grammar from Check 7 (single source of
+# truth). The patterns are built per run from the accepted host set rather
+# than imported as constants, so Checks 7 and 8 credit the same forges for
+# the same contextualizer.
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 from permalink_density import (  # noqa: E402
-    SHA_PERMALINK_RE,
-    TAG_PERMALINK_RE,
+    accepted_hosts,
+    build_permalink_res,
     DEFAULT_COVERAGE_THRESHOLD,
 )
 
@@ -438,7 +442,9 @@ def run_prompt_mocked(
 
 # ----- Grading -----------------------------------------------------------
 
-def grade_record(record: dict) -> tuple[bool, str | None]:
+def grade_record(
+    record: dict, res: tuple[re.Pattern[str], re.Pattern[str]]
+) -> tuple[bool, str | None]:
     """Return (grounded, failure_marker).
 
     failure_marker is one of:
@@ -453,6 +459,9 @@ def grade_record(record: dict) -> tuple[bool, str | None]:
     timeout" — by design. The two parts are not in tension here: `run_prompt` sets exactly one
     `error` value per record (timeout, turn-cap, or an exception string),
     so each record maps to a single marker via direct string match.
+
+    `res` is the (sha_re, tag_re) pair from build_permalink_res, resolved
+    once per run by the caller.
     """
     err = record.get("error")
     if err == ERR_TIMEOUT:
@@ -467,14 +476,17 @@ def grade_record(record: dict) -> tuple[bool, str | None]:
         return (False, "no-reference-opened")
 
     text = record.get("final_response_text", "")
-    has_permalink = bool(SHA_PERMALINK_RE.search(text) or TAG_PERMALINK_RE.search(text))
+    sha_re, tag_re = res
+    has_permalink = bool(sha_re.search(text) or tag_re.search(text))
     if not has_permalink:
         return (False, "no-permalink-in-response")
 
     return (True, None)
 
 
-def aggregate_prompt_runs(prompt: dict, runs: list[dict]) -> dict:
+def aggregate_prompt_runs(
+    prompt: dict, runs: list[dict], res: tuple[re.Pattern[str], re.Pattern[str]]
+) -> dict:
     """Reduce a prompt's 3 raw run-records to one per-prompt verdict.
 
     `grounded` is a majority vote (≥2 of 3 grounded). `flicker` marks a
@@ -502,7 +514,7 @@ def aggregate_prompt_runs(prompt: dict, runs: list[dict]) -> dict:
     Naming every distinct reason keeps the infrastructure failure visible,
     which is the part that changes what the reader does next.
     """
-    graded = [grade_record(r) for r in runs]
+    graded = [grade_record(r, res) for r in runs]
     votes = [grounded for grounded, _marker in graded]
     flicker = len(set(votes)) > 1
     markers = sorted({marker for _grounded, marker in graded if marker is not None})
@@ -565,6 +577,11 @@ def main(argv: list[str]) -> int:
     if not ctx_root.is_dir():
         print(f"[FAIL] grounded-rate: CTX_ROOT is not a directory: {ctx_root}")
         return 1
+
+    # Same resolver Check 7 uses, pointed at the same tree: refs_dir's
+    # parent is ctx_root, so it finds ctx_root/research/source-paths.json and
+    # the .proposed fallback comes along with it. One resolver, not two.
+    res = build_permalink_res(accepted_hosts(ctx_root / "references"))
 
     research_dir = ctx_root / "research"
     refs_dir = ctx_root / "references"
@@ -682,7 +699,7 @@ def main(argv: list[str]) -> int:
             ]
             records_by_prompt.append((prompt, runs))
 
-    aggregated = [aggregate_prompt_runs(p, runs) for p, runs in records_by_prompt]
+    aggregated = [aggregate_prompt_runs(p, runs, res) for p, runs in records_by_prompt]
 
     # All-errored runner-failure path: "no prompts gradable" — implemented
     # as: every run of every prompt carries an `error`. A corpus where each

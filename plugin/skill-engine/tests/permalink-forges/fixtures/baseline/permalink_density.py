@@ -2,14 +2,9 @@
 """Paragraph -> permalink density lint for the references corpus.
 
 Walks `<references_dir>/**/*.md` and counts prose paragraphs that have at
-least one SHA-pinned (or stable-tag-pinned) permalink within a 5-line
-window. Fails when corpus-wide coverage falls below the threshold
+least one SHA-pinned (or stable-tag-pinned) GitHub permalink within a
+5-line window. Fails when corpus-wide coverage falls below the threshold
 (default 80%).
-
-Which hosts count is resolved per run from the contextualizer's own
-`research/source-paths.json`, so a tenant on GitHub Enterprise, GitLab,
-Bitbucket or Azure DevOps is credited for citing its own forge. github.com
-is always accepted.
 
 Wired into SELF-AUDIT as Check 7. The script reads files only — it does
 not shell out to git or perform network I/O. Stdlib only.
@@ -23,12 +18,20 @@ Exit codes: 0 = PASS or N/A; 1 = FAIL.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
+# SHA-pinned permalink (canonical form). The shape matches the artifact
+# contract's "SHA-pinned permalinks (the canonical form)" section.
+SHA_PERMALINK_RE = re.compile(
+    r"https://github\.com/[^/\s]+/[^/\s]+/(?:blob|tree)/[0-9a-f]{40}/[^\s)\]]+"
+)
+# Stable-tag-pinned permalink (accepted equivalently per the artifact
+# contract's "When to keep an unpinned URL" carve-out).
+TAG_PERMALINK_RE = re.compile(
+    r"https://github\.com/[^/\s]+/[^/\s]+/(?:blob|tree)/v[0-9]+(?:\.[0-9]+){0,2}[A-Za-z0-9.+\-]*/[^\s)\]]+"
+)
 NEAR_WINDOW = 5
 PREFIX_WIDTH = 60
 
@@ -51,131 +54,7 @@ NUMBERED_RE = re.compile(r"^(\s*)\d+\.\s+")
 BLOCKQUOTE_RE = re.compile(r"^\s*>")
 
 
-def _load_registry(path: Path) -> dict | None:
-    """Parse a source-paths registry, or None if it is absent or unusable.
-
-    Every failure here is a None, never an exception: this lint is Check 7 of
-    SELF-AUDIT and is invoked from five call sites, so a JSONDecodeError
-    escaping would break all five at once over a malformed file that only
-    affects which *extra* hosts get credit.
-    """
-    try:
-        with path.open(encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def accepted_hosts(references_dir: Path) -> set[str]:
-    """Hostnames whose permalinks this corpus may be credited for.
-
-    The registry is found by where it sits — beside the references directory
-    handed in — never by what that directory is called: DISCOVER lints an
-    ephemeral merged tree whose name is a mktemp string, and a "-context"
-    check would leave that surface crediting nothing.
-
-    A staged proposal (`<name>.proposed/`) is a sparse copy-on-write, so it
-    may or may not carry a registry of its own. When it does, that copy
-    governs; when it does not, the live skill beside it does. The staged
-    registry replaces rather than unions, which is what lets a proposal that
-    *drops* a source stop crediting it before promotion.
-
-    github.com is always accepted, so a bare corpus with no registry in sight
-    grades exactly as it did before this resolution existed.
-    """
-    hosts = {"github.com"}
-
-    root = references_dir.parent
-    registry = _load_registry(root / "research" / "source-paths.json")
-    if registry is None and root.name.endswith(".proposed"):
-        live = root.with_name(root.name[: -len(".proposed")])
-        registry = _load_registry(live / "research" / "source-paths.json")
-    if registry is None:
-        return hosts
-
-    sources = registry.get("sources")
-    if not isinstance(sources, list):
-        return hosts
-
-    for source in sources:
-        # Only git-managed sources contribute a forge. A web-doc source is a
-        # documentation site, not a place permalinks are served from, and
-        # crediting its host would let any docs URL read as pinned.
-        # `status` and `archived` are deliberately not filtered on: archiving
-        # a source does not un-cite it from a reference already written.
-        if not isinstance(source, dict) or source.get("kind") != "git-managed":
-            continue
-        url = source.get("url")
-        if not isinstance(url, str):
-            continue
-        try:
-            netloc = urlsplit(url).netloc
-        except ValueError:
-            continue
-        # Strip any userinfo@; keep the port, which is part of the authority.
-        # An scp-form remote (git@host:group/repo.git) yields no netloc at
-        # all and so contributes nothing — see plan.md § Questions item 3.
-        host = netloc.rpartition("@")[2].lower()
-        if host:
-            hosts.add(host)
-    return hosts
-
-
-def build_permalink_res(hosts: set[str]) -> tuple[re.Pattern[str], re.Pattern[str]]:
-    """Return (sha_re, tag_re) for the given accepted host set.
-
-    The SHA-pinned shape tracks the artifact contract's "SHA-pinned
-    permalinks (the canonical form)" section, now across the five forge
-    grammars rather than github.com's alone. Each grammar pins exactly
-    [0-9a-f]{40} at its own position, so branch names, short SHAs,
-    `?at=refs/heads/main` and `version=GBmain` all fail to match without a
-    single negative rule: a rejection written as an exclusion list is one a
-    sixth spelling gets past.
-
-    The tag-pinned shape stays github.com-only. Nothing in the contract
-    extends stable-tag semantics to the other four forges, and inventing a
-    per-forge tag grammar would assert a design nobody asked for.
-    """
-    if not hosts:
-        # The resolver always seeds github.com, so an empty set means a
-        # caller bypassed it. Failing loudly beats compiling an empty
-        # alternation, which would match `https:///...` and credit anything.
-        raise ValueError("build_permalink_res: host set is empty")
-
-    # Longest-first so a registered `acme.com` cannot shadow a registered
-    # `git.acme.com`; re.escape so a dot in a hostname stays a dot.
-    alternation = "|".join(re.escape(h) for h in sorted(hosts, key=lambda h: (-len(h), h)))
-    H = f"(?:{alternation})"
-    S = "[0-9a-f]{40}"
-    T = r"[^\s)\]]+"
-
-    grammars = (
-        # GitHub family (github.com and GitHub Enterprise Server)
-        rf"https://{H}/[^/\s]+/[^/\s]+/(?:blob|tree)/{S}/{T}",
-        # GitLab — a group may nest arbitrarily before the /-/ separator
-        rf"https://{H}/[^\s]+?/-/(?:blob|tree)/{S}/{T}",
-        # Bitbucket Server — pins in a query parameter, not a path segment
-        rf"https://{H}/projects/[^/\s]+/repos/[^/\s]+/browse/[^\s?)\]]*\?at={S}\b",
-        # Bitbucket Cloud
-        rf"https://{H}/[^/\s]+/[^/\s]+/src/{S}/{T}",
-        # Azure DevOps — org/project sit before _git, and the pin is GC<sha>
-        rf"https://{H}/[^\s]+/_git/[^\s?)\]]+\?[^\s)\]]*\bversion=GC{S}\b",
-    )
-    # One compiled alternation, not N compiled patterns in a Python loop:
-    # this is .search()ed on every line of every reference.
-    sha_re = re.compile("|".join(f"(?:{g})" for g in grammars))
-
-    # Stable-tag-pinned permalink (accepted equivalently per the artifact
-    # contract's "When to keep an unpinned URL" carve-out). github.com only.
-    tag_re = re.compile(
-        r"https://github\.com/[^/\s]+/[^/\s]+/(?:blob|tree)/"
-        r"v[0-9]+(?:\.[0-9]+){0,2}[A-Za-z0-9.+\-]*/[^\s)\]]+"
-    )
-    return sha_re, tag_re
-
-
-def classify_lines(lines: list[str], res: tuple[re.Pattern[str], re.Pattern[str]]) -> list[str]:
+def classify_lines(lines: list[str]) -> list[str]:
     """Return a per-line category tag. Categories:
         'prose'    — eligible for paragraph aggregation
         'blank'    — empty / whitespace-only (paragraph separator)
@@ -184,11 +63,7 @@ def classify_lines(lines: list[str], res: tuple[re.Pattern[str], re.Pattern[str]
                      by find_permalink_lines so it covers nearby prose)
         'skip'     — heading / code-fence / table / list / blockquote /
                      html-comment / frontmatter (not part of a prose paragraph)
-
-    `res` is the (sha_re, tag_re) pair from build_permalink_res, resolved
-    once per run by the caller.
     """
-    sha_re, tag_re = res
     n = len(lines)
     cats: list[str] = ["prose"] * n
 
@@ -304,7 +179,7 @@ def classify_lines(lines: list[str], res: tuple[re.Pattern[str], re.Pattern[str]
         # don't let it become its own self-covering paragraph or pad the
         # denominator (which would inflate corpus coverage). find_permalink_lines
         # still scans it, so it continues to cover nearby real prose.
-        if sha_re.fullmatch(stripped) or tag_re.fullmatch(stripped):
+        if SHA_PERMALINK_RE.fullmatch(stripped) or TAG_PERMALINK_RE.fullmatch(stripped):
             in_list = False
             cats[i] = "link"
             continue
@@ -334,30 +209,25 @@ def find_paragraphs(cats: list[str]) -> list[tuple[int, int]]:
     return spans
 
 
-def find_permalink_lines(
-    lines: list[str], res: tuple[re.Pattern[str], re.Pattern[str]]
-) -> set[int]:
+def find_permalink_lines(lines: list[str]) -> set[int]:
     """Return the set of 1-indexed lines that contain an in-scope
-    (SHA-pinned or stable-tag-pinned) permalink on an accepted host."""
-    sha_re, tag_re = res
+    (SHA-pinned or stable-tag-pinned) GitHub permalink."""
     hit: set[int] = set()
     for i, line in enumerate(lines, start=1):
-        if sha_re.search(line) or tag_re.search(line):
+        if SHA_PERMALINK_RE.search(line) or TAG_PERMALINK_RE.search(line):
             hit.add(i)
     return hit
 
 
-def analyze_file(
-    path: Path, res: tuple[re.Pattern[str], re.Pattern[str]]
-) -> tuple[int, int, list[tuple[int, str]]]:
+def analyze_file(path: Path) -> tuple[int, int, list[tuple[int, str]]]:
     """Return (total_paragraphs, covered_paragraphs, uncovered_list).
     uncovered_list is [(start_line, prefix)] for each uncovered paragraph.
     """
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
-    cats = classify_lines(lines, res)
+    cats = classify_lines(lines)
     paragraphs = find_paragraphs(cats)
-    permalink_lines = find_permalink_lines(lines, res)
+    permalink_lines = find_permalink_lines(lines)
 
     covered = 0
     uncovered: list[tuple[int, str]] = []
@@ -395,10 +265,6 @@ def main(argv: list[str]) -> int:
         print(f"[N/A]  permalink-density: no references emitted yet")
         return 0
 
-    # Resolved once per run — not per file and not per line: the compiled
-    # alternation is .search()ed over every line of every reference.
-    res = build_permalink_res(accepted_hosts(refs))
-
     md_files = sorted(refs.rglob("*.md"))
     if not md_files:
         print(f"[N/A]  permalink-density: no references emitted yet")
@@ -408,7 +274,7 @@ def main(argv: list[str]) -> int:
     total_paragraphs = 0
     total_covered = 0
     for md in md_files:
-        total, covered, uncovered = analyze_file(md, res)
+        total, covered, uncovered = analyze_file(md)
         per_file.append((md, total, covered, uncovered))
         total_paragraphs += total
         total_covered += covered
