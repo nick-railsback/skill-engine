@@ -227,8 +227,9 @@ the Cross-reference map if the question spans multiple subsystems.
 
 Cite by default, and make load-bearing claims verifiable:
 
-1. Inline-cite every load-bearing claim with its SHA-pinned permalink
-   (`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>`) —
+1. Inline-cite every load-bearing claim with its SHA-pinned permalink in
+   the source forge's grammar — for example, on github.com:
+   `https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>` —
    inline, on the claim. Fall back to a bare `(<reference>.md)` filename
    parenthetical only when the reference genuinely provides no permalink. This
    inline permalink is what the grounded-citation eval (SELF-AUDIT Check 8) grades.
@@ -548,13 +549,25 @@ Source-repository URLs are the universal pointer format. They work regardless of
 
 #### SHA-pinned permalinks (the canonical form)
 
-The canonical URL form for any source pointer in a primary reference is a commit-SHA permalink with a line range:
+The canonical URL form for any source pointer in a primary reference is a commit-SHA permalink with a line range, in the grammar of the source's own forge. For example, on github.com:
 
 ```
 https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>
 ```
 
-`<sha>` is a 40-char commit SHA captured at harvest time. The engine captures it during the SHA-comparison phase of the freshness algorithm (see [03-engine.md](03-engine.md)) and persists it in the per-source enrichment cache; the emitter renders it back into the URL at write time. Stable version tags (`v1.2.3`) are accepted equivalently - the SHA-pin lint (Check 7, `permalink_density.py`) treats them as immutable.
+`<sha>` is a 40-char commit SHA captured at harvest time. The engine captures it during the SHA-comparison phase of the freshness algorithm (see [03-engine.md](03-engine.md)) and persists it in the per-source enrichment cache; the emitter renders it back into the URL at write time. Stable version tags (`v1.2.3`) are accepted equivalently on github.com — the SHA-pin lint (Check 7, `permalink_density.py`) treats them as immutable there; the other four forge grammars below are SHA-pinned only.
+
+**The five grammars the lint credits**, one row per forge family registered as a git-managed source, each showing where the 40-hex commit SHA sits:
+
+| Forge family | URL grammar |
+|---|---|
+| GitHub family (github.com and GitHub Enterprise Server, any hostname) | `https://<host>/<owner>/<repo>/(blob\|tree)/<sha>/<path>` |
+| GitLab | `https://<host>/<group>/-/(blob\|tree)/<sha>/<path>` |
+| Bitbucket Server | `https://<host>/projects/<project>/repos/<repo>/browse/<path>?at=<sha>` |
+| Bitbucket Cloud | `https://<host>/<owner>/<repo>/src/<sha>/<path>` |
+| Azure DevOps | `https://<host>/<org>/<project>/_git/<repo>?path=<path>&version=GC<sha>` |
+
+Accepted hostnames are the ones registered as git-managed sources in the contextualizer's own `research/source-paths.json`, plus `github.com`, which is always accepted regardless of registration.
 
 **The failure mode this prevents** is link rot. GitHub's own permalink documentation warns that a URL on `blob/main/...` survives only as long as the file is at that path on the default branch; industry estimates place the rot rate on branch-pinned source URLs at 38-66% over a one-to-two-year horizon. The same observation drives the LSP `Location` shape (line-pinned references that survive refactors) and TypeDoc's defaults (commit SHA, not branch, for source-link generation). Branch-pinned URLs in a curated reference are a slow-burn correctness regression: they pass review, then quietly stop pointing at the right code as the source repo evolves.
 

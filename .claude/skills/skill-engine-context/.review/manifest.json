@@ -1,18 +1,125 @@
 {
   "schema_version": 1,
   "entries": [
-    { "path": "references/nick-railsback-skill-engine-overview.md", "status": "modified", "sha_before": "38bcb32", "sha_after": "88f1c79" },
-    { "path": "references/nick-railsback-skill-engine-principles.md", "status": "modified", "sha_before": "a97a704", "sha_after": "958b7be" },
-    { "path": "references/nick-railsback-skill-engine-artifact-contract.md", "status": "modified", "sha_before": "b4456a4", "sha_after": "97fe760" },
-    { "path": "references/nick-railsback-skill-engine-invariants.md", "status": "modified", "sha_before": "55688a0", "sha_after": "be19773" },
-    { "path": "references/nick-railsback-skill-engine-discover-refresh.md", "status": "modified", "sha_before": "f916173", "sha_after": "49e2a55" },
-    { "path": "references/nick-railsback-skill-engine-workflows.md", "status": "modified", "sha_before": "5ebaf79", "sha_after": "da8ee03" },
-    { "path": "references/nick-railsback-skill-engine-monorepo.md", "status": "modified", "sha_before": "98167bc", "sha_after": "6bea658" },
-    { "path": "references/nick-railsback-skill-engine-versioning.md", "status": "modified", "sha_before": "afe4e9b", "sha_after": "297dd8f" },
-    { "path": "references/nick-railsback-skill-engine-evaluation-and-audit.md", "status": "modified", "sha_before": "64a98d1", "sha_after": "91f8611" },
-    { "path": "research/source-paths.json", "status": "modified", "sha_before": "4cac94e", "sha_after": "7244381" },
-    { "path": "SKILL.md", "status": "unchanged", "sha_before": "68eebb0", "sha_after": "68eebb0" },
-    { "path": "verify.sh", "status": "unchanged", "sha_before": "a972ed6", "sha_after": "a972ed6" },
-    { "path": "research/.research-state.json", "status": "unchanged", "sha_before": "48e4ce3", "sha_after": "48e4ce3" }
+    {
+      "path": "SKILL.md",
+      "status": "unchanged",
+      "sha_before": "aa30428",
+      "sha_after": "aa30428"
+    },
+    {
+      "path": "evals/eval-viewer.html",
+      "status": "unchanged",
+      "sha_before": "4c53cd5",
+      "sha_after": "4c53cd5"
+    },
+    {
+      "path": "evals/evals-test.json",
+      "status": "unchanged",
+      "sha_before": "28185b1",
+      "sha_after": "28185b1"
+    },
+    {
+      "path": "evals/evals-train.json",
+      "status": "unchanged",
+      "sha_before": "400dedf",
+      "sha_after": "400dedf"
+    },
+    {
+      "path": "evals/render-eval-results.sh",
+      "status": "unchanged",
+      "sha_before": "83121ec",
+      "sha_after": "83121ec"
+    },
+    {
+      "path": "evals/results-20260802T090208Z-59838.json",
+      "status": "unchanged",
+      "sha_before": "cccc2e8",
+      "sha_after": "cccc2e8"
+    },
+    {
+      "path": "evals/run-eval.sh",
+      "status": "unchanged",
+      "sha_before": "05ccbe5",
+      "sha_after": "05ccbe5"
+    },
+    {
+      "path": "evals/run-note.md",
+      "status": "unchanged",
+      "sha_before": "0066c18",
+      "sha_after": "0066c18"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-artifact-contract.md",
+      "status": "modified",
+      "sha_before": "92f19dd",
+      "sha_after": "31de9e6"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-discover-refresh.md",
+      "status": "modified",
+      "sha_before": "7fd01f1",
+      "sha_after": "904e8d9"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-evaluation-and-audit.md",
+      "status": "modified",
+      "sha_before": "a6b1350",
+      "sha_after": "6d81fca"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-invariants.md",
+      "status": "modified",
+      "sha_before": "5c1e356",
+      "sha_after": "21f6cdd"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-monorepo.md",
+      "status": "modified",
+      "sha_before": "6bea658",
+      "sha_after": "ba006b6"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-overview.md",
+      "status": "modified",
+      "sha_before": "27030af",
+      "sha_after": "808b3c0"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-principles.md",
+      "status": "modified",
+      "sha_before": "958b7be",
+      "sha_after": "40285e4"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-versioning.md",
+      "status": "modified",
+      "sha_before": "297dd8f",
+      "sha_after": "71285fc"
+    },
+    {
+      "path": "references/nick-railsback-skill-engine-workflows.md",
+      "status": "modified",
+      "sha_before": "ba89264",
+      "sha_after": "3071c42"
+    },
+    {
+      "path": "research/.research-state.json",
+      "status": "unchanged",
+      "sha_before": "48e4ce3",
+      "sha_after": "48e4ce3"
+    },
+    {
+      "path": "research/source-paths.json",
+      "status": "modified",
+      "sha_before": "5393c6b",
+      "sha_after": "fecfb77"
+    },
+    {
+      "path": "verify.sh",
+      "status": "unchanged",
+      "sha_before": "a972ed6",
+      "sha_after": "a972ed6"
+    }
   ]
 }

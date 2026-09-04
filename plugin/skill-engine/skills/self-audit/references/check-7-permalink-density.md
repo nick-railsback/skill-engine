@@ -6,15 +6,17 @@ What the density metric measures, its threshold and aggregation rule, and its ex
 
 Check 7 measures structural-honesty density on the references corpus:
 the fraction of prose paragraphs that carry a SHA-pinned (or stable-tag-
-pinned) GitHub permalink within 5 lines. The check is scoped to
-`$CTX_ROOT/references/**/*.md` only — the navigator (`$CTX_ROOT/SKILL.md`)
-is a router and is intentionally out of scope, the same way the `verify.sh`
-SHA-pin invariant carves out navigator prose. Companion files under
-`references/` participate on equal footing with primaries. GitHub-permalink
-density is a git-source metric; web-doc / multi-source verifiability is
-out of scope for this gate. The methodology — what the metric measures,
-what it deliberately does not measure, and the live numbers across the
-bundled `examples/` — is documented in [chapter 13](../../../docs/13-coverage-testing.md).
+pinned) permalink, in the source forge's grammar, within 5 lines. The
+check is scoped to `$CTX_ROOT/references/**/*.md` only — the navigator
+(`$CTX_ROOT/SKILL.md`) is a router and is intentionally out of scope, the
+same way the `verify.sh` SHA-pin invariant carves out navigator prose.
+Companion files under `references/` participate on equal footing with
+primaries. Density is a git-source metric, derived from the
+contextualizer's registered sources; web-doc / multi-source verifiability
+is out of scope for this gate. The methodology — what the metric
+measures, what it deliberately does not measure, and the live numbers
+across the bundled `examples/` — is documented in
+[chapter 13](../../../docs/13-coverage-testing.md).
 
 **Threshold.** ≥80% corpus-wide coverage required to PASS. The threshold
 was sourced from the measurement that motivated the check: 46.9%
@@ -30,12 +32,9 @@ mechanically true, not aspirational.
   is not a heading, fenced code block, table row/separator, bullet or
   numbered list item (including indented continuations), blockquote,
   HTML comment, or leading frontmatter block.
-- *Permalink:* a URL matching the canonical SHA-pinned shape
-  `https://github.com/<owner>/<repo>/(blob|tree)/<40-hex-sha>/<path>`,
-  or a stable-tag-pinned URL of shape
-  `https://github.com/<owner>/<repo>/(blob|tree)/v<X>[.<Y>[.<Z>]]/<path>`.
-  Unpinned `blob/main/...` URLs and non-GitHub URLs do not satisfy the
-  density check.
+- *Permalink:* a SHA-pinned (or, on github.com, stable-tag-pinned) URL
+  in the source forge's grammar — see the five grammars enumerated in
+  [`02-artifact-contract.md`](../../../docs/02-artifact-contract.md#sha-pinned-permalinks-the-canonical-form).
 - *Within ≤5 lines:* at least one in-scope permalink appears in any line
   in the range `[paragraph_start - 5, paragraph_end + 5]` in the same
   file. Above, below, or inside the paragraph all count.

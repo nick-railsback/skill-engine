@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [0.7.0] - 2026-09-04
+
+- change: SELF-AUDIT Check 7 (paragraph→permalink density) and Check 8 (grounded-citation rate) credit a SHA-pinned permalink on any hostname the contextualizer registers, in that forge's own URL grammar — GitHub family on any hostname, GitLab, Bitbucket Server, Bitbucket Cloud, and Azure DevOps — instead of crediting github.com alone; a GitHub Enterprise Server, GitLab, Bitbucket, or Azure DevOps tenant no longer fails both trust checks on every reference by default (`plugin/skill-engine/tests/permalink_density.py`, `plugin/skill-engine/tests/grounded_rate.py`).
+- change: every surface that tells the model or the reader what a permalink is — the artifact contract, DISCOVER's pipeline chapter and permalink guidance, the coverage-testing chapter, SELF-AUDIT's Check 7 definition chain, both navigator templates, the maintenance-agent system-prompt template, and the dogfood navigator — now describes it as the SHA-pinned form for the source's own forge, with the github.com shape kept only as a worked example (`plugin/skill-engine/docs/`, `plugin/skill-engine/engine-bootstrap-templates/`, `plugin/skill-engine/skills/`).
+
 ## [0.6.0] - 2026-08-03
 
 - change: the five largest engine skills — `discover` (35 KB), `engine-bootstrap` (32 KB), `refresh` (26 KB), `self-audit`, and `apply` — are split into routers under the navigator byte ceiling plus per-skill `references/` directories, so the engine practices the progressive disclosure it prescribes; every moved section was byte-diffed against the pre-edit file to prove nothing was lost in transit (`plugin/skill-engine/skills/*/`).

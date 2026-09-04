@@ -4,28 +4,26 @@ This file lives at `<install>/skill-engine-context.proposed/.review/REVIEW.md`. 
 
 The review is in three steps. Fill Step 1 first, save, then re-run `/skill-engine:review skill-engine` to populate Step 2. Tick exactly one box in Step 3 and save again before `apply` or `discard`.
 
-This proposal came from REFRESH, not DISCOVER: no reference was added or cut, and no source was added. It re-pins an existing corpus and repairs the claims that the re-pin falsified.
-
 ## Step 1 — Predictions (fill these before reading the diff)
 
 Write your predictions before scrolling. The point is to surface your model of what this contextualizer should be, then let the disagreement set in Step 2 show you where the engine's draft diverges from your intent. If you read the diff first, Step 2 has nothing to teach.
 
-- *"The commits I expect to have moved the corpus: those pushed in the last 2 days"*
-- *"Claims I expect to have gone stale since the last pin: pins, evals, etc."*
-- *"What I expect this refresh to leave alone: core principles"*
+- *"This skill is for citing the source forge's own SHA-pinned grammar, not github.com's."*
+- *"This skill should NOT restate the five-grammar enumeration outside the artifact contract."*
+- *"The reference I'd cut: none — this is a re-pin, not a coverage change."*
 
 <!-- Do not scroll past this line until the three blanks above are filled. -->
 
 ## Step 2 — Disagreement set
 
-- [X] accept  [ ] reject   The old pin `016a9d93` was not merely behind — it was **unresolvable**. It was written on the `agentic-eval-hardening` branch, that branch was squash-merged as `ced4535`, and no ref in this repository reaches the commit any more (`pin_state.py`: `object_present=true, ref_reachable=false`). Every one of the 202 citations was pointing at a commit a fresh `actions/checkout` cannot see at all. The new pin `9ba4fae` (v0.6.0, current `main`) classifies `ancestor`, which restores the strict tier of the dogfood oracle's "pin refreshed" check instead of leaving it on its NOTE-and-substitute path.
-- [X] accept  [ ] reject   Three prose claims were rewritten because the v0.6.0 release falsified them, not because their line ranges moved: `overview.md` and `versioning.md` both asserted the plugin reads `0.5.0`, and `versioning.md` described the CHANGELOG head as `[0.5.0] - 2026-06-11` with the 0.5.0 bullet list. These are the only edits in this proposal that change meaning rather than a SHA — if you disagree with any, this is the item to reject.
-- [X] accept  [ ] reject   The replacement CHANGELOG summary picks four of the twelve `[0.6.0]` bullets (skill-splitting into routers, the `status` provenance probe, the `review` hand-edit detector, `doctrine.sh` 11→29 checks). That selection is a judgment call made to match the previous sentence's length and register; a different four would be equally true.
-- [X] accept  [ ] reject   Of the 48 repo paths this corpus cites, only 5 changed between the two pins — `marketplace.json`, `plugin.json`, `README.md`, `SECURITY.md`, `CHANGELOG.md` — and all 5 changed only in their version surfaces. The other 43 are byte-identical, so their references were re-pinned without being re-read. If you believe a doctrine file drifted in substance without its bytes changing, that is what `--hint` is for.
-- [X] accept  [ ] reject   `README.md` and `SECURITY.md` are in the drifted set but needed **no** prose edit: their version edits (README L5 and L125, SECURITY L62 and L64) fall outside every line range this corpus actually cites. Worth confirming you agree the corpus should stay silent about a version bump it never quotes.
-- [X] accept  [ ] reject   One citation in `discover-refresh.md` L78 uses a single-line anchor (`#L84`, not `#L84-L84`). The repo's own `permalink_scan.py` matches range-form permalinks only, so that citation is invisible to its `single_consistent_sha` and structural checks — it was re-pinned and structurally verified here by a separate scanner-independent pass, but the repo oracle would not have caught it had it been wrong. A blind spot in the test, not in this proposal.
+- [X] accept  [ ] reject   This is a re-pin forced by chunk 02 of the forge-agnostic-trust feature editing 7 files this corpus cites (`02-artifact-contract.md`, `03-engine.md`, `08-discover-pipeline.md`, `13-coverage-testing.md`, `proposal-and-post-run.md`, `self-audit/SKILL.md`, `check-7-permalink-density.md`), pinned at `9ba4fae` → `f9e5b36`. No new source, no cut reference, no coverage change beyond what re-pinning naturally shifts (99.4%, up from the pre-refresh baseline).
+- [X] accept  [ ] reject   39 permalink citations across the 6 affected references; 31 remapped mechanically (identical cited content, sha + line-range swap only, verified by locating the exact quoted block at the new commit) and 8 got real prose rewrites because the content they cited changed meaning — not just moved.
+- [X] accept  [ ] reject   Two of the 8 rewrites are the specific inversions chunk 01's retro flagged forward: `invariants.md` no longer says "non-GitHub URLs do not count" and `evaluation-and-audit.md` no longer says the lint is "GitHub-source-blind by design" or that Check 8's regex is "imported" from Check 7 (it now says Check 8 builds its grammar from the same resolver Check 7 uses — the accurate post-chunk-01 relationship).
+- [X] accept  [ ] reject   The other 6 rewrites are the same "GitHub permalink" → "permalink in the source forge's grammar" substitution repeated at: the contract's own canonical-form citation (cited twice, from `artifact-contract.md` and `invariants.md`), Check 7's rule + what-counts paragraphs (`invariants.md`), Check 7's and Check 8's definitions (`evaluation-and-audit.md`), and the DISCOVER density paragraph (`discover-refresh.md`).
+- [X] accept  [ ] reject   `workflows.md` and `overview.md` are in the modified set but carry zero prose change — pure sha/line-range re-pins on content that didn't move in meaning, only in position or literal sha. Confirmed via a normalized diff that strips citation URLs before comparing.
+- [X] accept  [ ] reject   `monorepo.md`, `principles.md`, and `versioning.md` are untouched — none cites any of the 7 files chunk 02 edited.
 
-*This is a mechanical re-pin plus three factual corrections. The substantive judgment is concentrated in items 2 and 3; the rest is bookkeeping.*
+*Forced re-pin, not a discretionary refresh: the judgment is concentrated in the 8 rewrites, all of which restate a fact this repo's own chunk-review already approved in chunk 02's diff.*
 
 ## Step 3 — Sign-off
 

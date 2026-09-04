@@ -50,12 +50,13 @@ and is NOT the style to imitate — the example contextualizer at
 ## Paragraph→permalink density
 
 Every prose paragraph in an emitted reference must have a SHA-pinned
-GitHub permalink within 5 lines (above, below, or inside the paragraph).
-The permalink shape is `https://github.com/<owner>/<repo>/blob/<40-hex-sha>/<path>` —
-stable version tags like `v1.2.3` are accepted equivalently; unpinned
-`blob/main/...` URLs do not satisfy the requirement. SELF-AUDIT Check 7
-enforces ≥80% paragraph→permalink coverage corpus-wide; emit references
-with substantially higher per-file coverage so the corpus aggregate has
+permalink, in the source forge's grammar, within 5 lines (above, below, or
+inside the paragraph) — see [`02-artifact-contract.md`](../../../docs/02-artifact-contract.md#sha-pinned-permalinks-the-canonical-form)
+for the five grammars the lint credits. Stable version tags like `v1.2.3`
+are accepted equivalently on github.com; unpinned `blob/main/...` URLs do
+not satisfy the requirement. SELF-AUDIT Check 7 enforces ≥80%
+paragraph→permalink coverage corpus-wide; emit references with
+substantially higher per-file coverage so the corpus aggregate has
 headroom.
 
 This makes the structural-honesty claim downstream documentation makes —
