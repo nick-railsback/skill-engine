@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [Unreleased]
+
+- fix: a host registered for one forge (e.g. GitLab) was also credited by SELF-AUDIT Check 7/8 for a citation shaped like a different forge's grammar, because every registered host shared one regex alternation across all five grammars. `source-paths.json` sources gain an optional `forge` field that scopes a host to its own grammar; an unset field (every pre-existing registry) or an unclassifiable host keeps the prior permissive behavior (`plugin/skill-engine/tests/permalink_density.py`, `plugin/skill-engine/engine-bootstrap-templates/source-paths.schema.json`).
+- fix: the Bitbucket Server permalink grammar required a literal path segment before `?at=<sha>`, rejecting the repo-root citation shape (`.../browse?at=<sha>`, no file path) (`plugin/skill-engine/tests/permalink_density.py`).
+
 ## [0.7.0] - 2026-09-04
 
 - change: SELF-AUDIT Check 7 (paragraph→permalink density) and Check 8 (grounded-citation rate) credit a SHA-pinned permalink on any hostname the contextualizer registers, in that forge's own URL grammar — GitHub family on any hostname, GitLab, Bitbucket Server, Bitbucket Cloud, and Azure DevOps — instead of crediting github.com alone; a GitHub Enterprise Server, GitLab, Bitbucket, or Azure DevOps tenant no longer fails both trust checks on every reference by default (`plugin/skill-engine/tests/permalink_density.py`, `plugin/skill-engine/tests/grounded_rate.py`).
