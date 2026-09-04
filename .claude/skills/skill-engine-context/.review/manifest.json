@@ -11,7 +11,7 @@
     { "path": "references/nick-railsback-skill-engine-versioning.md", "status": "modified", "sha_before": "afe4e9b", "sha_after": "297dd8f" },
     { "path": "references/nick-railsback-skill-engine-evaluation-and-audit.md", "status": "modified", "sha_before": "64a98d1", "sha_after": "91f8611" },
     { "path": "research/source-paths.json", "status": "modified", "sha_before": "4cac94e", "sha_after": "7244381" },
-    { "path": "SKILL.md", "status": "unchanged", "sha_before": "68eebb0", "sha_after": "68eebb0" },
+    { "path": "SKILL.md", "status": "modified", "sha_before": "68eebb0", "sha_after": "aa30428" },
     { "path": "verify.sh", "status": "unchanged", "sha_before": "a972ed6", "sha_after": "a972ed6" },
     { "path": "research/.research-state.json", "status": "unchanged", "sha_before": "48e4ce3", "sha_after": "48e4ce3" }
   ]

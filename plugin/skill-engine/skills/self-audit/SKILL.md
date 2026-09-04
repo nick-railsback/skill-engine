@@ -95,8 +95,8 @@ staging-gate-bypass rationale are in
 ## Check 7 — paragraph→permalink density
 
 Measures structural-honesty density on the references corpus: the
-fraction of prose paragraphs carrying a SHA-pinned GitHub permalink
-within 5 lines, ≥80% corpus-wide to PASS. Judgment-required, not
+fraction of prose paragraphs carrying a SHA-pinned permalink, in the
+source forge's grammar, within 5 lines, ≥80% corpus-wide to PASS. Judgment-required, not
 auto-fixable. What counts as a paragraph or a permalink, the aggregation
 rule, and the exact output format are in
 [`references/check-7-permalink-density.md`](references/check-7-permalink-density.md).
