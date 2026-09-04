@@ -67,8 +67,28 @@ def _load_registry(path: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def accepted_hosts(references_dir: Path) -> set[str]:
-    """Hostnames whose permalinks this corpus may be credited for.
+# The five forges build_permalink_res knows a grammar for. A source's
+# `forge` field must be one of these to scope its host; anything else is
+# treated the same as an absent field.
+KNOWN_FORGES = frozenset(
+    {"github", "gitlab", "bitbucket-server", "bitbucket-cloud", "azure-devops"}
+)
+
+# Hostnames whose forge is unambiguous from the hostname alone, so a source
+# registered on one of these without an explicit `forge` field is still
+# scoped correctly rather than falling back to the permissive default.
+WELL_KNOWN_FORGE_HOSTS = {
+    "github.com": "github",
+    "gitlab.com": "gitlab",
+    "bitbucket.org": "bitbucket-cloud",
+    "dev.azure.com": "azure-devops",
+}
+
+
+def accepted_hosts(references_dir: Path) -> dict[str, str | None]:
+    """Hostnames whose permalinks this corpus may be credited for, mapped
+    to the forge grammar each is scoped to (`None` = unscoped: credited
+    under any of the five grammars).
 
     The registry is found by where it sits — beside the references directory
     handed in — never by what that directory is called: DISCOVER lints an
@@ -81,10 +101,17 @@ def accepted_hosts(references_dir: Path) -> set[str]:
     registry replaces rather than unions, which is what lets a proposal that
     *drops* a source stop crediting it before promotion.
 
-    github.com is always accepted, so a bare corpus with no registry in sight
-    grades exactly as it did before this resolution existed.
+    github.com is always accepted and is always scoped to the github
+    grammar, so a bare corpus with no registry in sight grades exactly as
+    it did before this resolution existed — except that a citation shaped
+    like a different forge's grammar on github.com is no longer credited,
+    which was never a github.com permalink to begin with.
+
+    A host with no `forge` field (every source-paths.json predating this
+    field) stays unscoped: it keeps matching all five grammars, so an
+    existing installation's grading does not change under it.
     """
-    hosts = {"github.com"}
+    hosts: dict[str, str | None] = {"github.com": "github"}
 
     root = references_dir.parent
     registry = _load_registry(root / "research" / "source-paths.json")
@@ -117,13 +144,48 @@ def accepted_hosts(references_dir: Path) -> set[str]:
         # An scp-form remote (git@host:group/repo.git) yields no netloc at
         # all and so contributes nothing — see plan.md § Questions item 3.
         host = netloc.rpartition("@")[2].lower()
-        if host:
-            hosts.add(host)
+        if not host:
+            continue
+        declared = source.get("forge")
+        forge = declared if declared in KNOWN_FORGES else WELL_KNOWN_FORGE_HOSTS.get(host)
+        # A later source for an already-seen host only sharpens the scope
+        # (unscoped -> a specific forge); it never widens a already-scoped
+        # host back to unscoped.
+        if host not in hosts or forge is not None:
+            hosts[host] = forge
     return hosts
 
 
-def build_permalink_res(hosts: set[str]) -> tuple[re.Pattern[str], re.Pattern[str]]:
-    """Return (sha_re, tag_re) for the given accepted host set.
+# Grammar template per forge, in the order the artifact contract's table
+# lists them. Each takes the forge's own host alternation `H` — scoped to
+# only the hosts registered for that forge, plus any unscoped host — so a
+# host registered for one forge is never credited for another forge's URL
+# shape.
+_FORGE_GRAMMARS: tuple[tuple[str, str], ...] = (
+    # GitHub family (github.com and GitHub Enterprise Server)
+    ("github", r"https://{H}/[^/\s]+/[^/\s]+/(?:blob|tree)/{S}/{T}"),
+    # GitLab — a group may nest arbitrarily before the /-/ separator
+    ("gitlab", r"https://{H}/[^\s]+?/-/(?:blob|tree)/{S}/{T}"),
+    # Bitbucket Server — pins in a query parameter, not a path segment. The
+    # path segment itself is optional: a repo-root citation (the whole
+    # repository, not one file, at that commit) omits it entirely.
+    ("bitbucket-server", r"https://{H}/projects/[^/\s]+/repos/[^/\s]+/browse(?:/[^\s?)\]]*)?\?at={S}\b"),
+    # Bitbucket Cloud
+    ("bitbucket-cloud", r"https://{H}/[^/\s]+/[^/\s]+/src/{S}/{T}"),
+    # Azure DevOps — org/project sit before _git, and the pin is GC<sha>
+    ("azure-devops", r"https://{H}/[^\s]+/_git/[^\s?)\]]+\?[^\s)\]]*\bversion=GC{S}\b"),
+)
+
+
+def build_permalink_res(hosts: dict[str, str | None]) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """Return (sha_re, tag_re) for the given accepted host map.
+
+    `hosts` maps hostname -> forge ("github", "gitlab", "bitbucket-server",
+    "bitbucket-cloud", "azure-devops", or None for unscoped). Each of the
+    five grammars below matches only hosts scoped to that forge plus any
+    unscoped host — never a host scoped to a *different* forge, so
+    registering a GitLab host does not also credit it for a Bitbucket-
+    shaped citation.
 
     The SHA-pinned shape tracks the artifact contract's "SHA-pinned
     permalinks (the canonical form)" section, now across the five forge
@@ -138,30 +200,24 @@ def build_permalink_res(hosts: set[str]) -> tuple[re.Pattern[str], re.Pattern[st
     per-forge tag grammar would assert a design nobody asked for.
     """
     if not hosts:
-        # The resolver always seeds github.com, so an empty set means a
+        # The resolver always seeds github.com, so an empty map means a
         # caller bypassed it. Failing loudly beats compiling an empty
         # alternation, which would match `https:///...` and credit anything.
         raise ValueError("build_permalink_res: host set is empty")
 
-    # Longest-first so a registered `acme.com` cannot shadow a registered
-    # `git.acme.com`; re.escape so a dot in a hostname stays a dot.
-    alternation = "|".join(re.escape(h) for h in sorted(hosts, key=lambda h: (-len(h), h)))
-    H = f"(?:{alternation})"
     S = "[0-9a-f]{40}"
     T = r"[^\s)\]]+"
 
-    grammars = (
-        # GitHub family (github.com and GitHub Enterprise Server)
-        rf"https://{H}/[^/\s]+/[^/\s]+/(?:blob|tree)/{S}/{T}",
-        # GitLab — a group may nest arbitrarily before the /-/ separator
-        rf"https://{H}/[^\s]+?/-/(?:blob|tree)/{S}/{T}",
-        # Bitbucket Server — pins in a query parameter, not a path segment
-        rf"https://{H}/projects/[^/\s]+/repos/[^/\s]+/browse/[^\s?)\]]*\?at={S}\b",
-        # Bitbucket Cloud
-        rf"https://{H}/[^/\s]+/[^/\s]+/src/{S}/{T}",
-        # Azure DevOps — org/project sit before _git, and the pin is GC<sha>
-        rf"https://{H}/[^\s]+/_git/[^\s?)\]]+\?[^\s)\]]*\bversion=GC{S}\b",
-    )
+    grammars = []
+    for forge, template in _FORGE_GRAMMARS:
+        scoped = {h for h, f in hosts.items() if f == forge or f is None}
+        if not scoped:
+            continue
+        # Longest-first so a registered `acme.com` cannot shadow a
+        # registered `git.acme.com`; re.escape so a dot stays a dot.
+        alternation = "|".join(re.escape(h) for h in sorted(scoped, key=lambda h: (-len(h), h)))
+        H = f"(?:{alternation})"
+        grammars.append(template.format(H=H, S=S, T=T))
     # One compiled alternation, not N compiled patterns in a Python loop:
     # this is .search()ed on every line of every reference.
     sha_re = re.compile("|".join(f"(?:{g})" for g in grammars))

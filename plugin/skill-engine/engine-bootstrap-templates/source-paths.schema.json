@@ -44,6 +44,10 @@
           "type": ["string", "null"],
           "description": "Filesystem path. Required (non-empty) for external-doc and local-path; absent, explicit null, or empty string for web-doc. A null or empty string is treated as absent, matching verify.sh's `.path // \"\"` reading."
         },
+        "forge": {
+          "enum": ["github", "gitlab", "bitbucket-server", "bitbucket-cloud", "azure-devops"],
+          "description": "git-managed only. Which of the five permalink grammars permalink_density.py (SELF-AUDIT Check 7) credits this source's host under. Optional and additive: absent on every source-paths.json predating this field, and on any host the lint cannot infer from a well-known SaaS hostname (github.com, gitlab.com, bitbucket.org, dev.azure.com) — an absent value keeps the pre-field behavior of crediting that host under any of the five grammars, so leaving it unset never starts rejecting a citation that used to pass. Set it to scope a self-hosted forge (GitHub Enterprise Server, a self-managed GitLab or Bitbucket Server instance) to only its own grammar, so the host is not also credited for a citation shaped like a different forge's permalink."
+        },
         "branch": {
           "type": ["string", "null"],
           "pattern": "^[A-Za-z0-9._/-]*$",
@@ -107,6 +111,10 @@
         },
         {
           "if": { "required": ["branch"], "properties": { "branch": { "type": "string", "minLength": 1 } } },
+          "then": { "properties": { "kind": { "const": "git-managed" } } }
+        },
+        {
+          "if": { "required": ["forge"] },
           "then": { "properties": { "kind": { "const": "git-managed" } } }
         },
         {

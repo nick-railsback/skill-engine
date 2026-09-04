@@ -143,9 +143,19 @@ GHES_PIN="https://$GHES_HOST/acme/widgets/blob/$SHA/src/widget.py#L10-L20"
 GHES_PIN_OTHER_REPO="https://$GHES_HOST/acme/gadgets/blob/$SHA_B/src/gadget.py#L1-L9"
 GL_PIN="https://$GL_HOST/acme/platform/widgets/-/blob/$SHA/src/widget.py#L10-L20"
 BBS_PIN="https://$BBS_HOST/projects/ACME/repos/widgets/browse/src/widget.py?at=$SHA"
+# A repo-root citation: no path segment at all between /browse and ?at=.
+# Bitbucket Server serves this shape when the whole repository, not one
+# file, is the citation's target.
+BBS_PIN_ROOT="https://$BBS_HOST/projects/ACME/repos/widgets/browse?at=$SHA"
 BBC_PIN="https://$BBC_HOST/acme/widgets/src/$SHA/src/widget.py"
 ADO_PIN="https://$ADO_HOST/acme/platform/_git/widgets?path=/src/widget.py&version=GC$SHA"
 UNREG_PIN="https://$UNREG_HOST/acme/platform/widgets/-/blob/$SHA/src/widget.py#L10-L20"
+
+# One host's URL, shaped like a *different* forge's grammar — the shape a
+# cross-forge scoping bug credits and a correctly forge-scoped host must not.
+GL_HOST_AS_GITHUB_SHAPE="https://$GL_HOST/acme/widgets/blob/$SHA/src/widget.py"
+GHES_AS_GITLAB_SHAPE="https://$GHES_HOST/acme/widgets/-/blob/$SHA/src/widget.py"
+GH_AS_GITLAB_SHAPE="https://$GH_HOST/acme/widgets/-/blob/$SHA/src/widget.py"
 
 # Citations that carry no 40-hex commit at their grammar's pin position.
 GH_BRANCH="https://$GH_HOST/acme/widgets/blob/main/src/widget.py"
@@ -273,6 +283,47 @@ new_corpus_root() {
   printf '%s' "$root"
 }
 
+# write_source_paths_forge <file> <url>|<forge> [...]
+# Same registry shape as write_source_paths, plus an explicit "forge" field
+# per source — the declaration that scopes a host to its one grammar
+# instead of the permissive (undeclared) all-five-grammars default.
+write_source_paths_forge() {
+  local file="$1"
+  shift
+  local pair url forge first=1 n=0
+  {
+    printf '{\n  "schema_version": 1,\n  "sources": [\n'
+    for pair in "$@"; do
+      url="${pair%%|*}"
+      forge="${pair#*|}"
+      n=$((n + 1))
+      if [ "$first" -eq 0 ]; then printf ',\n'; fi
+      first=0
+      printf '    {\n'
+      printf '      "id": "fixture-source-%d",\n' "$n"
+      printf '      "kind": "git-managed",\n'
+      printf '      "url": "%s",\n' "$url"
+      printf '      "forge": "%s",\n' "$forge"
+      printf '      "status": "confirmed",\n'
+      printf '      "archived": false,\n'
+      printf '      "lifecycle": {"state": "reachable", "last_checked": "2026-09-03", '
+      printf '"last_checked_sha": "%s", "proposed_url": null},\n' "$SHA"
+      printf '      "discovered_via": null\n'
+      printf '    }'
+    done
+    printf '\n  ]\n}\n'
+  } > "$file"
+}
+
+# new_corpus_root_forge <name> <url>|<forge> [...]
+new_corpus_root_forge() {
+  local root="$WORK/$1"
+  shift
+  mkdir -p "$root/references" "$root/research"
+  write_source_paths_forge "$root/research/source-paths.json" "$@"
+  printf '%s' "$root"
+}
+
 # write_eval_ctx <ctx-root> <citation-url> [source-url...]
 # A contextualizer root the citation-rate runner can grade: navigator,
 # one reference, a three-prompt corpus, and a registry.
@@ -369,6 +420,15 @@ assert_density "gitlab grammar: a citation at the far edge of the five-line wind
 root="$(new_corpus_root a05-bitbucket-server "$BBS_SRC")"
 write_pinned_corpus "$root/references/bitbucket.md" "$BBS_PIN"
 assert_density "bitbucket server grammar: browse/<path>?at=<40hex> on a registered host covers its paragraph" \
+  0 "[PASS] permalink-density: corpus coverage 100.0% (5/5 paragraphs)" "$root/references"
+
+# A repo-root citation carries no path segment between /browse and ?at= —
+# the URL Bitbucket Server serves for "this repository at this commit"
+# rather than "this file at this commit". The grammar's path segment is
+# optional, not merely zero-width, so this shape must still be credited.
+root="$(new_corpus_root a05b-bitbucket-server-root "$BBS_SRC")"
+write_pinned_corpus "$root/references/bitbucket.md" "$BBS_PIN_ROOT"
+assert_density "bitbucket server grammar: browse?at=<40hex> with no path segment (repo-root citation) covers its paragraph" \
   0 "[PASS] permalink-density: corpus coverage 100.0% (5/5 paragraphs)" "$root/references"
 
 root="$(new_corpus_root a06-bitbucket-cloud "$BBC_SRC")"
@@ -481,6 +541,31 @@ write_pinned_corpus "$root/references/gitlab.md" "$GL_PIN"
 assert_density "unregistered host: a registry that registers nothing credits no other host" \
   1 "[FAIL] permalink-density: corpus coverage 0.0% (0/5 paragraphs)" "$root/references"
 
+# ----- forge scoping (explicit `forge` field) -----------------------------
+
+# A registered host serves one forge's grammar. Declaring which one scopes
+# credit to that grammar alone — a host registered for GitLab must not be
+# credited for a citation shaped like a GitHub or Bitbucket permalink just
+# because the host itself is accepted.
+
+root="$(new_corpus_root_forge b01-gitlab-declared "${GL_SRC}|gitlab")"
+write_pinned_corpus "$root/references/gitlab.md" "$GL_PIN"
+assert_density "forge scoping: a host explicitly declared gitlab still covers its own grammar's citation" \
+  0 "[PASS] permalink-density: corpus coverage 100.0% (5/5 paragraphs)" "$root/references"
+
+root="$(new_corpus_root_forge b02-gitlab-declared-cross-forge "${GL_SRC}|gitlab")"
+write_pinned_corpus "$root/references/leak.md" "$GL_HOST_AS_GITHUB_SHAPE"
+assert_density "forge scoping: a host declared gitlab is not credited for a github-shaped citation on that host" \
+  1 "[FAIL] permalink-density: corpus coverage 0.0% (0/5 paragraphs)" "$root/references"
+
+# A host with no forge declared keeps today's permissive behavior — every
+# existing installation's source-paths.json predates this field, so an
+# absent field must not start rejecting citations it used to credit.
+root="$(new_corpus_root b03-undeclared-forge-permissive "$GHES_SRC")"
+write_pinned_corpus "$root/references/permissive.md" "$GHES_AS_GITLAB_SHAPE"
+assert_density "forge scoping: a host with no forge declared is still credited under any grammar (backward compatible)" \
+  0 "[PASS] permalink-density: corpus coverage 100.0% (5/5 paragraphs)" "$root/references"
+
 # ----- bare corpus fallback ----------------------------------------------
 
 # The lint is a standalone CLI over a directory of markdown. Handed a bare
@@ -517,6 +602,14 @@ assert_density "bare corpus fallback: a bitbucket cloud permalink is not credite
 root="$(new_corpus_root d06-bare-ado)"
 write_pinned_corpus "$root/references/azure.md" "$ADO_PIN"
 assert_density "bare corpus fallback: an azure devops permalink is not credited" \
+  1 "[FAIL] permalink-density: corpus coverage 0.0% (0/5 paragraphs)" "$root/references"
+
+# github.com is seeded implicitly, not registered — but the seed is scoped
+# to the github grammar the same as an explicit declaration would be. A
+# gitlab-shaped citation on github.com is not a github.com permalink.
+root="$(new_corpus_root d07-bare-github-cross-forge)"
+write_pinned_corpus "$root/references/leak.md" "$GH_AS_GITLAB_SHAPE"
+assert_density "bare corpus fallback: a gitlab-shaped citation on github.com is not credited" \
   1 "[FAIL] permalink-density: corpus coverage 0.0% (0/5 paragraphs)" "$root/references"
 
 # ----- github.com preserved ----------------------------------------------

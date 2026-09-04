@@ -563,11 +563,11 @@ https://github.com/<owner>/<repo>/blob/<sha>/<path>#L<start>-L<end>
 |---|---|
 | GitHub family (github.com and GitHub Enterprise Server, any hostname) | `https://<host>/<owner>/<repo>/(blob\|tree)/<sha>/<path>` |
 | GitLab | `https://<host>/<group>/-/(blob\|tree)/<sha>/<path>` |
-| Bitbucket Server | `https://<host>/projects/<project>/repos/<repo>/browse/<path>?at=<sha>` |
+| Bitbucket Server | `https://<host>/projects/<project>/repos/<repo>/browse[/<path>]?at=<sha>` (the path is optional: a repo-root citation omits it) |
 | Bitbucket Cloud | `https://<host>/<owner>/<repo>/src/<sha>/<path>` |
 | Azure DevOps | `https://<host>/<org>/<project>/_git/<repo>?path=<path>&version=GC<sha>` |
 
-Accepted hostnames are the ones registered as git-managed sources in the contextualizer's own `research/source-paths.json`, plus `github.com`, which is always accepted regardless of registration.
+Accepted hostnames are the ones registered as git-managed sources in the contextualizer's own `research/source-paths.json`, plus `github.com`, which is always accepted regardless of registration. Each host is credited under exactly the grammar its registration's `forge` field names (`github`, `gitlab`, `bitbucket-server`, `bitbucket-cloud`, or `azure-devops`; `github.com`'s implicit registration is `github`) — a host registered for GitLab is not credited for a citation shaped like a Bitbucket or Azure DevOps permalink. A source with no `forge` field (every `source-paths.json` predating the field, and any host the lint cannot infer from a well-known SaaS hostname) stays unscoped and is credited under any of the five grammars, so an existing installation's grading does not change until it opts in.
 
 **The failure mode this prevents** is link rot. GitHub's own permalink documentation warns that a URL on `blob/main/...` survives only as long as the file is at that path on the default branch; industry estimates place the rot rate on branch-pinned source URLs at 38-66% over a one-to-two-year horizon. The same observation drives the LSP `Location` shape (line-pinned references that survive refactors) and TypeDoc's defaults (commit SHA, not branch, for source-link generation). Branch-pinned URLs in a curated reference are a slow-burn correctness regression: they pass review, then quietly stop pointing at the right code as the source repo evolves.
 
