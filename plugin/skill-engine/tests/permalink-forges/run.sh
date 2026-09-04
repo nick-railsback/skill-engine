@@ -157,6 +157,12 @@ GL_HOST_AS_GITHUB_SHAPE="https://$GL_HOST/acme/widgets/blob/$SHA/src/widget.py"
 GHES_AS_GITLAB_SHAPE="https://$GHES_HOST/acme/widgets/-/blob/$SHA/src/widget.py"
 GH_AS_GITLAB_SHAPE="https://$GH_HOST/acme/widgets/-/blob/$SHA/src/widget.py"
 
+# gitlab.com: a well-known SaaS host inferred without any `forge` field, so
+# an existing registration with no opt-in still gets scoped correctly.
+GLCOM_SRC="https://gitlab.com/acme/widgets"
+GLCOM_PIN="https://gitlab.com/acme/widgets/-/blob/$SHA/src/widget.py#L10-L20"
+GLCOM_AS_GITHUB_SHAPE="https://gitlab.com/acme/widgets/blob/$SHA/src/widget.py"
+
 # Citations that carry no 40-hex commit at their grammar's pin position.
 GH_BRANCH="https://$GH_HOST/acme/widgets/blob/main/src/widget.py"
 GH_SHORT="https://$GH_HOST/acme/widgets/blob/abc1234/src/widget.py"
@@ -565,6 +571,18 @@ root="$(new_corpus_root b03-undeclared-forge-permissive "$GHES_SRC")"
 write_pinned_corpus "$root/references/permissive.md" "$GHES_AS_GITLAB_SHAPE"
 assert_density "forge scoping: a host with no forge declared is still credited under any grammar (backward compatible)" \
   0 "[PASS] permalink-density: corpus coverage 100.0% (5/5 paragraphs)" "$root/references"
+
+# gitlab.com is inferred as gitlab from the hostname alone, with no `forge`
+# field set — real users get scoping for free on the well-known SaaS hosts.
+root="$(new_corpus_root b04-gitlab-com-inferred "$GLCOM_SRC")"
+write_pinned_corpus "$root/references/gitlab.md" "$GLCOM_PIN"
+assert_density "forge scoping: gitlab.com is inferred as gitlab with no forge field set" \
+  0 "[PASS] permalink-density: corpus coverage 100.0% (5/5 paragraphs)" "$root/references"
+
+root="$(new_corpus_root b05-gitlab-com-inferred-cross-forge "$GLCOM_SRC")"
+write_pinned_corpus "$root/references/leak.md" "$GLCOM_AS_GITHUB_SHAPE"
+assert_density "forge scoping: gitlab.com is not credited for a github-shaped citation, inferred with no forge field set" \
+  1 "[FAIL] permalink-density: corpus coverage 0.0% (0/5 paragraphs)" "$root/references"
 
 # ----- bare corpus fallback ----------------------------------------------
 
