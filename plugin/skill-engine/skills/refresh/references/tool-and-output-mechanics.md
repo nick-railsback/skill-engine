@@ -70,12 +70,78 @@ directory exists, prefer a local read; otherwise fall back to CLI calls.
 
 ### Cache garbage collection
 
-After REFRESH successfully populates a new
-`~/.cache/skill-engine/git-managed/<source_id>-<new-sha>/` for a source
-whose SHA advanced, delete any sibling directories matching
-`~/.cache/skill-engine/git-managed/<source_id>-*/` whose suffix is NOT
-the new SHA. Old SHA directories are by definition stale: their
-contents reflect an upstream state that REFRESH has already replaced.
+When REFRESH's Phase 1 probe finds an upstream SHA that differs from the
+source's previously-recorded `last_checked_sha` and a local cache directory
+already exists for that source, run the advance recipe below with
+`<old_sha>` = the prior recorded SHA and `<new_sha>` = the newly-probed
+SHA. It fetches the new commit into the existing directory (never a fresh
+`git clone`), keeps both the old and new commit reachable in the same
+directory, computes the set of paths that changed between them, and only
+then renames the directory and removes any now-superseded sibling. A
+source with no local cache directory is unaffected — REFRESH never clones
+on its own; there is nothing here to advance.
+
+<!-- doctrine:cache-advance-recipe:start -->
+```bash
+if [ "<old_sha>" = "<new_sha>" ]; then
+  exit 0
+fi
+
+source_id="<source_id>"
+old_sha="<old_sha>"
+new_sha="<new_sha>"
+
+if ! git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-<old_sha>" fetch --depth=1 origin "<new_sha>"; then
+  printf 'skill-engine: failed to fetch %s for %s -- advance aborted, %s-%s left intact\n' \
+    "<new_sha>" "<source_id>" "<source_id>" "<old_sha>" >&2
+  exit 1
+fi
+
+git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-<old_sha>" checkout --detach "<new_sha>"
+
+cache_dir="$HOME/.cache/skill-engine/git-managed/${source_id}-${old_sha}"
+
+since_tmpfile="$(mktemp)"
+git -C "$cache_dir" -c core.quotePath=false diff --name-status --no-renames "$old_sha" "$new_sha" \
+  | cut -f2- \
+  | jq -R . \
+  | jq -s --arg from "$old_sha" --arg to "$new_sha" \
+      '{from_sha: $from, to_sha: $to, files: map({path: .})}' \
+  > "$since_tmpfile"
+
+inventory_json="$(python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" --since-json "$since_tmpfile")"
+rm -f "$since_tmpfile"
+
+mkdir -p research
+inv_file="research/.discover-inventory.json"
+existing="{}"
+[ -f "$inv_file" ] && existing="$(cat "$inv_file")"
+printf '%s' "$existing" \
+  | jq --arg sid "$source_id" --argjson entry "$inventory_json" '.[$sid] = $entry' \
+  > "${inv_file}.tmp"
+mv "${inv_file}.tmp" "$inv_file"
+
+mv "$cache_dir" "$HOME/.cache/skill-engine/git-managed/${source_id}-${new_sha}"
+
+find "$HOME/.cache/skill-engine/git-managed" -mindepth 1 -maxdepth 1 -type d \
+  -name "${source_id}-*" ! -name "${source_id}-${new_sha}" -exec rm -rf {} +
+```
+<!-- doctrine:cache-advance-recipe:end -->
+
+The changed-path list lands in `research/.discover-inventory.json` (the
+same gitignored, never-staged runtime file `cache-and-clone.md` step 7
+writes to) via `discover_inventory.py`'s existing `--since-json` flag —
+the recipe never touches that script's internals. `git diff --name-status`
+between the old and new SHA is unaffected by the shallow boundary a
+`--depth=1` fetch leaves at `<new_sha>`, unlike a `git log` range walk
+against it.
+
+No-op guard: an unchanged SHA exits immediately without a `fetch`. A
+failed `fetch` leaves the old directory, its SHA, and every sibling
+untouched, and writes nothing to the inventory — the source is reported
+as not advanced. On success, exactly one `<source_id>-*/` directory
+survives, holding both the old and new commit; any other stale sibling
+(a leftover from a prior interrupted run) is removed.
 
 GC runs only when:
 - The current REFRESH actually advanced the SHA for that source_id

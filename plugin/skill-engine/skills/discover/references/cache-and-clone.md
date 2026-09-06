@@ -76,17 +76,37 @@ When `/skill-engine:discover` is invoked:
    - `kind: "git-managed"` → `~/.cache/skill-engine/git-managed/<source_id>-*/`
    - `kind: "web-doc"` → `~/.cache/skill-engine/web-doc/<source_id>-*/`
 
-   **git-managed probe.** Require that the matched directory actually
-   contain a `.git/` subdirectory before treating it as a warm cache:
+   **git-managed probe.** Require that the matched directory's SHA suffix
+   equal the SHA already resolved in step 5 for this source, and that it
+   actually contain a `.git/` subdirectory, before treating it as a warm
+   cache:
 
+   <!-- doctrine:discover-cache-hit-check:start -->
    ```bash
-   cache_dir=$(find ~/.cache/skill-engine/git-managed -mindepth 1 -maxdepth 1 -type d -name '<source_id>-*' 2>/dev/null | head -n1)
-   if [ -n "$cache_dir" ] && [ -d "${cache_dir%/}/.git" ]; then
-     # cache hit — skip prompt
+   source_id_val="<source_id>"
+   resolved_sha_val="<resolved_sha>"
+   cache_dir=""
+   for d in ~/.cache/skill-engine/git-managed/*/; do
+     [ -d "$d" ] || continue
+     [ -d "${d%/}/.git" ] || continue
+     base="$(basename "${d%/}")"
+     if [ "$base" = "${source_id_val}-${resolved_sha_val}" ]; then
+       cache_dir="${d%/}"
+     fi
+   done
+   if [ -n "$cache_dir" ]; then
+     : # cache hit — skip prompt
    else
-     # cache miss — prompt the user
+     : # cache miss — prompt the user
    fi
    ```
+   <!-- doctrine:discover-cache-hit-check:end -->
+
+   `<resolved_sha>` above is the SHA step 5's idempotency check already
+   resolved for this source. Enumerating every `<source_id>-*/` sibling
+   (rather than taking the first filesystem match) is what lets a
+   SHA-matching directory win regardless of how many stale siblings coexist
+   or what order the filesystem lists them in.
 
    The `.git/` presence check defends against a half-written directory
    that lacks a usable repo (e.g., a clone that failed mid-fetch in an
@@ -190,10 +210,20 @@ When `/skill-engine:discover` is invoked:
    This step catches users who declined the offer at `engine-bootstrap`
    Step 3.5 / Step 3.6, who deleted their cache via
    `/skill-engine:clean-cache`, who added a source post-bootstrap, or
-   whose cache directory was lost for any other reason. A cache hit
-   (existing match for `<source_id>-*/` under the kind-appropriate
-   subdirectory, with a valid `.git/` inside for git-managed) skips the
-   prompt entirely.
+   whose cache directory was lost for any other reason. For `web-doc`, a
+   cache hit is still any existing match under the kind-appropriate
+   subdirectory. For `git-managed`, a cache hit requires the SHA-aware
+   probe above: a `<source_id>-*/` directory whose suffix equals the SHA
+   resolved in step 5, with a valid `.git/` inside — a suffix mismatch is a
+   miss like any other, even when a `<source_id>-*/` directory already
+   exists, and whichever sibling's suffix matches is used regardless of how
+   many others coexist. On consent to a miss with a stale `<source_id>-*/`
+   directory already present, advance it in place via the recipe in
+   `tool-and-output-mechanics.md` § Cache garbage collection (`<old_sha>` =
+   the stale directory's suffix, `<new_sha>` = the SHA resolved in step 5)
+   rather than cloning a fresh directory alongside it; with no
+   `<source_id>-*/` directory present at all, clone fresh as documented
+   above.
 
 7. **Pre-flight inventory (per in-scope `git-managed` source).** Before
    `§ Discovering essence` begins, compute each source's corpus-shape
@@ -202,14 +232,31 @@ When `/skill-engine:discover` is invoked:
    accepted it:
 
    - **If a cache directory is available** (matched in step 6 this run,
-     or already present from a prior run):
+     or already present from a prior run), compute the changed-path list
+     the same diff-based way the in-place advance recipe does
+     (`tool-and-output-mechanics.md` § Cache garbage collection) rather
+     than `discover_inventory.py`'s own `--last-checked-sha` git-log path:
+     after an in-place `--depth=1` fetch the new SHA lands as its own
+     parentless shallow boundary, and a `git log` range walk against it
+     silently drops deleted paths and mislabels every surviving path as
+     added rather than modified:
 
      ```bash
+     if [ -n "$last_checked_sha" ]; then
+       since_tmpfile=$(mktemp)
+       git -C "$cache_dir" -c core.quotePath=false diff --name-status --no-renames \
+           "$last_checked_sha" HEAD \
+         | cut -f2- \
+         | jq -R . \
+         | jq -s --arg from "$last_checked_sha" --arg to "$(git -C "$cache_dir" rev-parse HEAD)" \
+             '{from_sha: $from, to_sha: $to, files: map({path: .})}' \
+         > "$since_tmpfile"
+     fi
      python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" \
-       ${last_checked_sha:+--last-checked-sha "$last_checked_sha"}
+       ${since_tmpfile:+--since-json "$since_tmpfile"}
      ```
 
-     omitting `--last-checked-sha` entirely when the source entry's
+     omitting `--since-json` entirely when the source entry's
      `lifecycle.last_checked_sha` is null.
 
    - **Else** (no cache — declined or never offered), fetch a tree

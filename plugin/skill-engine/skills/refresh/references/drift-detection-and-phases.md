@@ -213,6 +213,17 @@ For `git-managed` probes, the tool-choice guidance in "Tool preference
 for git-managed sources" below (gh/git CLI over WebFetch; how to pick
 `<ref>` when `branch` is present vs. absent) applies.
 
+When the newly-probed SHA differs from the source's previously-recorded
+`last_checked_sha` **and** a local cache directory already exists for that
+source, run the in-place advance recipe in "Tool preference for
+git-managed sources" below § Cache garbage collection, with `<old_sha>` =
+the prior recorded `last_checked_sha` and `<new_sha>` = this probe's
+result, before continuing to Phase 2. REFRESH never clones on its own
+("Source materialization" in `cache-and-clone.md` names only DISCOVER
+pre-flight step 6 and `engine-bootstrap` Step 3.5 as consent points), so
+when no local cache exists for the source, REFRESH's existing CLI fallback
+is unchanged.
+
 ### Phase 2 — Decay check (web-doc only)
 
 For each `web-doc` source with `status: "confirmed"` and a cached
