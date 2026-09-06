@@ -261,11 +261,16 @@ When `/skill-engine:discover` is invoked:
 
    - **Else** (no cache — declined or never offered), fetch a tree
      listing and, when a prior SHA is known, a compare summary, and
-     hand both to the script instead of a local directory:
+     hand both to the script instead of a local directory. The tree
+     listing's `--jq` filter passes the API response's own `truncated`
+     flag through under a `tree` key rather than discarding it down to a
+     bare array, so a listing the API cut off (100,000-entry / 7 MB caps)
+     surfaces as `partial: true` in the script's output instead of
+     silently reading as complete:
 
      ```bash
      gh api "repos/<owner>/<repo>/git/trees/<ref>?recursive=1" \
-       --jq '[.tree[] | {path, bytes: (.size // 0), type: (if .type == "tree" then "tree" else "blob" end)}]' \
+       --jq '{truncated: (.truncated // false), tree: [.tree[] | {path, bytes: (.size // 0), type: (if .type == "tree" then "tree" else "blob" end)}]}' \
        > "$tree_tmpfile"
      if [ -n "$last_checked_sha" ]; then
        gh api "repos/<owner>/<repo>/compare/$last_checked_sha...<ref>" \
@@ -275,6 +280,10 @@ When `/skill-engine:discover` is invoked:
      python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" --tree-json "$tree_tmpfile" \
        ${compare_tmpfile:+--since-json "$compare_tmpfile"}
      ```
+
+     The script's output names which of the two branches above produced
+     it in an `inventory_source` field (`cache` or `tree-json`) — cite it
+     per source wherever the run's Coverage report is assembled.
 
      **On any `gh api` failure** (non-GitHub remote, `gh` not
      authenticated, network error): emit one stderr notice naming the
