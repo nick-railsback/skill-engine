@@ -81,6 +81,11 @@
           "type": ["array", "null"],
           "items": { "type": "string" },
           "description": "web-doc crawl_mode 'list' only. Absent, explicit null, or empty array when crawl_mode is 'sitemap'. Each URL must share an origin with the source url (origin equality is enforced by verify.sh, not this schema)."
+        },
+        "files_of_interest": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional. Non-empty list of gitignore-style path patterns (git --no-cone sparse-checkout syntax, e.g. \"docs/**\", \"src/auth/**\", \"docs/sso.md\"). When present and non-empty, the engine's git-managed clone recipes (engine-bootstrap Step 3.5, DISCOVER's cache-miss offer) substitute a files_of_interest-scoped sparse clone for the unconditional shallow clone. Absent or empty array => unconditional shallow clone, unchanged. See 03-engine.md § files_of_interest-scoped sparse cloning."
         }
       },
       "allOf": [

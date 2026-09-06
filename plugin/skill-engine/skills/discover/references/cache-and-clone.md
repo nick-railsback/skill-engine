@@ -191,6 +191,75 @@ When `/skill-engine:discover` is invoked:
    CLI fallback documented in "Tool preference" below — do not abort
    DISCOVER on a cache failure.
 
+   **On consent (git-managed, `files_of_interest` scoped):** when the source
+   entry's `files_of_interest` field is present and non-empty, substitute
+   this recipe for the one above. Same quoting invariant as Step 2's block:
+   every entry stays double-quoted in `sparse-checkout set` and `for entry
+   in` — never left bare for the shell to glob-expand.
+
+   ```bash
+   case "<source_id>" in
+     ""|-*|*[!a-z0-9-]*)
+       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2 ;;
+     *)
+       sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
+       if [ -z "$sha" ]; then
+         echo "skill-engine: <source_id> @ <ref> not found upstream (empty ls-remote) — declining to clone; using CLI fallback" >&2
+       else
+         mkdir -p ~/.cache/skill-engine/git-managed/
+         dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
+         tmpdir="${dest}.tmp.$$"
+         clone_ok=0
+         if [ "<ref>" = "HEAD" ]; then
+           git clone --filter=blob:none --no-checkout --depth=1 --single-branch -- "<url>" "$tmpdir" && clone_ok=1
+         else
+           git clone --filter=blob:none --no-checkout --depth=1 --single-branch --branch "<ref>" -- "<url>" "$tmpdir" && clone_ok=1
+         fi
+         if [ "$clone_ok" -eq 1 ] \
+           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout init --no-cone \
+           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout set <files_of_interest entries...> \
+           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" checkout ; then
+           missing=0
+           for entry in <files_of_interest entries...>; do
+             if [ -z "$(git -C "$tmpdir" ls-files -- "$entry")" ]; then
+               probe="${entry%/\*\*}"
+               probe="${probe%/\*}"
+               ancestor="$probe"
+               while [ -n "$ancestor" ] && [ ! -d "$tmpdir/$ancestor" ]; do
+                 case "$ancestor" in
+                   */*) ancestor="${ancestor%/*}" ;;
+                   *) ancestor="" ;;
+                 esac
+               done
+               siblings=$(find "$tmpdir${ancestor:+/$ancestor}" -mindepth 1 -maxdepth 2 \
+                 -type d -not -path '*/.git' -not -path '*/.git/*' 2>/dev/null \
+                 | sed "s#^$tmpdir/##" | sort | sed 's#$#/#' | paste -sd, - | sed 's/,/, /g')
+               # A resolved-no-files entry skips only this source's cache seed
+               # and continues to the next source; it does not abort the run.
+               echo "skill-engine: files_of_interest entry '$entry' resolved no files in checkout; nearest siblings under '${ancestor:-.}/': $siblings" >&2
+               missing=1
+             fi
+           done
+           if [ "$missing" -eq 1 ]; then
+             rm -rf "$tmpdir"
+           else
+             mv "$tmpdir" "$dest"
+           fi
+         else
+           rm -rf "$tmpdir"
+         fi
+       fi ;;
+   esac
+   ```
+
+   On success, prefer local reads under the new cache directory for the
+   rest of this DISCOVER run, exactly as the block above. On a clone-level
+   failure, emit the same one-line fallback message the block above emits
+   ("Couldn't clone ..."). On a validation failure (`missing=1`), the
+   per-entry diagnostics are the complete report — no extra summary line,
+   same reasoning as Step 2. Same `ls-files`-vs-`-e` rationale as Step 2
+   applies here too — not repeated in full.
+
    **On consent (web-doc):** execute the bootstrap Step 3.6 crawl
    procedure inline (sitemap fetch, page-budget enforcement, atomic
    rename into `~/.cache/skill-engine/web-doc/<source_id>-<snapshot>/`).

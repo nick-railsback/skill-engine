@@ -199,8 +199,8 @@ Operational state lives in four sibling files, each with its own
 canonical reference:
 
 * **`research/source-paths.json`** — per-source schema (`id`, `kind`,
-  `status`, `archived`, `lifecycle`, `discovered_via`, and any additive
-  fields). Canonical schema in [`02-artifact-contract.md`](02-artifact-contract.md) §"Per-source schema"; operational view in [`09-discover-config.md`](09-discover-config.md). Committed to git as the contextualizer's configuration history.
+  `status`, `archived`, `lifecycle`, `discovered_via`, `files_of_interest`,
+  and any additive fields). Canonical schema in [`02-artifact-contract.md`](02-artifact-contract.md) §"Per-source schema"; operational view in [`09-discover-config.md`](09-discover-config.md). Committed to git as the contextualizer's configuration history.
 * **`research/.discover-cache.json`** — per-source-SHA enrichment
   cache, gitignored runtime state. Lookup keyed by `(source_id, sha)`.
   See [`09-discover-config.md`](09-discover-config.md) §"`research/.discover-cache.json`".
