@@ -224,6 +224,26 @@ pre-flight step 6 and `engine-bootstrap` Step 3.5 as consent points), so
 when no local cache exists for the source, REFRESH's existing CLI fallback
 is unchanged.
 
+### Re-read scoping (git-managed)
+
+Before re-reading or re-emitting any reference, read the re-emit candidate
+set `cited_paths.py` prints:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/tests/cited_paths.py" <references-dir> --changed research/.discover-inventory.json
+```
+
+Scope the re-read to the candidate references the output names plus the
+uncited changes (`.uncited_changes.paths`) — the parts of the corpus this
+run's changed-path signal actually covers. If the model re-emits a
+non-candidate reference anyway, state a reason for it in the post-run
+summary.
+
+Skip this step — there is no candidate set to read — when
+`research/.discover-inventory.json` does not exist or carries no source's
+`since_last_check`: no git-managed source's cache advanced this run, so
+there is no changed-path signal to scope against.
+
 ### Phase 2 — Decay check (web-doc only)
 
 For each `web-doc` source with `status: "confirmed"` and a cached
