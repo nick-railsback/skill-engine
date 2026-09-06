@@ -205,6 +205,18 @@ array leaves the unconditional shallow clone unchanged. See
 cloning" for the clone recipe and §"Post-clone validation" for how a
 typo'd entry is reported.
 
+**`workspace_roots`** — optional, `kind: "git-managed"` in practice
+though not schema-restricted to it. A non-empty list of top-level
+directory names that `verify.sh`'s `monorepo-coverage` (Check 6) and
+`catalog-density` (Check 8) heuristics treat as workspace roots for that
+source, replacing (not augmenting) the default list `packages apps libs
+crates services modules cmd internal pkg`. Set it when a source's
+monorepo layout does not match the default roots — a Go-style tree
+(`cmd/`, `internal/`, `pkg/`) needs no configuration under the default
+list, but a workspace tool with its own top-level convention does. See
+[`07-monorepo-adapter.md`](07-monorepo-adapter.md) for the heuristics'
+cache-tree resolution.
+
 **Citations resolve by path+content-hash.** No per-source sub-region granularity is enforced at the schema level; reference files cite their source by the `(source_id, path, sha)` triple. The chunked-source granularity layer that earlier engine versions carried has retired — DISCOVER now decides the partition it likes during a session, writes references that satisfy the four invariants, and the engine validates output via `verify.sh` rather than constraining the partition shape.
 
 **Required fields per entry post-DISCOVER-first-run.** `id`, `kind`, `url`-or-`path`, `status`, `lifecycle.state`. The contextualizer verify.sh's `source-entries` check (see [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/verify.sh)) enforces these required fields and the three enum constraints (`kind`, `status`, `lifecycle.state`) on every contextualizer invocation.

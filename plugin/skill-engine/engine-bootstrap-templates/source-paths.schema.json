@@ -86,6 +86,11 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "description": "Optional. Non-empty list of gitignore-style path patterns (git --no-cone sparse-checkout syntax, e.g. \"docs/**\", \"src/auth/**\", \"docs/sso.md\"). When present and non-empty, the engine's git-managed clone recipes (engine-bootstrap Step 3.5, DISCOVER's cache-miss offer) substitute a files_of_interest-scoped sparse clone for the unconditional shallow clone. Absent or empty array => unconditional shallow clone, unchanged. See 03-engine.md § files_of_interest-scoped sparse cloning."
+        },
+        "workspace_roots": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional. Non-empty list of top-level directory names that verify.sh's monorepo-coverage (Check 6) and catalog-density (Check 8) heuristics treat as workspace roots for this source, replacing (not augmenting) the default list `packages apps libs crates services modules cmd internal pkg`. Set it when a source's monorepo layout does not match the default roots (e.g. a workspace tool with its own top-level convention). See 07-monorepo-adapter.md."
         }
       },
       "allOf": [

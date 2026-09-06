@@ -38,6 +38,11 @@
 # engine repo's CI — the two surfaces are intentionally disjoint.
 #
 # Tool surface: bash + jq + standard POSIX utilities. No third-party deps.
+#
+# $SKILL_ENGINE_CACHE_ROOT — the engine's clone-cache root, already read by
+# the web-doc provenance and snapshot checks above; the monorepo-coverage
+# and catalog-density heuristics below also read it to resolve a
+# git-managed source's local tree. Defaults to ~/.cache/skill-engine.
 
 set -uo pipefail
 LC_ALL=C
@@ -1046,16 +1051,43 @@ else
   fi
 fi
 
+# Resolves a git-managed source's cache tree. Echoes the tree path on
+# success (exit 0); prints nothing and exits 1 when no cache directory
+# exists yet. More than one candidate (a crashed cache-advance can leave
+# a stray sibling alongside a fresh one) resolves silently to the
+# most-recently-modified match; the stale sibling is never reported.
+resolve_git_managed_tree() {
+  local id="$1" cache_root matches=()
+  cache_root="${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}"
+  while IFS= read -r -d '' d; do
+    matches+=("$d")
+  done < <(find "$cache_root/git-managed" -mindepth 1 -maxdepth 1 -type d -name "${id}-*" -print0 2>/dev/null)
+  [ "${#matches[@]}" -gt 0 ] || return 1
+  if [ "${#matches[@]}" -eq 1 ]; then
+    printf '%s' "${matches[0]}"
+  else
+    ls -dt "${matches[@]}" | head -1 | tr -d '\n'
+  fi
+}
+
 # ────────────────────────────────────────────────────────────────────────
 # Check 6 — Monorepo-coverage heuristic (monorepo-coverage)
 # ────────────────────────────────────────────────────────────────────────
 #
-# When a registered source root contains workspace members (packages/*,
-# apps/*, libs/*, crates/*), each top-level workspace member SHOULD have
-# ≥1 reference file citing it OR an explicit skip-reason in the post-run
-# summary. Surfaces "the model missed whole packages" cases without
-# rejecting the corpus outright — the model still decides what is
-# essential per the goal-given DISCOVER posture.
+# When a registered source's tree contains workspace members under any of
+# its effective workspace roots (default: packages apps libs crates
+# services modules cmd internal pkg; replaced, not augmented, by a
+# source's own workspace_roots when set), each top-level member SHOULD
+# have ≥1 reference file citing it OR an explicit skip-reason in the
+# post-run summary. Surfaces "the model missed whole packages" cases
+# without rejecting the corpus outright — the model still decides what is
+# essential per the goal-given DISCOVER posture. A git-managed source's
+# tree is resolved from the engine's clone cache
+# ($SKILL_ENGINE_CACHE_ROOT/git-managed/<id>-*/, see resolve_git_managed_tree
+# above); when no cache directory exists yet, the source is reported
+# [N/A] rather than silently skipped. A files_of_interest-scoped source
+# missing a workspace-root directory in its sparse checkout is likewise
+# reported [N/A] for that root, rather than folded into "clean".
 #
 # Failure mode: warn (not fail). The reviewer remains the backstop trust
 # mechanism.
@@ -1068,16 +1100,41 @@ elif [ "$(jq -r '.sources | length' "$sp_file" 2>/dev/null)" = "0" ]; then
   skip "monorepo-coverage heuristic — no sources to inspect"
 else
   monorepo_concerns=0
-  while IFS=$'\x1f' read -r src_id src_path; do
-    [ -n "$src_path" ] || continue
-    [ -d "$src_path" ] || continue
-    for ws_dir in "$src_path"/packages "$src_path"/apps "$src_path"/libs "$src_path"/crates; do
-      [ -d "$ws_dir" ] || continue
+  monorepo_inspected=0
+  while IFS=$'\x1f' read -r src_id src_kind src_path ws_roots_csv has_foi; do
+    tree=""
+    if [ "$src_kind" = "git-managed" ]; then
+      if ! tree="$(resolve_git_managed_tree "$src_id")"; then
+        skip "monorepo-coverage: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping workspace-member coverage for this source"
+        continue
+      fi
+      monorepo_inspected=1
+    elif [ -n "$src_path" ] && [ -d "$src_path" ]; then
+      tree="$src_path"
+      monorepo_inspected=1
+    else
+      continue
+    fi
+
+    if [ -n "$ws_roots_csv" ]; then
+      IFS=',' read -r -a roots <<< "$ws_roots_csv"
+    else
+      roots=(packages apps libs crates services modules cmd internal pkg)
+    fi
+
+    for root in "${roots[@]}"; do
+      ws_dir="$tree/$root"
+      if [ ! -d "$ws_dir" ]; then
+        if [ "$src_kind" = "git-managed" ] && [ "$has_foi" -gt 0 ]; then
+          skip "monorepo-coverage: $src_id's files_of_interest scoping leaves '$root/' out of the checkout -- skipping coverage for that root"
+        fi
+        continue
+      fi
       while IFS= read -r -d '' member; do
         member_name=$(basename "$member")
         cited=0
         if [ -d "$CTX_ROOT/references" ]; then
-          if grep -rqE "(packages|apps|libs|crates)/$(ere_escape "$member_name")\b" "$CTX_ROOT/references" 2>/dev/null; then
+          if grep -rqE "$(ere_escape "$root")/$(ere_escape "$member_name")\b" "$CTX_ROOT/references" 2>/dev/null; then
             cited=1
           fi
         fi
@@ -1087,8 +1144,10 @@ else
         fi
       done < <(find "$ws_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
     done
-  done < <(jq -r '.sources[]? | [(.id // ""), (.path // "")] | join("\u001f")' "$sp_file" 2>/dev/null)
-  if [ "$monorepo_concerns" -eq 0 ]; then
+  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), ((.workspace_roots // []) | join(",")), ((.files_of_interest // []) | length)] | join("\u001f")' "$sp_file" 2>/dev/null)
+  if [ "$monorepo_inspected" -eq 0 ]; then
+    : # every per-source skip() already reported why; no aggregate line needed
+  elif [ "$monorepo_concerns" -eq 0 ]; then
     pass "monorepo-coverage heuristic clean (no workspace members surfaced as uncited)"
   else
     pass "monorepo-coverage heuristic registered $monorepo_concerns warning(s) above (reviewer to disposition)"
@@ -1138,11 +1197,20 @@ fi
 # Check 8 — Catalog-density floor (catalog-density)
 # ────────────────────────────────────────────────────────────────────────
 #
-# When a source root contains a non-trivial file count (≥ N=20), the
+# When a source's tree contains a non-trivial file count (≥ N=20), the
 # contextualizer's catalog SHOULD carry ≥ M=3 rows for that source OR an
 # explicit minimal-essence justification in the post-run summary.
 # Catches "the model wrote one reference for a 300-file codebase" cases
-# without dictating partition shape.
+# without dictating partition shape. A git-managed source's tree is
+# resolved from the engine's clone cache the same way Check 6 does; when
+# no cache directory exists yet, the source is reported [N/A] rather than
+# silently skipped, and its file count excludes everything under .git/ (a
+# fresh shallow clone's own git plumbing, not corpus content — an
+# unfiltered count clears the floor on nearly every git-managed source
+# regardless of actual corpus size). A files_of_interest-scoped source
+# missing a workspace-root directory in its sparse checkout gets a single
+# [N/A] instead of a file count — a partial tree's count is not
+# comparable to the floor in either direction.
 #
 # Failure mode: warn (not fail).
 #
@@ -1156,11 +1224,44 @@ elif [ "$nav_ok" -ne 1 ]; then
   skip "Cannot evaluate catalog-density — navigator SKILL.md not located (see Check 3)"
 else
   density_concerns=0
+  density_inspected=0
   nav_skill="$CTX_ROOT/SKILL.md"
-  while IFS=$'\x1f' read -r src_id src_path; do
-    [ -n "$src_path" ] || continue
-    [ -d "$src_path" ] || continue
-    file_count=$(find "$src_path" -maxdepth 6 -type f 2>/dev/null | wc -l | tr -d ' ')
+  while IFS=$'\x1f' read -r src_id src_kind src_path has_foi; do
+    tree=""
+    if [ "$src_kind" = "git-managed" ]; then
+      if ! tree="$(resolve_git_managed_tree "$src_id")"; then
+        skip "catalog-density: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping density check for this source"
+        continue
+      fi
+    elif [ -n "$src_path" ] && [ -d "$src_path" ]; then
+      tree="$src_path"
+    else
+      continue
+    fi
+
+    if [ "$src_kind" = "git-managed" ] && [ "$has_foi" -gt 0 ]; then
+      ws_roots_csv=$(jq -r --arg id "$src_id" '.sources[]? | select(.id == $id) | ((.workspace_roots // []) | join(","))' "$sp_file" 2>/dev/null)
+      if [ -n "$ws_roots_csv" ]; then
+        IFS=',' read -r -a roots <<< "$ws_roots_csv"
+      else
+        roots=(packages apps libs crates services modules cmd internal pkg)
+      fi
+      scoped_out=0
+      for root in "${roots[@]}"; do
+        [ -d "$tree/$root" ] || scoped_out=1
+      done
+      if [ "$scoped_out" -eq 1 ]; then
+        skip "catalog-density: $src_id's files_of_interest scoping leaves at least one workspace root out of the checkout -- file count would be partial, skipping the density floor for this source"
+        continue
+      fi
+    fi
+
+    density_inspected=1
+    if [ "$src_kind" = "git-managed" ]; then
+      file_count=$(find "$tree" -maxdepth 6 -type f -not -path '*/.git/*' -not -path '*/.git' 2>/dev/null | wc -l | tr -d ' ')
+    else
+      file_count=$(find "$tree" -maxdepth 6 -type f 2>/dev/null | wc -l | tr -d ' ')
+    fi
     [ "$file_count" -ge 20 ] || continue
     # Per-source row count keyed off the contract invariant that every
     # reference filename is prefixed with its source id (`<src_id>-*.md`).
@@ -1177,8 +1278,10 @@ else
       density_concerns=$((density_concerns + 1))
       printf '  [WARN] source %s has %d files but the catalog carries only %d row(s) (<3); verify post-run summary for a minimal-essence justification\n' "$src_id" "$file_count" "$catalog_rows"
     fi
-  done < <(jq -r '.sources[]? | [(.id // ""), (.path // "")] | join("\u001f")' "$sp_file" 2>/dev/null)
-  if [ "$density_concerns" -eq 0 ]; then
+  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), ((.files_of_interest // []) | length)] | join("\u001f")' "$sp_file" 2>/dev/null)
+  if [ "$density_inspected" -eq 0 ]; then
+    : # every per-source skip() already reported why; no aggregate line needed
+  elif [ "$density_concerns" -eq 0 ]; then
     pass "catalog-density heuristic clean (no sources surfaced below the row floor)"
   else
     pass "catalog-density heuristic registered $density_concerns warning(s) above (reviewer to disposition)"

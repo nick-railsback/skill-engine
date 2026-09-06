@@ -74,6 +74,8 @@ Optional documentation fields (`owner_team`, `notes`, `weight`) are recognized b
 
 Two locations are valid: `<project-root>/monorepo-config.json` (engine-self-contextualizer case) and `<project-root>/research/monorepo-config.json` (the canonical contextualizer location). The verify check inspects both. Absent file is the default — most contextualizers are not monorepos.
 
+**Check 6's own root detection is separate from `monorepo-config.json`.** It resolves a `git-managed` source's tree from the engine's clone cache (`$SKILL_ENGINE_CACHE_ROOT/git-managed/<id>-*/`) rather than skipping the source outright, and reports `[N/A]` naming the reason when no cache directory exists yet instead of silently passing. Workspace members are enumerated from the default root list `packages apps libs crates services modules cmd internal pkg`, or from a source's own `workspace_roots` array in `source-paths.json` when set, which replaces — not augments — the defaults. This is the hook a future slice-aware default (`monorepos[].slices[].paths`, v0.10.0) will feed into.
+
 ## 7.4 The bootstrap — CODEOWNERS to starter config
 
 The bootstrap script lives at `bootstrap-monorepo-config.sh.template`. It is **POSIX bash**, takes a repo-path argument, reads CODEOWNERS, and emits a seeded `monorepo-config.json` to stdout.

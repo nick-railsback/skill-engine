@@ -149,11 +149,8 @@ CACHE_SEEDING="$PLUGIN_ROOT/skills/engine-bootstrap/references/cache-seeding.md"
 CACHE_AND_CLONE="$PLUGIN_ROOT/skills/discover/references/cache-and-clone.md"
 ARTIFACT_CONTRACT="$PLUGIN_ROOT/docs/02-artifact-contract.md"
 ENGINE_DOC="$PLUGIN_ROOT/docs/03-engine.md"
-VERIFY_SH="$REPO_ROOT/.claude/skills/skill-engine-context/verify.sh"
 CI_LOCAL="$REPO_ROOT/scripts/ci-local.sh"
 
-# Frozen at this chunk's baseline_sha (711f4f507a7d169245c6821f2a246f3a5996337b).
-VERIFY_SHA_EXPECTED="a972ed6ebcd778a1e9743d07552c144c08031ad74e5bfd34b88f13e35c64bcd9"
 CS_BASELINE_SHA256="4761ffa8e16f67e48631de83fca6e6706d12a3b6b6044956e1e745f41c04d3c5"
 CC_BASELINE_SHA256="4c126c42b367d1b20b246b69356950baac6c6f921e3fb0e5207cfb6d84600472"
 
@@ -787,21 +784,18 @@ else
 fi
 
 # ============================================================================
-# Preservation: verify.sh untouched; json/doctrine gates currently pass
+# Preservation: json/doctrine gates currently pass
 # ============================================================================
-section "preservation — verify.sh untouched, json and doctrine gates currently pass"
-
-if [ -f "$VERIFY_SH" ]; then
-  verify_actual_sha="$(sha256_of_file "$VERIFY_SH")"
-  if [ "$verify_actual_sha" = "$VERIFY_SHA_EXPECTED" ]; then
-    pass "verify.sh (.claude/skills/skill-engine-context/verify.sh) is byte-identical to the pre-chunk baseline"
-  else
-    fail "verify.sh is byte-identical to the pre-chunk baseline" \
-      "expected sha256 $VERIFY_SHA_EXPECTED, got $verify_actual_sha"
-  fi
-else
-  fail "verify.sh is byte-identical to the pre-chunk baseline" "file not found at $VERIFY_SH"
-fi
+# This section originally also asserted verify.sh byte-identical to this
+# chunk's own pre-chunk baseline (criterion 6's preservation half — true at
+# the time, since this chunk's own diff never touched verify.sh). Retired
+# 2026-09-06: a later chunk on this same feature branch re-stamps verify.sh's
+# Check 6/8 content by roadmap design (verify.sh is edited in exactly two
+# chunks total, this being neither of them) — a hash pinned against a SHA
+# from before that re-stamp can never be true again, in this chunk or any
+# later one, so keeping the assertion would permanently red this oracle
+# rather than verify anything about this chunk's own feature.
+section "preservation — json and doctrine gates currently pass"
 
 json_out="$(bash "$CI_LOCAL" json 2>&1)"
 json_rc=$?
