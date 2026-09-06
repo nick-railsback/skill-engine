@@ -84,6 +84,13 @@ fi
 #   diff, status, log, show, clone, ls-remote, ls-tree, ls-files,
 #   rev-parse, cat-file
 #
+# Cache-scoped exception (conditional, not part of the allow-list above):
+#   fetch, sparse-checkout, and checkout are additionally permitted when the
+#   invocation's -C target is a source-literal path under
+#   ~/.cache/skill-engine/, spelled ~, $HOME, or ${HOME} only -- a variable
+#   that merely resolves there at runtime does not qualify. No other verb is
+#   exempt; pull, reset, worktree, and the rest stay denied everywhere.
+#
 # Scope:
 #   plugin/skill-engine/skills/**/*.md
 #   plugin/skill-engine/agents/*.md       (directory currently absent;
@@ -152,7 +159,10 @@ git_readonly_scan() {
 # filter, prose noun phrases like "no git mutations" or "a git host URL"
 # trip the lint. The union below is the read-only allow-list plus the
 # mutating deny-list, plus a few additional known verbs seen in docs /
-# templates.
+# templates. cache_exempt names the three verbs conditionally permitted
+# under the cache-scoped exception above; membership there does not by
+# itself excuse a violation -- the invocation's -C target (the scanner's
+# 4th field) must also match the cache-root pattern.
 readonly_violations=$(
   {
     find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
@@ -182,8 +192,17 @@ readonly_violations=$(
       verbs["sparse-checkout"]=1; verbs["describe"]=1; verbs["blame"]=1
       verbs["archive"]=1; verbs["format-patch"]=1; verbs["request-pull"]=1
       verbs["grep"]=1; verbs["branch"]=1; verbs["remote"]=1
+      # Conditional exception: these three verbs are permitted when -C
+      # targets an engine-controlled clone under ~/.cache/skill-engine/.
+      # Closed on purpose -- pull, reset, worktree, and the rest stay
+      # denied everywhere regardless of -C target.
+      cache_exempt["fetch"]=1; cache_exempt["sparse-checkout"]=1
+      cache_exempt["checkout"]=1
     }
-    { if (($3 in verbs) && !($3 in allow)) print }
+    {
+      exempt = ($3 in cache_exempt) && $4 ~ /^(~|\$HOME|\$\{HOME\})\/\.cache\/skill-engine\//
+      if (($3 in verbs) && !($3 in allow) && !exempt) print
+    }
   '
 )
 
@@ -193,6 +212,7 @@ if [ -n "$readonly_violations" ]; then
     printf "  %s:%s  git %s\n", $1, $2, $3
   }'
   echo "  Allow-list: diff, status, log, show, clone, ls-remote, ls-tree, ls-files, rev-parse, cat-file."
+  echo "  Exception: fetch, sparse-checkout, and checkout are permitted when -C targets an engine-controlled path under ~/.cache/skill-engine/ (literal ~, \$HOME, or \${HOME} only)."
   fail=1
 fi
 

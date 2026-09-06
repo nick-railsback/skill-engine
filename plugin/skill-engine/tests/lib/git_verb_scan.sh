@@ -5,7 +5,7 @@
 #
 # Writes one line per candidate git invocation:
 #
-#   <path-with-prefix-stripped>:<line-number>:<verb>
+#   <path-with-prefix-stripped>:<line-number>:<verb>:<c-target-or-empty>
 #
 # "Candidate" is the operative word: this answers "what token follows a git
 # invocation", not "is that token a mutating verb". doctrine.sh owns the
@@ -15,6 +15,11 @@
 # apart is what lets this half be exercised against fixtures — see
 # tests/doctrine-git-verbs/run.sh — instead of only against whatever the
 # repo happens to contain today.
+#
+# The 4th field is the invocation's uppercase -C target, one layer of
+# surrounding double quotes stripped, or empty when there is none --
+# doctrine.sh's cache-scoped exception (check 4) tests this field; existing
+# 3-field consumers are unaffected since it is appended, not inserted.
 #
 # One awk invocation over the whole file list, not one per file: the caller
 # hands it dozens of files across skills/, bin/, tests/ and the templates,
@@ -62,8 +67,28 @@ awk -v root="$root" '
     # Forms that can actually run something -- $(...) and backticks -- are
     # deliberately left in place and still scanned. Known limit, pinned
     # rather than implied away: `bash -c "git push"` is not caught here.
-    while (match(line, /"[^"$`]*"/)) {
-      line = substr(line, 1, RSTART - 1) " " substr(line, RSTART + RLENGTH)
+    #
+    # Split on literal `"` rather than matching `"[^"$`]*"` directly: the
+    # match-based form finds any span bounded by two quote characters with
+    # none of `"$` `` ` `` between them, without checking that the two
+    # quotes actually open and close the *same* literal. Given
+    # `git -C "$dest" fetch --depth=1 origin "$new_sha"`, that bridges from
+    # the closing quote of "$dest" to the opening quote of "$new_sha" and
+    # deletes the verb between them. split() pairs quotes correctly: odd
+    # fields are text outside any quotes, even fields are the content of one
+    # matched pair.
+    n = split(line, q, "\"")
+    line = q[1]
+    for (i = 2; i <= n; i++) {
+      if (i % 2 == 0) {
+        # A literal that can run or expand something is left untouched. A
+        # plain literal is replaced with an empty quoted pair, not a bare
+        # space -- a bare space would let a `-C` value collapse into
+        # whitespace and merge with the verb that follows it.
+        line = line (q[i] ~ /[$`]/ ? "\"" q[i] "\"" : "\"\"")
+      } else {
+        line = line q[i]
+      }
     }
     # Extract executable git verbs: \<git\>, then any of git'"'"'s OWN options,
     # then the verb.
@@ -85,12 +110,27 @@ awk -v root="$root" '
     # (`git --no-pager reset` reporting nothing), which is the same blind
     # spot in a new place.
     while (match(line, /(^|[[:space:]]|[(;&|])git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--[^[:space:]=]+=[^[:space:]]*|--?[A-Za-z][A-Za-z-]*))*[[:space:]]+[a-z][a-z-]*/)) {
-      token = substr(line, RSTART, RLENGTH)
+      full = substr(line, RSTART, RLENGTH)
+      matchEnd = RSTART + RLENGTH
+      token = full
       # The verb is the final whitespace-separated token of the match,
       # whatever ran before it.
       sub(/^.*[[:space:]]/, "", token)
-      print rel ":" FNR ":" token
-      line = substr(line, RSTART + RLENGTH)
+      # The (uppercase-only) -C target, if this invocation carries one --
+      # doctrine.sh'"'"'s cache-scoped exception tests this 4th field, since
+      # the 3-field contract above gives it nothing to test the exception
+      # against. -c is a config assignment (user.email=...), never a
+      # directory, and must never be read as one.
+      ctarget = ""
+      if (match(full, /-C[[:space:]]+[^[:space:]]+/)) {
+        ctarget = substr(full, RSTART, RLENGTH)
+        sub(/^-C[[:space:]]+/, "", ctarget)
+        if (ctarget ~ /^".*"$/) {
+          ctarget = substr(ctarget, 2, length(ctarget) - 2)
+        }
+      }
+      print rel ":" FNR ":" token ":" ctarget
+      line = substr(line, matchEnd)
     }
   }
 ' "$@"

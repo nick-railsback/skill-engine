@@ -21,7 +21,7 @@
 #
 #     Writes one line per candidate git invocation:
 #
-#       <path-with-prefix-stripped>:<line-number>:<verb>
+#       <path-with-prefix-stripped>:<line-number>:<verb>:<c-target-or-empty>
 #
 #     "Candidate" is the operative word. This layer answers "what token
 #     follows a git invocation", not "is that token a mutating verb" —
@@ -29,6 +29,11 @@
 #     candidates into violations, so prose like "no git mutations" is
 #     expected to come out of here as the candidate `mutations` and be
 #     dropped there.
+#
+#     The 4th field is the invocation's uppercase -C target (one layer of
+#     surrounding double quotes stripped), or empty when there is none —
+#     doctrine.sh's cache-scoped exception tests this field; it is appended
+#     after the original 3, so existing field-3 consumers are unaffected.
 #
 #     Not candidates, and stripped before extraction: HTML comments,
 #     Markdown code spans, shell line comments, and double-quoted literals
