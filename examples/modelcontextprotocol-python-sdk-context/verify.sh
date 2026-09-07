@@ -530,7 +530,13 @@ fi
 # links — stamped templates legitimately carry example links inside
 # <!-- ... --> blocks documenting the post-DISCOVER catalog shape.
 #
-# Detects duplicate catalog rows (no sort -u) — strict 1:1 bijection.
+# Detects duplicate catalog rows — strict 1:1 bijection. The duplicate scan
+# reads the catalog's own un-deduplicated slug list through `sort | uniq -d`,
+# while every membership and set-difference question below is answered
+# against sorted, deduplicated lists. One consequence of that split is
+# deliberate: a phantom-row diagnostic fires once per distinct slug rather
+# than once per row repeating it, and the duplicate-row failure is what
+# reports the repetition itself.
 #
 # References scan: file form `references/<slug>.md` AND directory form
 # `references/<slug>/` (containing a canonical primary `.md` of the same
@@ -661,7 +667,7 @@ else
   dir_form_broken_slugs=()
   while IFS= read -r -d '' d; do
     [ -n "$d" ] || continue
-    dname=$(basename "$d")
+    dname="${d##*/}"
     if [ -f "$d/$dname.md" ]; then
       dir_form_valid_slugs+=("$dname")
     else
@@ -677,12 +683,21 @@ else
   while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
     rel="${f#"$CTX_ROOT/references/"}"
-    seg_count=$(awk -F/ '{print NF}' <<<"$rel")
+    # Segment count from the separator count, and the parent/basename split
+    # by parameter expansion. These four values were four subprocesses per
+    # directory-form reference (basename, awk, dirname, basename); at 2,000
+    # references that was ~11.7s of forks, against ~0s for the file-form
+    # half beside it, which had already been converted. Slugs are
+    # [a-z0-9-] and the paths are find -type f results, so the expansions
+    # decide identically for every input this loop can see.
+    rel_seps="${rel//[^\/]/}"
+    seg_count=$(( ${#rel_seps} + 1 ))
     if [ "$seg_count" -ge 3 ]; then
       nested_refs+=("$rel")
     elif [ "$seg_count" -eq 2 ]; then
-      parent=$(dirname "$rel")
-      base=$(basename "$rel" .md)
+      parent="${rel%/*}"
+      base="${rel##*/}"
+      base="${base%.md}"
       if [ "$parent" != "$base" ]; then
         nested_refs+=("$rel")
       fi

@@ -41,8 +41,11 @@
 # existing examples/*/research/source-paths.json and the template still
 # validating; the byte-identical-baseline checks on the two files' existing
 # unconditional shallow-clone recipes (nothing has touched them yet); and
-# criterion 6's preservation half — verify.sh's hash, and `ci-local.sh json`
-# / `ci-local.sh doctrine` both passing on the repo as it stands today.
+# criterion 6's preservation half — `ci-local.sh json` and `ci-local.sh
+# doctrine` both passing on the repo as it stands today. verify.sh's hash
+# was part of that half until the heuristics work re-stamped the file; the
+# byte-identity assertion it named is gone, and this list no longer claims
+# it.
 #
 # Design decisions pinned where spec.md is silent on an operational detail:
 #   1. Schema fixtures are full source-paths.json documents (schema_version

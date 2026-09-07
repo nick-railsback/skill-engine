@@ -303,12 +303,19 @@ When `/skill-engine:discover` is invoked:
    - **If a cache directory is available** (matched in step 6 this run,
      or already present from a prior run), compute the changed-path list
      the same diff-based way the in-place advance recipe does
-     (`tool-and-output-mechanics.md` § Cache garbage collection) rather
-     than `discover_inventory.py`'s own `--last-checked-sha` git-log path:
-     after an in-place `--depth=1` fetch the new SHA lands as its own
-     parentless shallow boundary, and a `git log` range walk against it
-     silently drops deleted paths and mislabels every surviving path as
-     added rather than modified:
+     (`tool-and-output-mechanics.md` § Cache garbage collection), then hand
+     the result to `--since-json`. The reason is the shallow cache: after
+     an in-place `--depth=1` fetch the new SHA lands as its own parentless
+     shallow boundary, so any range walk between the two SHAs has no
+     connecting history to walk. A two-tree `git diff` needs none.
+
+     `discover_inventory.py --last-checked-sha` now performs that same
+     two-tree diff internally, so the choice between the two is one of
+     shape, not correctness — this recipe keeps the computation inline so
+     the JSON it feeds `--since-json` is visible at the call site. (An
+     earlier revision of this paragraph justified the split by a `git log`
+     range walk in the Python that dropped deletions; that walk is gone,
+     and folding the three implementations into one is tracked separately.)
 
      ```bash
      if [ -n "$last_checked_sha" ]; then

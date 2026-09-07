@@ -119,8 +119,14 @@ new_ctx() {
 
 REF_COUNT=2000
 
+# build_large_tree <ctx> <n> [form] — form is "file" (references/<slug>.md,
+# catalog target references/<slug>.md) or "dir" (references/<slug>/<slug>.md,
+# catalog target references/<slug>/). Both halves of Check 4 populate their
+# slug lists in separate loops with separate per-item work, so a file-form
+# fixture alone leaves the directory-form loops entirely unexercised by the
+# timing bound.
 build_large_tree() {
-  local ctx="$1" n="$2" i slug
+  local ctx="$1" n="$2" form="${3:-file}" i slug
   mkdir -p "$ctx/references" "$ctx/research"
   printf '{"schema_version": 1, "sources": [{"id": "synthetic-src", "kind": "git-managed", "url": "https://github.com/example/synthetic", "status": "confirmed", "lifecycle": {"state": "reachable"}}]}\n' \
     > "$ctx/research/source-paths.json"
@@ -134,14 +140,24 @@ build_large_tree() {
     printf '| Reference | Description |\n|---|---|\n'
     for ((i = 1; i <= n; i++)); do
       printf -v slug 'ref%05d' "$i"
-      printf '| [%s](references/%s.md) | One-paragraph synthetic reference %s. |\n' "$slug" "$slug" "$slug"
+      if [ "$form" = "dir" ]; then
+        printf '| [%s](references/%s/) | One-paragraph synthetic reference %s. |\n' "$slug" "$slug" "$slug"
+      else
+        printf '| [%s](references/%s.md) | One-paragraph synthetic reference %s. |\n' "$slug" "$slug" "$slug"
+      fi
     done
   } > "$ctx/SKILL.md"
 
   for ((i = 1; i <= n; i++)); do
     printf -v slug 'ref%05d' "$i"
-    printf '# %s\n\nSynthetic one-paragraph reference body for %s, present only to exercise the catalog ↔ references bijection at scale.\n' \
-      "$slug" "$slug" > "$ctx/references/$slug.md"
+    if [ "$form" = "dir" ]; then
+      mkdir -p "$ctx/references/$slug"
+      printf '# %s\n\nSynthetic one-paragraph reference body for %s, present only to exercise the catalog ↔ references bijection at scale.\n' \
+        "$slug" "$slug" > "$ctx/references/$slug/$slug.md"
+    else
+      printf '# %s\n\nSynthetic one-paragraph reference body for %s, present only to exercise the catalog ↔ references bijection at scale.\n' \
+        "$slug" "$slug" > "$ctx/references/$slug.md"
+    fi
   done
 }
 
@@ -165,11 +181,12 @@ build_stubbed_verify() {
 }
 
 run_timing_ac() {
+  local form="${1:-file}"
   local big_ctx stub_verify t0 t1 full_out full_rc t_full t2 t3 stub_out t_stub diff_s
 
   big_ctx="$(mktemp -d -t skill-engine-bijection-linear-perf.XXXXXX)"
   created_paths+=("$big_ctx")
-  build_large_tree "$big_ctx" "$REF_COUNT"
+  build_large_tree "$big_ctx" "$REF_COUNT" "$form"
 
   stub_verify="$(mktemp -t skill-engine-bijection-linear-stub.XXXXXX)"
   created_paths+=("$stub_verify")
@@ -188,32 +205,33 @@ run_timing_ac() {
 
   diff_s=$((t_full - t_stub))
 
-  printf '  -- timing: full=%ss stubbed=%ss check4-contribution=%ss (N=%d)\n' \
-    "$t_full" "$t_stub" "$diff_s" "$REF_COUNT"
+  printf '  -- timing [%s-form]: full=%ss stubbed=%ss check4-contribution=%ss (N=%d)\n' \
+    "$form" "$t_full" "$t_stub" "$diff_s" "$REF_COUNT"
 
   if [ "$full_rc" -eq 0 ] && printf '%s' "$full_out" | grep -qF 'Failed: 0'; then
-    pass_case "2,000-reference contextualizer passes all checks"
+    pass_case "2,000-reference ${form}-form contextualizer passes all checks"
   else
-    fail_case "2,000-reference contextualizer passes all checks" "$full_out"
+    fail_case "2,000-reference ${form}-form contextualizer passes all checks" "$full_out"
   fi
 
   if [ "$diff_s" -lt 3 ]; then
-    pass_case "Check 4's own wall-clock contribution at N=2,000 is under 3s (got ${diff_s}s)"
+    pass_case "Check 4's own wall-clock contribution at N=2,000 ${form}-form references is under 3s (got ${diff_s}s)"
   else
-    fail_case "Check 4's own wall-clock contribution at N=2,000 is under 3s (got ${diff_s}s)" \
+    fail_case "Check 4's own wall-clock contribution at N=2,000 ${form}-form references is under 3s (got ${diff_s}s)" \
       "full run: ${t_full}s, stubbed run: ${t_stub}s, difference: ${diff_s}s"
   fi
 
   # Sanity: the stub must not have broken the script — it should still run
   # to completion and skip the bijection check cleanly rather than crash.
   if printf '%s' "$stub_out" | grep -qF 'catalog-bijection stubbed out for timing isolation'; then
-    pass_case "stubbed copy runs to completion and skips the bijection check as intended"
+    pass_case "stubbed copy runs to completion and skips the bijection check as intended (${form}-form)"
   else
-    fail_case "stubbed copy runs to completion and skips the bijection check as intended" "$stub_out"
+    fail_case "stubbed copy runs to completion and skips the bijection check as intended (${form}-form)" "$stub_out"
   fi
 }
 
-run_timing_ac
+run_timing_ac file
+run_timing_ac dir
 
 # ══════════════════════════════════════════════════════════════════════
 # Diagnostic preservation: every current fail() class, verbatim text
