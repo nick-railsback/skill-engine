@@ -485,6 +485,97 @@ else
 fi
 
 # ============================================================================
+# Sibling-id and staging directories are not candidates: the resolver must
+# not claim another source's tree, nor a half-written clone
+# ============================================================================
+section "cache-tree resolution — a sibling source's tree and a .tmp staging dir are not candidates"
+
+populate_sibling() {
+  mkdir -p "$1/packages/wrong-repo-member"
+  printf 'x\n' > "$1/packages/wrong-repo-member/x.txt"
+}
+
+# The registry carries `acme-api` alone, and the only directory in the cache
+# belongs to `acme-api-docs` -- a DIFFERENT source whose id merely starts
+# with the same characters. This is the shape shipped in
+# examples/langchain-context, where langchain-ai-langchain sits alongside
+# langchain-ai-langchain-google and langchain-ai-langchain-aws. A bare
+# `<id>-*` glob matches the sibling and attributes its members to the wrong
+# repository; the correct answer is that acme-api has no tree at all.
+root_h="$WORK/fx-h"
+build_nav "$root_h"
+write_sources "$root_h" "[$(git_managed_source acme-api https://example.com/acme/acme-api)]"
+cache_h="$WORK/cache-h"
+shallow_clone_into "$cache_h/git-managed/acme-api-docs-abc12345" populate_sibling
+
+out_h="$(run_verify "$root_h" "$cache_h")"
+c6_h="$(check_section "$out_h" 'Monorepo-coverage')"
+c8_h="$(check_section "$out_h" 'Catalog-density')"
+
+if printf '%s' "$c6_h" | grep -qF 'no local cache tree'; then
+  pass "monorepo-coverage: a sibling id's tree is not claimed; acme-api reports no local cache tree"
+else
+  fail "monorepo-coverage: a sibling id's tree is not claimed; acme-api reports no local cache tree" \
+    "monorepo-coverage section: ${c6_h:-<empty>}"
+fi
+if printf '%s' "$c8_h" | grep -qF 'no local cache tree'; then
+  pass "catalog-density: a sibling id's tree is not claimed; acme-api reports no local cache tree"
+else
+  fail "catalog-density: a sibling id's tree is not claimed; acme-api reports no local cache tree" \
+    "catalog-density section: ${c8_h:-<empty>}"
+fi
+if printf '%s' "$out_h" | grep -qF 'wrong-repo-member'; then
+  fail "the sibling source's member (wrong-repo-member) is never attributed to acme-api" \
+    "full output mentioned wrong-repo-member: ${out_h:-<empty>}"
+else
+  pass "the sibling source's member (wrong-repo-member) is never attributed to acme-api"
+fi
+
+# An in-flight clone stages at `<id>-<sha>.tmp.<pid>` and is deliberately
+# made NEWER than the completed tree beside it, so the mtime tiebreak that
+# settles two legitimate `<id>-<sha>` siblings would pick the half-written
+# directory and silently under-report the source's members.
+populate_staging_real() {
+  mkdir -p "$1/packages/real-a" "$1/packages/real-b"
+  printf 'a\n' > "$1/packages/real-a/a.txt"
+  printf 'b\n' > "$1/packages/real-b/b.txt"
+}
+populate_staging_partial() {
+  mkdir -p "$1/packages/partial-only"
+  printf 'p\n' > "$1/packages/partial-only/p.txt"
+}
+
+root_i="$WORK/fx-i"
+build_nav "$root_i"
+write_sources "$root_i" "[$(git_managed_source tmp-src https://example.com/acme/tmp-src)]"
+cache_i="$WORK/cache-i"
+dest_i_real="$cache_i/git-managed/tmp-src-abc12345"
+dest_i_tmp="$cache_i/git-managed/tmp-src-abc12345.tmp.12345"
+shallow_clone_into "$dest_i_real" populate_staging_real
+shallow_clone_into "$dest_i_tmp" populate_staging_partial
+find "$dest_i_real" -exec touch -t 202001010000 {} +
+find "$dest_i_tmp" -exec touch -t 202501010000 {} +
+
+out_i="$(run_verify "$root_i" "$cache_i")"
+c6_i="$(check_section "$out_i" 'Monorepo-coverage')"
+
+i_warn_count="$(printf '%s' "$c6_i" | grep -c '\[WARN\]')"
+if [ "$i_warn_count" -eq 2 ] \
+  && printf '%s' "$c6_i" | grep -qF 'real-a' \
+  && printf '%s' "$c6_i" | grep -qF 'real-b'; then
+  pass "monorepo-coverage: the completed clone is inspected even when a newer .tmp staging dir sits beside it"
+else
+  fail "monorepo-coverage: the completed clone is inspected even when a newer .tmp staging dir sits beside it" \
+    "monorepo-coverage section: ${c6_i:-<empty>}"
+fi
+if printf '%s' "$out_i" | grep -qF 'partial-only'; then
+  fail "the in-flight staging directory's member (partial-only) never surfaces" \
+    "full output mentioned partial-only: ${out_i:-<empty>}"
+else
+  pass "the in-flight staging directory's member (partial-only) never surfaces"
+fi
+
+# ============================================================================
 # files_of_interest scoping: an absent workspace root gets a scoping N/A,
 # not a silent clean; a present one behaves exactly as the plain
 # uncited-member case above

@@ -1151,10 +1151,36 @@ fi
 # exists yet. More than one candidate (a crashed cache-advance can leave
 # a stray sibling alongside a fresh one) resolves silently to the
 # most-recently-modified match; the stale sibling is never reported.
+#
+# A candidate must be named exactly `<id>-<sha>`: everything after the id
+# and its separating hyphen is required to be hex digits and nothing else.
+# The `<id>-*` glob alone admits two directories that are not this source's
+# tree, and both resolve silently to a wrong answer rather than to no
+# answer:
+#
+#   - A sibling source whose id extends this one. Ids may contain hyphens,
+#     so `langchain-ai-langchain` globs onto `langchain-ai-langchain-google`
+#     and `langchain-ai-langchain-aws` -- a trio shipped in
+#     examples/langchain-context -- and reports the sibling's workspace
+#     members as uncited under the wrong repository. A hex-only suffix
+#     rejects it: the remainder carries letters outside [0-9a-f] and a
+#     further hyphen.
+#   - An in-flight clone, which stages at `<id>-<sha>.tmp.<pid>` and is by
+#     construction newer than the completed tree beside it, so the mtime
+#     tiebreak below would prefer a half-written checkout and under-report
+#     the source. A hex-only suffix rejects it on the dots.
+#
+# Two legitimate `<id>-<sha>` siblings both survive the filter, which is
+# the case the mtime tiebreak exists for.
 resolve_git_managed_tree() {
-  local id="$1" cache_root matches=()
+  local id="$1" cache_root matches=() d suffix
   cache_root="${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}"
   while IFS= read -r -d '' d; do
+    suffix="${d##*/}"
+    suffix="${suffix#"${id}-"}"
+    case "$suffix" in
+      "" | *[!0-9a-f]*) continue ;;
+    esac
     matches+=("$d")
   done < <(find "$cache_root/git-managed" -mindepth 1 -maxdepth 1 -type d -name "${id}-*" -print0 2>/dev/null)
   [ "${#matches[@]}" -gt 0 ] || return 1
