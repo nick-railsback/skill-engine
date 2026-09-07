@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -56,11 +57,36 @@ def _load_json(path: Path) -> object:
         return json.load(fh)
 
 
+# scp-style SSH remote: [user@]host:path, as `git@github.com:acme/repo.git`.
+# `intake-and-detection.md` accepts this form at bootstrap and
+# `stamping-and-templates.md` records the url verbatim, so a source can be
+# registered this way. urlsplit gives it no netloc at all, so without this
+# it never resolves to a host/repo pair and every change under such a
+# source is reported uncited. The negative lookahead keeps `https://...` --
+# whose scheme also ends in ':' -- out of this branch.
+_SCP_LIKE = re.compile(r"^(?:[^@/]+@)?(?P<host>[^:/]+):(?!//)(?P<path>.+)$")
+
+
+def _normalize_repo(repo: str) -> str:
+    """A repo locator comparable across the spellings the same repository is
+    written in: surrounding '/' dropped, a '.git' suffix dropped (accepted
+    at intake, never present in a web citation), and case folded (the forges
+    this tool credits treat owner/repo case-insensitively, and a citation
+    routinely differs in case from the registered url)."""
+    repo = repo.strip("/")
+    if repo.lower().endswith(".git"):
+        repo = repo[: -len(".git")]
+    return repo.lower()
+
+
 def _normalize_host_repo(url: str) -> tuple[str, str] | None:
-    """(lowercased host, repo path with no leading/trailing '/'), the same
-    normalization applied to both a registered source's `url` and a
-    citation's own matched host+repo — comparable only once both sides go
-    through it."""
+    """(lowercased host, normalized repo path) — the same normalization
+    applied to both a registered source's `url` and a citation's own matched
+    host+repo, which are comparable only once both sides go through it."""
+    scp = _SCP_LIKE.match(url)
+    if scp is not None:
+        host = scp.group("host").rpartition("@")[2].lower()
+        return (host, _normalize_repo(scp.group("path"))) if host else None
     try:
         parts = urlsplit(url)
     except ValueError:
@@ -68,14 +94,20 @@ def _normalize_host_repo(url: str) -> tuple[str, str] | None:
     host = parts.netloc.rpartition("@")[2].lower()
     if not host:
         return None
-    return host, parts.path.strip("/")
+    return host, _normalize_repo(parts.path)
 
 
 def _load_git_managed_sources(references_dir: Path) -> dict[tuple[str, str], str]:
-    """{(host, repo): source_id} for every git-managed source in the same
-    registry accepted_hosts() would read for this references_dir — same
-    resolution order (a staged `.proposed` registry, when present, replaces
-    the live one beside it rather than merging with it)."""
+    """{(host, repo): source_id} for every git-managed source registered for
+    this references_dir.
+
+    A staged `.proposed` registry, when present, replaces the live one beside
+    it rather than merging with it. This walks the same candidate list as
+    accepted_hosts() but does NOT share its resolution semantics:
+    accepted_hosts() returns on a registry whose `sources` is not a list,
+    while this falls through to the next candidate. Reconciling the two into
+    a single resolver is tracked separately; the divergence is recorded here
+    rather than claimed away."""
     root = references_dir.parent
     registries = [root / "research" / "source-paths.json"]
     if root.name.endswith(".proposed"):
@@ -107,11 +139,26 @@ def _load_git_managed_sources(references_dir: Path) -> dict[tuple[str, str], str
     return {}
 
 
+# Trailing characters that end a sentence or a markdown span but cannot end
+# a repository path. The capturing regex stops only at whitespace, ')' and
+# ']', so everything else a citation is written next to survives the match.
+_PATH_TRAILERS = ",.;:!?'\"`*_>"
+
+
 def _clean_path(raw: str) -> str:
-    """Strip a leading '/' (Azure DevOps's `?path=/src/file.py` carries one;
-    since_last_check's repo-relative paths never do) and any trailing
-    '#L...' fragment."""
-    return raw.lstrip("/").split("#", 1)[0]
+    """A cited path reduced to the repo-relative form since_last_check emits,
+    so the two are comparable.
+
+    Removes, in order: a '#L...' line fragment; a '?...' query string (a
+    '?plain=1' or '?raw=1' suffix is routine on a forge permalink); trailing
+    prose or markup punctuation; and surrounding '/'. The leading slash is
+    Azure DevOps's (`?path=/src/file.py` carries one, and since_last_check's
+    repo-relative paths never do); the trailing slash is how a directory
+    tree URL is habitually written, and left in place it made the nesting
+    test in _matches compare against 'packages/core//'.
+    """
+    path = raw.split("#", 1)[0].split("?", 1)[0]
+    return path.rstrip(_PATH_TRAILERS).strip("/")
 
 
 def _scan(references_dir: Path) -> tuple[dict[str, list[str]], dict[str, dict[str, list[str]]]]:
@@ -147,7 +194,7 @@ def _scan(references_dir: Path) -> tuple[dict[str, list[str]], dict[str, dict[st
                     base_paths[rel].add(path)
 
                     host = (match.group("host") or "").lower()
-                    repo = (match.group("repo") or "").strip("/")
+                    repo = _normalize_repo(match.group("repo") or "")
                     source_id = sources_by_repo.get((host, repo))
                     if source_id is not None:
                         source_paths[rel].setdefault(source_id, set()).add(path)

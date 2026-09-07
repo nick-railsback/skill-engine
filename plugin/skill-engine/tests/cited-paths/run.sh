@@ -914,6 +914,161 @@ else
   fail "review/SKILL.md documents that the line is omitted when no source advanced in the proposal"
 fi
 
+# ============================================================================
+# Normalization: the citation's own shape, and the registered url's shape
+# ============================================================================
+section "normalization — trailing slash / query / punctuation on a citation, and .git / case / SSH on a registered url"
+
+NORM_SHA="$(repeat_hex "f6" 20)"
+
+# The path-capturing regex stops only at whitespace, ')' and ']', so a
+# trailing '/', a '?query' and sentence punctuation all survive into the
+# cited path. On the registry side the url is compared verbatim, so the
+# '.git' suffix and the SSH form -- both accepted at intake -- and any
+# difference in owner/repo case never resolve to their source. Each shape
+# below lands its changed file in uncited_changes under a false label.
+build_norm_fixture() {
+  local root="$WORK/norm"
+  mkdir -p "$root/references" "$root/research"
+
+  write_ref "$root/references/trailing-slash.md" \
+    "https://github.com/acme/norm/tree/$NORM_SHA/packages/core/"
+  write_ref "$root/references/query.md" \
+    "https://github.com/acme/norm/blob/$NORM_SHA/src/b.py?plain=1"
+  write_ref "$root/references/comma.md" \
+    "See https://github.com/acme/norm/blob/$NORM_SHA/src/c.py, which moved."
+  write_ref "$root/references/dotgit.md" \
+    "https://github.com/acme/dotgit/blob/$NORM_SHA/src/e.py"
+  write_ref "$root/references/cased.md" \
+    "https://github.com/Acme/Cased/blob/$NORM_SHA/src/f.py"
+  write_ref "$root/references/ssh.md" \
+    "https://github.com/acme/sshrepo/blob/$NORM_SHA/src/g.py"
+
+  cat > "$root/research/source-paths.json" <<EOF
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "norm",
+      "kind": "git-managed",
+      "url": "https://github.com/acme/norm",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-06", "last_checked_sha": "$NORM_SHA", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "dotgit",
+      "kind": "git-managed",
+      "url": "https://github.com/acme/dotgit.git",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-06", "last_checked_sha": "$NORM_SHA", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "cased",
+      "kind": "git-managed",
+      "url": "https://github.com/acme/cased",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-06", "last_checked_sha": "$NORM_SHA", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "sshrepo",
+      "kind": "git-managed",
+      "url": "git@github.com:acme/sshrepo.git",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-06", "last_checked_sha": "$NORM_SHA", "proposed_url": null},
+      "discovered_via": null
+    }
+  ]
+}
+EOF
+  printf '%s' "$root"
+}
+
+NORM_ROOT="$(build_norm_fixture)"
+NORM_REFS="$NORM_ROOT/references"
+NORM_INVENTORY="$WORK/norm-inventory.json"
+jq -n --arg sha "$NORM_SHA" '
+{
+  "norm": {
+    "file_counts_by_dir": {"src": 2, "packages": 1}, "largest_files": [], "doc_roots": [],
+    "inventory_source": "cache",
+    "since_last_check": {"from_sha": $sha, "to_sha": $sha,
+      "files": [{"path": "packages/core/a.py"}, {"path": "src/b.py"}, {"path": "src/c.py"}]}
+  },
+  "dotgit": {
+    "file_counts_by_dir": {"src": 1}, "largest_files": [], "doc_roots": [],
+    "inventory_source": "cache",
+    "since_last_check": {"from_sha": $sha, "to_sha": $sha, "files": [{"path": "src/e.py"}]}
+  },
+  "cased": {
+    "file_counts_by_dir": {"src": 1}, "largest_files": [], "doc_roots": [],
+    "inventory_source": "cache",
+    "since_last_check": {"from_sha": $sha, "to_sha": $sha, "files": [{"path": "src/f.py"}]}
+  },
+  "sshrepo": {
+    "file_counts_by_dir": {"src": 1}, "largest_files": [], "doc_roots": [],
+    "inventory_source": "cache",
+    "since_last_check": {"from_sha": $sha, "to_sha": $sha, "files": [{"path": "src/g.py"}]}
+  }
+}' > "$NORM_INVENTORY"
+
+# ----- the citation's own shape -----
+
+norm_base="$(cp_out "$NORM_REFS")"
+if jq_check "$norm_base" '.["trailing-slash.md"] == ["packages/core"]'; then
+  pass "a tree citation written with a trailing slash yields the bare directory path"
+else
+  fail "a tree citation written with a trailing slash yields the bare directory path" "$norm_base"
+fi
+if jq_check "$norm_base" '.["query.md"] == ["src/b.py"]'; then
+  pass "a '?plain=1' query string is not part of the cited path"
+else
+  fail "a '?plain=1' query string is not part of the cited path" "$norm_base"
+fi
+if jq_check "$norm_base" '.["comma.md"] == ["src/c.py"]'; then
+  pass "sentence punctuation trailing a citation is not part of the cited path"
+else
+  fail "sentence punctuation trailing a citation is not part of the cited path" "$norm_base"
+fi
+
+# ----- the registered url's shape -----
+
+norm_changed="$(cp_out "$NORM_REFS" --changed "$NORM_INVENTORY")"
+norm_rc=$?
+
+if [ "$norm_rc" -eq 0 ] && jq_check "$norm_changed" '.uncited_changes.count == 0'; then
+  pass "every changed path resolves to the reference that cites it — uncited_changes is empty"
+else
+  fail "every changed path resolves to the reference that cites it — uncited_changes is empty" \
+    "rc=$norm_rc" "$norm_changed"
+fi
+if jq_check "$norm_changed" '.candidates["trailing-slash.md"]["norm"] == ["packages/core/a.py"]'; then
+  pass "a trailing-slash directory citation still matches a file nested under it"
+else
+  fail "a trailing-slash directory citation still matches a file nested under it" "$norm_changed"
+fi
+if jq_check "$norm_changed" '.candidates["dotgit.md"]["dotgit"] == ["src/e.py"]'; then
+  pass "a source registered with a '.git' suffix resolves from a citation written without one"
+else
+  fail "a source registered with a '.git' suffix resolves from a citation written without one" "$norm_changed"
+fi
+if jq_check "$norm_changed" '.candidates["cased.md"]["cased"] == ["src/f.py"]'; then
+  pass "owner/repo case differing between the citation and the registered url still resolves"
+else
+  fail "owner/repo case differing between the citation and the registered url still resolves" "$norm_changed"
+fi
+if jq_check "$norm_changed" '.candidates["ssh.md"]["sshrepo"] == ["src/g.py"]'; then
+  pass "a source registered in scp-style SSH form resolves from its https citation"
+else
+  fail "a source registered in scp-style SSH form resolves from its https citation" "$norm_changed"
+fi
+
 # ----- summary -------------------------------------------------------------
 
 echo
