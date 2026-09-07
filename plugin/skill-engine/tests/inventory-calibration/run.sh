@@ -42,15 +42,26 @@
 # mktemp, with expected values computed by direct arithmetic on the
 # fixture as built, never by re-deriving what the script itself computes.
 #
-# The pinned SHA below names a real commit in this repository's history,
-# not a build artifact of this suite, so `git show <sha>:<path>` resolves
-# in any clone with full history. It is a literal, not a value read from
-# any untracked planning file, so this suite carries no dangling reference
-# in a fresh clone.
+# The baseline this suite compares against — the script exactly as it stood
+# before this work — is resolved from git history when the pinned commit is
+# reachable, and from the byte-identical vendored copy under
+# fixtures/baseline/ otherwise. A shallow clone, an export with no .git, or
+# a history rewrite all drop the commit, and this file outlives any of
+# those. When both are readable the two are compared byte-for-byte, so the
+# vendored copy cannot silently drift away from the commit it claims to be.
+# The same arrangement is used by the permalink-forges sibling suite.
 #
-# Every section below that depends on resolving that pinned baseline gates
-# on one up-front extraction and fails loudly — never silently skips —
-# when it can't be resolved locally.
+# The pin is a literal, not a value read from any untracked planning file,
+# so this suite carries no dangling reference in a fresh clone. It must
+# name an ALREADY-MERGED commit: this repository lands pull requests as
+# single squash commits, so a pin naming a commit that exists only on the
+# branch introducing it is unreachable from main the moment that branch
+# lands. The provenance section asserts exactly that, because the failure
+# is otherwise indistinguishable from a genuine behavioural regression.
+#
+# Every section below that depends on the baseline gates on one up-front
+# resolution and fails loudly — never silently skips — when neither source
+# can be read.
 #
 # Most sections here are expected to fail against the current, unmodified
 # script and prose: the rollup is still flat, --tree-json still only
@@ -74,10 +85,13 @@ FROZEN_PREFLIGHT_ORACLE="$PLUGIN_ROOT/tests/discover-preflight-inventory/run.sh"
 
 # A real, already-merged commit in this repository's own history — not a
 # pointer into any untracked planning tree. See the header comment above.
-BASELINE_SHA="04d15201d5d44da79b19644619cc8842b85b0a91"
+BASELINE_SHA="5d9bc9402dcc31dd8d69cbb74bf5a2a11b4b2e33"
+BASELINE_REPO_PATH="plugin/skill-engine/tests/discover_inventory.py"
+BASELINE_VENDORED="$SCRIPT_DIR/fixtures/baseline/discover_inventory.py"
 
 pass_count=0
 fail_count=0
+skip_count=0
 
 TMPROOT="$(mktemp -d -t skill-engine-inventory-calibration.XXXXXX)"
 cleanup() { rm -rf "$TMPROOT"; }
@@ -96,6 +110,16 @@ fail() {
     printf '        %s\n' "$@"
   fi
   fail_count=$((fail_count + 1))
+}
+
+skip() {
+  local label="$1"
+  shift
+  printf '  SKIP  %s\n' "$label"
+  if [ "$#" -gt 0 ]; then
+    printf '        %s\n' "$@"
+  fi
+  skip_count=$((skip_count + 1))
 }
 
 section() {
@@ -147,21 +171,110 @@ dir_fingerprint() {
 # ---- pinned-baseline extraction, up front, shared by every section below
 # that needs "what did this script look like before" -----------------------
 
+# BASELINE_OK means "a baseline is available from some source" and gates the
+# sections below. BASELINE_FROM_HISTORY is the narrower "the pinned commit
+# itself was readable", which only the integrity comparison needs.
 BASELINE_OK=false
-baseline_script="$TMPROOT/baseline_discover_inventory.py"
+BASELINE_FROM_HISTORY=false
+baseline_origin="none"
+baseline_script=""
+baseline_history_copy="$TMPROOT/baseline-from-history.py"
 baseline_err="$TMPROOT/baseline-git-err.txt"
-if git -C "$REPO_ROOT" show "$BASELINE_SHA:plugin/skill-engine/tests/discover_inventory.py" \
-     > "$baseline_script" 2>"$baseline_err"; then
+: > "$baseline_err"
+
+if command -v git >/dev/null 2>&1 \
+  && git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1 \
+  && git -C "$REPO_ROOT" show "$BASELINE_SHA:$BASELINE_REPO_PATH" \
+       > "$baseline_history_copy" 2>"$baseline_err"; then
   BASELINE_OK=true
+  BASELINE_FROM_HISTORY=true
+  baseline_origin="history"
+  baseline_script="$baseline_history_copy"
+elif [ -f "$BASELINE_VENDORED" ]; then
+  BASELINE_OK=true
+  baseline_origin="vendored"
+  baseline_script="$BASELINE_VENDORED"
 fi
-BASELINE_UNAVAILABLE_REASON="cannot evaluate — pinned baseline $BASELINE_SHA did not resolve locally: $(cat "$baseline_err" 2>/dev/null)"
+BASELINE_UNAVAILABLE_REASON="cannot evaluate — neither the pinned baseline $BASELINE_SHA nor the vendored copy at $BASELINE_VENDORED could be read: $(cat "$baseline_err" 2>/dev/null)"
 
 section "pinned baseline resolves locally"
-if $BASELINE_OK; then
-  pass "git show $BASELINE_SHA:plugin/skill-engine/tests/discover_inventory.py resolves in this checkout"
+case "$baseline_origin" in
+  history)
+    pass "baseline $BASELINE_REPO_PATH resolved from the pinned commit $BASELINE_SHA"
+    ;;
+  vendored)
+    pass "baseline $BASELINE_REPO_PATH resolved from the vendored copy (pinned commit not in this checkout)"
+    ;;
+  *)
+    fail "baseline $BASELINE_REPO_PATH resolves in this checkout" \
+      "neither the pinned commit $BASELINE_SHA nor $BASELINE_VENDORED could be read" \
+      "$(cat "$baseline_err" 2>/dev/null)"
+    ;;
+esac
+
+# ---- baseline provenance ---------------------------------------------------
+#
+# Two properties keep the pin honest, and they fail in opposite directions:
+#
+#   - The pin must name a commit that is ALREADY part of the mainline's
+#     history. A pin that resolves only on the feature branch introducing
+#     it evaporates the moment that branch is squash-merged, taking every
+#     baseline-dependent section below red on main -- with a message about
+#     git, not about the behaviour under test.
+#   - A vendored copy must stand alongside it, so a checkout that legitimately
+#     lacks the commit (shallow clone, export with no .git, rewritten
+#     history) still has a baseline to compare against instead of failing
+#     for want of history. The vendored copy is compared byte-for-byte with
+#     the commit whenever both are readable, so it cannot silently drift
+#     away from the thing it stands in for.
+#
+# The ancestry probe uses `git log` rather than `merge-base --is-ancestor`
+# or `branch --contains`: only the former is on doctrine check 4's
+# read-only allow-list, and this suite should not be the reason that
+# allow-list widens.
+
+section "pinned baseline provenance"
+
+merge_ref=""
+for cand in origin/main main; do
+  if git -C "$REPO_ROOT" rev-parse --verify -q "$cand" >/dev/null 2>&1; then
+    merge_ref="$cand"
+    break
+  fi
+done
+
+if [ -z "$merge_ref" ]; then
+  skip "pinned baseline $BASELINE_SHA is an already-merged commit" \
+    "neither origin/main nor main resolves here (detached checkout, fork, or single-branch clone)"
 else
-  fail "git show $BASELINE_SHA:plugin/skill-engine/tests/discover_inventory.py resolves in this checkout" \
-    "$(cat "$baseline_err" 2>/dev/null)"
+  # Materialized to a file rather than piped into grep: under `pipefail` a
+  # `git log | grep -q` pipeline reports git's SIGPIPE (141) once grep exits
+  # early on a match, which would read as "not found" on exactly the runs
+  # where it WAS found.
+  mainline_shas="$TMPROOT/mainline-shas.txt"
+  if git -C "$REPO_ROOT" log --format=%H "$merge_ref" > "$mainline_shas" 2>/dev/null \
+     && grep -qx "$BASELINE_SHA" "$mainline_shas"; then
+    pass "pinned baseline $BASELINE_SHA is an already-merged commit (present in $merge_ref)"
+  else
+    fail "pinned baseline $BASELINE_SHA is an already-merged commit (present in $merge_ref)" \
+      "the pin is not in $merge_ref's history; a squash-merge or history rewrite drops it and takes every baseline-dependent section below red"
+  fi
+fi
+
+if [ ! -f "$BASELINE_VENDORED" ]; then
+  fail "a vendored baseline copy stands alongside the pin" \
+    "expected $BASELINE_VENDORED" \
+    "without it the suite cannot survive a checkout that lacks the pinned commit"
+elif $BASELINE_FROM_HISTORY; then
+  if cmp -s "$baseline_history_copy" "$BASELINE_VENDORED"; then
+    pass "the vendored baseline is byte-identical to the pinned commit"
+  else
+    fail "the vendored baseline is byte-identical to the pinned commit" \
+      "the vendored copy has drifted from the commit it stands in for; re-capture it"
+  fi
+else
+  skip "the vendored baseline is byte-identical to the pinned commit" \
+    "the pinned commit is not in this checkout; the vendored copy is in use unverified"
 fi
 
 # ============================================================================
@@ -754,4 +867,5 @@ fi
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"
+echo "Skipped: $skip_count"
 [ "$fail_count" -eq 0 ]
