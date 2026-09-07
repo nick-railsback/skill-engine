@@ -60,10 +60,9 @@ This skill assumes no contextualizer is installed under
 
 Accept one or more sources: positional arguments (straight to Step 2)
 or, with none supplied, an interactive loop reading pasted URLs/paths
-until the literal word `finish`. Intake asks exactly one content
-question and zero engine-taxonomy questions — never `kind`,
-`source_id`, scope, or topology directly. Recognition table,
-disambiguator, and edge case are in
+until the literal word `finish`. `--sources-file <path>` plus
+`--branch-default-all` batch-intake many sources at once. Recognition
+table, disambiguator, edge case, and the batch-intake flags are in
 [`references/intake-and-detection.md`](references/intake-and-detection.md).
 
 ## Step 2 — Auto-detection

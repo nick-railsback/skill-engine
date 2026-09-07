@@ -85,6 +85,72 @@ fewer than 2 non-empty segments (i.e., `/<org>` or `/<org>/`) triggers
 the re-prompt. URLs with 2+ path segments fall through to the normal
 `kind: git-managed` shape.
 
+### Batch intake: `--sources-file`
+
+`--sources-file <path>` reads one source per line from a plain-text
+file — each line names a URL or a local path — as an alternative to
+positional arguments or the interactive loop. Blank lines and lines
+starting with `#` are ignored. An optional second, whitespace-separated
+column names a branch for that entry (see Step 2.4). Entries from
+`--sources-file` are combined with any positional arguments supplied in
+the same invocation — both are intaken.
+
+Each `--sources-file` entry's first column is intaken exactly as a
+positional argument would be: it runs through the same recognition
+table above, with the same kind inference and the same source_id
+derivation.
+
+An unreadable, empty, or entirely-comment sources file halts intake
+before anything is stamped, with an error naming the path and the
+reason. A line that is neither a URL nor an existing path is reported
+with its 1-indexed line number and halts intake likewise.
+
+A sources file:
+
+```
+# acme's registered sources — one per line, blank lines ignored
+https://github.com/acme/widgets
+~/work/local-repo dev
+```
+
+The following block is illustrative of the accept/reject contract
+above — it reads the sources-file path given as its first argument,
+skips blank and `#`-comment lines, splits each remaining line into a
+source and an optional branch value, and for each source either
+accepts it (URL-shaped, or a `~`-expanded path that exists) or rejects
+it with a diagnostic naming the path and, for a bad line, its line
+number:
+
+```bash
+sources_file="$1"
+if [ ! -r "$sources_file" ]; then
+  printf 'sources file unreadable or missing: %s\n' "$sources_file" >&2
+  exit 1
+fi
+entries=()
+line_no=0
+while IFS= read -r line || [ -n "$line" ]; do
+  line_no=$((line_no + 1))
+  [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+  read -r source_col branch_col _ <<<"$line"
+  expanded="${source_col/#\~/$HOME}"
+  if [[ "$source_col" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]] \
+    || [[ "$source_col" =~ ^git@ ]] \
+    || [ -e "$expanded" ]; then
+    entries+=("$source_col"$'\t'"$branch_col")
+  else
+    printf 'sources file %s line %d: neither a URL nor an existing path: %s\n' \
+      "$sources_file" "$line_no" "$source_col" >&2
+    exit 1
+  fi
+done < "$sources_file"
+if [ "${#entries[@]}" -eq 0 ]; then
+  printf 'sources file %s has no entries (empty or all comments)\n' "$sources_file" >&2
+  exit 1
+fi
+printf '%s\n' "${entries[@]}"
+```
+
 ## Step 2 — Auto-detection
 
 For each accepted source, compute the following without prompting the user:
@@ -142,6 +208,27 @@ resolution happens lazily at REFRESH / DISCOVER time via the standard
 git-CLI `HEAD` lookup, not at bootstrap. A typed non-default branch
 name is recorded as-given; its existence on the upstream is validated
 when REFRESH / DISCOVER first runs against the source.
+
+**`--branch-default-all` suppresses Step 2.4's per-source prompt:**
+every git-managed source that has no branch value yet — no
+`--sources-file` entry for it, no earlier answer — is recorded with
+`branch` omitted from its entry, the same absent-branch record pressing
+Enter produces today, without being prompted. A source that already
+carries its own branch column is recorded prompt-free whether or not
+`--branch-default-all` is given: the flag only ever suppresses the
+source left unanswered, never overrides an explicit column value.
+Without `--branch-default-all`, Step 2.4 prompts exactly as described
+above for every git-managed source lacking a branch value, regardless
+of intake method — positional, paste-loop, or `--sources-file`.
+
+| Step | Prompts with --sources-file + --branch-default-all |
+|---|---|
+| Step 1 — Intake | 0 |
+| Step 2.4 — Confirm branch | 0 |
+| Step 2.5 — Confirm contextualizer name | 1 |
+
+With both flags supplied, the only interactive prompt remaining before
+Step 3.5 is the Step 2.5 contextualizer-name prompt.
 
 **No re-confirmation later.** The branch can always be edited manually
 in `source-paths.json` after bootstrap (the engine re-reads the file on
