@@ -76,17 +76,37 @@ When `/skill-engine:discover` is invoked:
    - `kind: "git-managed"` → `~/.cache/skill-engine/git-managed/<source_id>-*/`
    - `kind: "web-doc"` → `~/.cache/skill-engine/web-doc/<source_id>-*/`
 
-   **git-managed probe.** Require that the matched directory actually
-   contain a `.git/` subdirectory before treating it as a warm cache:
+   **git-managed probe.** Require that the matched directory's SHA suffix
+   equal the SHA already resolved in step 5 for this source, and that it
+   actually contain a `.git/` subdirectory, before treating it as a warm
+   cache:
 
+   <!-- doctrine:discover-cache-hit-check:start -->
    ```bash
-   cache_dir=$(find ~/.cache/skill-engine/git-managed -mindepth 1 -maxdepth 1 -type d -name '<source_id>-*' 2>/dev/null | head -n1)
-   if [ -n "$cache_dir" ] && [ -d "${cache_dir%/}/.git" ]; then
-     # cache hit — skip prompt
+   source_id_val="<source_id>"
+   resolved_sha_val="<resolved_sha>"
+   cache_dir=""
+   for d in ~/.cache/skill-engine/git-managed/*/; do
+     [ -d "$d" ] || continue
+     [ -d "${d%/}/.git" ] || continue
+     base="$(basename "${d%/}")"
+     if [ "$base" = "${source_id_val}-${resolved_sha_val}" ]; then
+       cache_dir="${d%/}"
+     fi
+   done
+   if [ -n "$cache_dir" ]; then
+     : # cache hit — skip prompt
    else
-     # cache miss — prompt the user
+     : # cache miss — prompt the user
    fi
    ```
+   <!-- doctrine:discover-cache-hit-check:end -->
+
+   `<resolved_sha>` above is the SHA step 5's idempotency check already
+   resolved for this source. Enumerating every `<source_id>-*/` sibling
+   (rather than taking the first filesystem match) is what lets a
+   SHA-matching directory win regardless of how many stale siblings coexist
+   or what order the filesystem lists them in.
 
    The `.git/` presence check defends against a half-written directory
    that lacks a usable repo (e.g., a clone that failed mid-fetch in an
@@ -171,6 +191,75 @@ When `/skill-engine:discover` is invoked:
    CLI fallback documented in "Tool preference" below — do not abort
    DISCOVER on a cache failure.
 
+   **On consent (git-managed, `files_of_interest` scoped):** when the source
+   entry's `files_of_interest` field is present and non-empty, substitute
+   this recipe for the one above. Same quoting invariant as Step 2's block:
+   every entry stays double-quoted in `sparse-checkout set` and `for entry
+   in` — never left bare for the shell to glob-expand.
+
+   ```bash
+   case "<source_id>" in
+     ""|-*|*[!a-z0-9-]*)
+       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2 ;;
+     *)
+       sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
+       if [ -z "$sha" ]; then
+         echo "skill-engine: <source_id> @ <ref> not found upstream (empty ls-remote) — declining to clone; using CLI fallback" >&2
+       else
+         mkdir -p ~/.cache/skill-engine/git-managed/
+         dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
+         tmpdir="${dest}.tmp.$$"
+         clone_ok=0
+         if [ "<ref>" = "HEAD" ]; then
+           git clone --filter=blob:none --no-checkout --depth=1 --single-branch -- "<url>" "$tmpdir" && clone_ok=1
+         else
+           git clone --filter=blob:none --no-checkout --depth=1 --single-branch --branch "<ref>" -- "<url>" "$tmpdir" && clone_ok=1
+         fi
+         if [ "$clone_ok" -eq 1 ] \
+           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout init --no-cone \
+           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout set <files_of_interest entries...> \
+           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" checkout ; then
+           missing=0
+           for entry in <files_of_interest entries...>; do
+             if [ -z "$(git -C "$tmpdir" ls-files -- "$entry")" ]; then
+               probe="${entry%/\*\*}"
+               probe="${probe%/\*}"
+               ancestor="$probe"
+               while [ -n "$ancestor" ] && [ ! -d "$tmpdir/$ancestor" ]; do
+                 case "$ancestor" in
+                   */*) ancestor="${ancestor%/*}" ;;
+                   *) ancestor="" ;;
+                 esac
+               done
+               siblings=$(find "$tmpdir${ancestor:+/$ancestor}" -mindepth 1 -maxdepth 2 \
+                 -type d -not -path '*/.git' -not -path '*/.git/*' 2>/dev/null \
+                 | sed "s#^$tmpdir/##" | sort | sed 's#$#/#' | paste -sd, - | sed 's/,/, /g')
+               # A resolved-no-files entry skips only this source's cache seed
+               # and continues to the next source; it does not abort the run.
+               echo "skill-engine: files_of_interest entry '$entry' resolved no files in checkout; nearest siblings under '${ancestor:-.}/': $siblings" >&2
+               missing=1
+             fi
+           done
+           if [ "$missing" -eq 1 ]; then
+             rm -rf "$tmpdir"
+           else
+             mv "$tmpdir" "$dest"
+           fi
+         else
+           rm -rf "$tmpdir"
+         fi
+       fi ;;
+   esac
+   ```
+
+   On success, prefer local reads under the new cache directory for the
+   rest of this DISCOVER run, exactly as the block above. On a clone-level
+   failure, emit the same one-line fallback message the block above emits
+   ("Couldn't clone ..."). On a validation failure (`missing=1`), the
+   per-entry diagnostics are the complete report — no extra summary line,
+   same reasoning as Step 2. Same `ls-files`-vs-`-e` rationale as Step 2
+   applies here too — not repeated in full.
+
    **On consent (web-doc):** execute the bootstrap Step 3.6 crawl
    procedure inline (sitemap fetch, page-budget enforcement, atomic
    rename into `~/.cache/skill-engine/web-doc/<source_id>-<snapshot>/`).
@@ -190,10 +279,20 @@ When `/skill-engine:discover` is invoked:
    This step catches users who declined the offer at `engine-bootstrap`
    Step 3.5 / Step 3.6, who deleted their cache via
    `/skill-engine:clean-cache`, who added a source post-bootstrap, or
-   whose cache directory was lost for any other reason. A cache hit
-   (existing match for `<source_id>-*/` under the kind-appropriate
-   subdirectory, with a valid `.git/` inside for git-managed) skips the
-   prompt entirely.
+   whose cache directory was lost for any other reason. For `web-doc`, a
+   cache hit is still any existing match under the kind-appropriate
+   subdirectory. For `git-managed`, a cache hit requires the SHA-aware
+   probe above: a `<source_id>-*/` directory whose suffix equals the SHA
+   resolved in step 5, with a valid `.git/` inside — a suffix mismatch is a
+   miss like any other, even when a `<source_id>-*/` directory already
+   exists, and whichever sibling's suffix matches is used regardless of how
+   many others coexist. On consent to a miss with a stale `<source_id>-*/`
+   directory already present, advance it in place via the recipe in
+   `tool-and-output-mechanics.md` § Cache garbage collection (`<old_sha>` =
+   the stale directory's suffix, `<new_sha>` = the SHA resolved in step 5)
+   rather than cloning a fresh directory alongside it; with no
+   `<source_id>-*/` directory present at all, clone fresh as documented
+   above.
 
 7. **Pre-flight inventory (per in-scope `git-managed` source).** Before
    `§ Discovering essence` begins, compute each source's corpus-shape
@@ -202,23 +301,52 @@ When `/skill-engine:discover` is invoked:
    accepted it:
 
    - **If a cache directory is available** (matched in step 6 this run,
-     or already present from a prior run):
+     or already present from a prior run), compute the changed-path list
+     the same diff-based way the in-place advance recipe does
+     (`tool-and-output-mechanics.md` § Cache garbage collection), then hand
+     the result to `--since-json`. The reason is the shallow cache: after
+     an in-place `--depth=1` fetch the new SHA lands as its own parentless
+     shallow boundary, so any range walk between the two SHAs has no
+     connecting history to walk. A two-tree `git diff` needs none.
+
+     `discover_inventory.py --last-checked-sha` now performs that same
+     two-tree diff internally, so the choice between the two is one of
+     shape, not correctness — this recipe keeps the computation inline so
+     the JSON it feeds `--since-json` is visible at the call site. (An
+     earlier revision of this paragraph justified the split by a `git log`
+     range walk in the Python that dropped deletions; that walk is gone,
+     and folding the three implementations into one is tracked separately.)
 
      ```bash
+     if [ -n "$last_checked_sha" ]; then
+       since_tmpfile=$(mktemp)
+       git -C "$cache_dir" -c core.quotePath=false diff --name-status --no-renames \
+           "$last_checked_sha" HEAD \
+         | cut -f2- \
+         | jq -R . \
+         | jq -s --arg from "$last_checked_sha" --arg to "$(git -C "$cache_dir" rev-parse HEAD)" \
+             '{from_sha: $from, to_sha: $to, files: map({path: .})}' \
+         > "$since_tmpfile"
+     fi
      python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" \
-       ${last_checked_sha:+--last-checked-sha "$last_checked_sha"}
+       ${since_tmpfile:+--since-json "$since_tmpfile"}
      ```
 
-     omitting `--last-checked-sha` entirely when the source entry's
+     omitting `--since-json` entirely when the source entry's
      `lifecycle.last_checked_sha` is null.
 
    - **Else** (no cache — declined or never offered), fetch a tree
      listing and, when a prior SHA is known, a compare summary, and
-     hand both to the script instead of a local directory:
+     hand both to the script instead of a local directory. The tree
+     listing's `--jq` filter passes the API response's own `truncated`
+     flag through under a `tree` key rather than discarding it down to a
+     bare array, so a listing the API cut off (100,000-entry / 7 MB caps)
+     surfaces as `partial: true` in the script's output instead of
+     silently reading as complete:
 
      ```bash
      gh api "repos/<owner>/<repo>/git/trees/<ref>?recursive=1" \
-       --jq '[.tree[] | {path, bytes: (.size // 0), type: (if .type == "tree" then "tree" else "blob" end)}]' \
+       --jq '{truncated: (.truncated // false), tree: [.tree[] | {path, bytes: (.size // 0), type: (if .type == "tree" then "tree" else "blob" end)}]}' \
        > "$tree_tmpfile"
      if [ -n "$last_checked_sha" ]; then
        gh api "repos/<owner>/<repo>/compare/$last_checked_sha...<ref>" \
@@ -228,6 +356,10 @@ When `/skill-engine:discover` is invoked:
      python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" --tree-json "$tree_tmpfile" \
        ${compare_tmpfile:+--since-json "$compare_tmpfile"}
      ```
+
+     The script's output names which of the two branches above produced
+     it in an `inventory_source` field (`cache` or `tree-json`) — cite it
+     per source wherever the run's Coverage report is assembled.
 
      **On any `gh api` failure** (non-GitHub remote, `gh` not
      authenticated, network error): emit one stderr notice naming the

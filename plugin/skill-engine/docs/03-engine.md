@@ -66,7 +66,7 @@ The six workflows above are the **agent-side** menu the maintenance agent presen
 The persistent local-clone cache runs through a four-stage **cache lifecycle**:
 
 * **Seed** — `engine-bootstrap` Step 3.5 prompts the user y/N (default N) once per `kind: git-managed` source at scaffold time; DISCOVER pre-flight step 6 re-prompts on cache miss. On `y`, the skill clones via an atomic-rename idiom (`<source_id>-<sha>.tmp.$$/` → `mv` to the canonical name on success). The engine does not clone without consent.
-* **REFRESH GC** — garbage-collects sibling `git-managed/<source_id>-*/` directories on SHA advance (cache stays current as upstream moves).
+* **REFRESH GC** — on SHA advance, fetches the new commit into the existing `git-managed/<source_id>-*/` directory in place (never a fresh clone) and renames it, then garbage-collects any now-superseded sibling (cache stays current as upstream moves).
 * **STATUS** — surfaces the cache as a read-only listing (cache stays visible to the author).
 * **`clean-cache`** — the all-at-once opt-in deletion path (cache yields disk on demand).
 
@@ -199,8 +199,8 @@ Operational state lives in four sibling files, each with its own
 canonical reference:
 
 * **`research/source-paths.json`** — per-source schema (`id`, `kind`,
-  `status`, `archived`, `lifecycle`, `discovered_via`, and any additive
-  fields). Canonical schema in [`02-artifact-contract.md`](02-artifact-contract.md) §"Per-source schema"; operational view in [`09-discover-config.md`](09-discover-config.md). Committed to git as the contextualizer's configuration history.
+  `status`, `archived`, `lifecycle`, `discovered_via`, `files_of_interest`,
+  and any additive fields). Canonical schema in [`02-artifact-contract.md`](02-artifact-contract.md) §"Per-source schema"; operational view in [`09-discover-config.md`](09-discover-config.md). Committed to git as the contextualizer's configuration history.
 * **`research/.discover-cache.json`** — per-source-SHA enrichment
   cache, gitignored runtime state. Lookup keyed by `(source_id, sha)`.
   See [`09-discover-config.md`](09-discover-config.md) §"`research/.discover-cache.json`".

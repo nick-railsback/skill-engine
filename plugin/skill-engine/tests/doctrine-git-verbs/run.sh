@@ -21,7 +21,7 @@
 #
 #     Writes one line per candidate git invocation:
 #
-#       <path-with-prefix-stripped>:<line-number>:<verb>
+#       <path-with-prefix-stripped>:<line-number>:<verb>:<c-target-or-empty>
 #
 #     "Candidate" is the operative word. This layer answers "what token
 #     follows a git invocation", not "is that token a mutating verb" —
@@ -29,6 +29,11 @@
 #     candidates into violations, so prose like "no git mutations" is
 #     expected to come out of here as the candidate `mutations` and be
 #     dropped there.
+#
+#     The 4th field is the invocation's uppercase -C target (one layer of
+#     surrounding double quotes stripped), or empty when there is none —
+#     doctrine.sh's cache-scoped exception tests this field; it is appended
+#     after the original 3, so existing field-3 consumers are unaffected.
 #
 #     Not candidates, and stripped before extraction: HTML comments,
 #     Markdown code spans, shell line comments, and double-quoted literals
@@ -148,6 +153,22 @@ expect_verbs "a double-quoted literal naming the form is not an invocation" \
   'echo "git -C /tmp push"' ''
 expect_verbs "a command substitution inside the quotes is still scanned" \
   'echo "$(git -C /tmp push)"' 'push'
+
+section "an unterminated quote does not blank the rest of the line"
+
+# The literal stripper splits on `"` and blanks the even-numbered fields,
+# treating each as the content of one matched pair. With an ODD number of
+# quotes on the line the final even field is not a closed literal at all --
+# it is the tail of the line, following a quote whose partner is on another
+# line -- so blanking it deletes any verb written there. The previous
+# match-based stripper required a closing quote and left such text in
+# place, which means this is a verb main reported and HEAD does not.
+expect_verbs "a lone opening quote does not swallow the verb that follows it" \
+  'The "release step runs git push --force to publish the tag' 'push'
+expect_verbs "a second unterminated-quote shape reports its verb too" \
+  'printf "the tag is published; run git reset --hard to undo' 'reset'
+expect_verbs "a properly closed plain literal is still stripped (the behaviour that must not regress)" \
+  'echo "run git push to publish the tag"' ''
 
 section "prose is still left for doctrine's verb filter to drop"
 

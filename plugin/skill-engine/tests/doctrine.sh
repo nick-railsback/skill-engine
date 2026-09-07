@@ -84,6 +84,13 @@ fi
 #   diff, status, log, show, clone, ls-remote, ls-tree, ls-files,
 #   rev-parse, cat-file
 #
+# Cache-scoped exception (conditional, not part of the allow-list above):
+#   fetch, sparse-checkout, and checkout are additionally permitted when the
+#   invocation's -C target is a source-literal path under
+#   ~/.cache/skill-engine/, spelled ~, $HOME, or ${HOME} only -- a variable
+#   that merely resolves there at runtime does not qualify. No other verb is
+#   exempt; pull, reset, worktree, and the rest stay denied everywhere.
+#
 # Scope:
 #   plugin/skill-engine/skills/**/*.md
 #   plugin/skill-engine/agents/*.md       (directory currently absent;
@@ -152,7 +159,10 @@ git_readonly_scan() {
 # filter, prose noun phrases like "no git mutations" or "a git host URL"
 # trip the lint. The union below is the read-only allow-list plus the
 # mutating deny-list, plus a few additional known verbs seen in docs /
-# templates.
+# templates. cache_exempt names the three verbs conditionally permitted
+# under the cache-scoped exception above; membership there does not by
+# itself excuse a violation -- the invocation's -C target (the scanner's
+# 4th field) must also match the cache-root pattern.
 readonly_violations=$(
   {
     find "$PLUGIN_ROOT/skills" -type f -name '*.md' 2>/dev/null
@@ -182,8 +192,34 @@ readonly_violations=$(
       verbs["sparse-checkout"]=1; verbs["describe"]=1; verbs["blame"]=1
       verbs["archive"]=1; verbs["format-patch"]=1; verbs["request-pull"]=1
       verbs["grep"]=1; verbs["branch"]=1; verbs["remote"]=1
+      # Conditional exception: these three verbs are permitted when -C
+      # targets an engine-controlled clone under ~/.cache/skill-engine/.
+      # Closed on purpose -- pull, reset, worktree, and the rest stay
+      # denied everywhere regardless of -C target.
+      cache_exempt["fetch"]=1; cache_exempt["sparse-checkout"]=1
+      cache_exempt["checkout"]=1
     }
-    { if (($3 in verbs) && !($3 in allow)) print }
+    {
+      # The target must name a clone this engine owns: under the cache root
+      # AND beneath git-managed/ or web-doc/, which is where every clone
+      # recipe writes. The bare cache root is not a clone, a sibling
+      # directory under the root belongs to nobody here, and a path
+      # carrying dot or dot-dot segments resolves somewhere the prefix
+      # cannot vouch for. All three were flagged before this exemption
+      # existed, and git applies -C cumulatively, so the 4th field the
+      # scanner hands over is the LAST -C, not the first.
+      #
+      # Written as statements rather than one continued expression, and
+      # with no apostrophe or backtick anywhere: this awk program is a
+      # single-quoted shell string, so either character would end it.
+      exempt = 0
+      if (($3 in cache_exempt) && $4 ~ /^(~|\$HOME|\$\{HOME\})\/\.cache\/skill-engine\/(git-managed|web-doc)\/[^[:space:]]/) {
+        exempt = 1
+        if ($4 ~ /(^|\/)\.\.(\/|$)/) { exempt = 0 }
+        if ($4 ~ /(^|\/)\.(\/|$)/) { exempt = 0 }
+      }
+      if (($3 in verbs) && !($3 in allow) && !exempt) print
+    }
   '
 )
 
@@ -193,6 +229,7 @@ if [ -n "$readonly_violations" ]; then
     printf "  %s:%s  git %s\n", $1, $2, $3
   }'
   echo "  Allow-list: diff, status, log, show, clone, ls-remote, ls-tree, ls-files, rev-parse, cat-file."
+  echo "  Exception: fetch, sparse-checkout, and checkout are permitted when the LAST -C targets an engine-controlled clone under ~/.cache/skill-engine/git-managed/ or .../web-doc/ (literal ~, \$HOME, or \${HOME} only; no . or .. segments)."
   fail=1
 fi
 

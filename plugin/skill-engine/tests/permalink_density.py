@@ -231,6 +231,70 @@ def build_permalink_res(hosts: dict[str, str | None]) -> tuple[re.Pattern[str], 
     return sha_re, tag_re
 
 
+def build_path_capturing_res(hosts: dict[str, str | None]) -> list[tuple[str, re.Pattern[str]]]:
+    """Return one compiled pattern per forge (not a merged alternation, unlike
+    `build_permalink_res`), each with named groups `host`, `repo` and — when
+    the forge's citation shape contributes one — `path`.
+
+    Additive alongside `build_permalink_res`: every existing caller of that
+    function, and its own shape, are untouched. A caller needs to know which
+    forge matched (to know whether a `path` group can exist at all) and needs
+    the matched host/repo text (to resolve a citation to a registered source
+    by comparing against that source's own `url`, per
+    `cited_paths.py` — not merely by host, since two sources can share one),
+    which a single merged alternation across all five forges cannot expose.
+
+    `path` is present (though possibly empty, e.g. Bitbucket Server's
+    optional repo-root segment) whenever the forge's URL shape carries a
+    path/directory; it is absent (no group, not an empty one) when the shape
+    has nowhere for a path to live in this match — Azure DevOps's citation
+    without a `?path=` query parameter, a genuine repo-wide pin. Extracted
+    paths carry any `#L...` fragment and (Azure DevOps's `?path=/a/b`
+    parameter only) a leading `/` verbatim; stripping both is the caller's
+    job, not this grammar's.
+
+    github's pin additionally accepts the stable-tag shape `build_permalink_res`
+    tracks separately as `tag_re` — the artifact contract extends stable-tag
+    semantics to github.com only, so no other forge gets a tag alternative.
+    """
+    if not hosts:
+        raise ValueError("build_path_capturing_res: host set is empty")
+
+    S = "[0-9a-f]{40}"
+    T = r"[^\s)\]]+"
+    V = r"v[0-9]+(?:\.[0-9]+){0,2}[A-Za-z0-9.+\-]*"
+    P = f"(?:{S}|{V})"
+
+    # Each template captures `host` and `repo` (the citation's own repo
+    # locator, compared against a registered source's `url`) plus `path`
+    # where the forge's shape has one. Azure DevOps has no `{T}`-shaped path
+    # slot in its URL path at all — its path lives in a `?path=` query
+    # parameter, order-independent of `version=GC<sha>`, asserted via a
+    # lookahead so the required pin can appear on either side of `path=`.
+    templates: tuple[tuple[str, str], ...] = (
+        ("github", r"https://(?P<host>{H})/(?P<repo>[^/\s]+/[^/\s]+)/(?:blob|tree)/{P}/(?P<path>{T})"),
+        ("gitlab", r"https://(?P<host>{H})/(?P<repo>[^\s]+?)/-/(?:blob|tree)/{S}/(?P<path>{T})"),
+        ("bitbucket-server",
+         r"https://(?P<host>{H})/(?P<repo>projects/[^/\s]+/repos/[^/\s]+)/browse"
+         r"(?:/(?P<path>[^\s?)\]]*))?\?at={S}\b"),
+        ("bitbucket-cloud", r"https://(?P<host>{H})/(?P<repo>[^/\s]+/[^/\s]+)/src/{S}/(?P<path>{T})"),
+        ("azure-devops",
+         r"https://(?P<host>{H})/(?P<repo>[^\s]+/_git/[^\s?)\]]+)"
+         r"\?(?=[^\s)\]]*\bversion=GC{S}\b)"
+         r"(?:[^\s)\]]*\bpath=(?P<path>[^&\s)\]]+))?[^\s)\]]*"),
+    )
+
+    result: list[tuple[str, re.Pattern[str]]] = []
+    for forge, template in templates:
+        scoped = {h for h, f in hosts.items() if f == forge or f is None}
+        if not scoped:
+            continue
+        alternation = "|".join(re.escape(h) for h in sorted(scoped, key=lambda h: (-len(h), h)))
+        H = f"(?:{alternation})"
+        result.append((forge, re.compile(template.format(H=H, S=S, T=T, P=P))))
+    return result
+
+
 def classify_lines(lines: list[str], res: tuple[re.Pattern[str], re.Pattern[str]]) -> list[str]:
     """Return a per-line category tag. Categories:
         'prose'    — eligible for paragraph aggregation
