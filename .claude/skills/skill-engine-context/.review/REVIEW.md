@@ -8,22 +8,24 @@ The review is in three steps. Fill Step 1 first, save, then re-run `/skill-engin
 
 Write your predictions before scrolling. The point is to surface your model of what this contextualizer should be, then let the disagreement set in Step 2 show you where the engine's draft diverges from your intent. If you read the diff first, Step 2 has nothing to teach.
 
-- *"This skill is for citing the source forge's own SHA-pinned grammar, not github.com's."*
-- *"This skill should NOT restate the five-grammar enumeration outside the artifact contract."*
-- *"The reference I'd cut: none — this is a re-pin, not a coverage change."*
+- *"This skill is for me, the app owner."*
+- *"This skill should NOT misinterpret the app  "*
+- *"The reference I'd cut: none - looks good."*
 
 <!-- Do not scroll past this line until the three blanks above are filled. -->
 
 ## Step 2 — Disagreement set
 
-- [X] accept  [ ] reject   This is a re-pin forced by chunk 02 of the forge-agnostic-trust feature editing 7 files this corpus cites (`02-artifact-contract.md`, `03-engine.md`, `08-discover-pipeline.md`, `13-coverage-testing.md`, `proposal-and-post-run.md`, `self-audit/SKILL.md`, `check-7-permalink-density.md`), pinned at `9ba4fae` → `f9e5b36`. No new source, no cut reference, no coverage change beyond what re-pinning naturally shifts (99.4%, up from the pre-refresh baseline).
-- [X] accept  [ ] reject   39 permalink citations across the 6 affected references; 31 remapped mechanically (identical cited content, sha + line-range swap only, verified by locating the exact quoted block at the new commit) and 8 got real prose rewrites because the content they cited changed meaning — not just moved.
-- [X] accept  [ ] reject   Two of the 8 rewrites are the specific inversions chunk 01's retro flagged forward: `invariants.md` no longer says "non-GitHub URLs do not count" and `evaluation-and-audit.md` no longer says the lint is "GitHub-source-blind by design" or that Check 8's regex is "imported" from Check 7 (it now says Check 8 builds its grammar from the same resolver Check 7 uses — the accurate post-chunk-01 relationship).
-- [X] accept  [ ] reject   The other 6 rewrites are the same "GitHub permalink" → "permalink in the source forge's grammar" substitution repeated at: the contract's own canonical-form citation (cited twice, from `artifact-contract.md` and `invariants.md`), Check 7's rule + what-counts paragraphs (`invariants.md`), Check 7's and Check 8's definitions (`evaluation-and-audit.md`), and the DISCOVER density paragraph (`discover-refresh.md`).
-- [X] accept  [ ] reject   `workflows.md` and `overview.md` are in the modified set but carry zero prose change — pure sha/line-range re-pins on content that didn't move in meaning, only in position or literal sha. Confirmed via a normalized diff that strips citation URLs before comparing.
-- [X] accept  [ ] reject   `monorepo.md`, `principles.md`, and `versioning.md` are untouched — none cites any of the 7 files chunk 02 edited.
+Paragraph→permalink density: 99.4% (report-only; not one of the disagreements below).
+Re-emit candidates: 9 of 9 references cite changed paths (31 changed paths uncited).
 
-*Forced re-pin, not a discretionary refresh: the judgment is concentrated in the 8 rewrites, all of which restate a fact this repo's own chunk-review already approved in chunk 02's diff.*
+- [ ] accept  [ ] reject   Your "for me, the app owner" frames a single-repo audience, but this run added three source-entry field rows (`forge`, `files_of_interest`, `workspace_roots`) and a sparse-clone/nine-workspace-roots paragraph describing configuration your one registered source does not use — coverage aimed at someone pointing the engine at other people's monorepos, not at you pointing it at this one.
+- [ ] accept  [ ] reject   "Should NOT misinterpret the app" is most at risk where the pack now asserts a version: it says the engine ships at `0.8.0`, true of `main` at `e8561a9` but not of the plugin actually installed on this machine, which is `0.6.0` — so the pack describes an engine two minors newer than the one your `/skill-engine:*` commands are running.
+- [ ] accept  [ ] reject   `artifact-contract.md` still states that `.discover-cache.json` and other dot-prefixed `research/*.json` files are gitignored runtime state, which is the engine's doctrine faithfully reported but false of this install — no such ignore rule exists here, and this run's own `.discover-inventory.json` is now untracked inside a tracked contextualizer.
+- [ ] accept  [ ] reject   The run went past a pure re-pin in two places the harvest did not ask for — a § REFRESH paragraph on the re-emit candidate set and three rows in the field table — and while your "cut nothing" prediction licenses no deletions and there are none, it does not speak to additions, which is where this run exercised discretion.
+- [ ] accept  [ ] reject   The Check 6 rewrite in `monorepo.md` turned one sentence into four (cache-tree resolution, hex-suffix matching, nine roots, `[N/A]` on an absent sparse root), leaving that paragraph denser than its neighbors — accurate, but it reads like reference documentation where the rest of the file reads like orientation.
+- [ ] accept  [ ] reject   `discover-refresh.md`'s cache-lifecycle sentence now carries two `Source:` links, the only double-cited sentence in that file, because the original GC claim was mis-attributed to `09-discover-config.md`, which never documented GC at all — the alternative was splitting one sentence into two.
+- [ ] accept  [ ] reject   Zero references added or cut, matching "none — looks good" exactly, but all 9 were rewritten and 202 permalinks re-pinned, so the blast radius is the whole corpus and the evidence that nothing broke is mechanical rather than editorial: `verify.sh` 11/0, density 99.4% flat against baseline, and all 204 links validated in-bounds at `e8561a9`.
 
 ## Step 3 — Sign-off
 

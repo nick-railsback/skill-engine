@@ -19,3 +19,9 @@ __pycache__/
 # the per-developer sibling. The rule lives here rather than in a contributor's
 # global ignore so a fresh clone is protected without local setup.
 .claude/settings.local.json
+
+# skill-engine runtime state: the changed-path inventory REFRESH rebuilds on
+# every cache advance (docs call it gitignored; nothing enforced that until
+# now). The examples' .discover-cache.json files are tracked fixtures and are
+# deliberately not covered here.
+**/research/.discover-inventory.json
