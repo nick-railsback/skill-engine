@@ -818,6 +818,107 @@ if [ "$HAVE_CJS" -eq 1 ]; then
   schema_rejects "workspace_roots containing an empty string is rejected" "$WORK/wr-bad-empty-entry.json"
 fi
 
+# ============================================================================
+# files_of_interest WITHOUT a workspace_roots override: the density floor
+# must stay live, and coverage must report once per source rather than once
+# per absent default root
+# ============================================================================
+section "files_of_interest with default workspace_roots — floor stays live, coverage reports once"
+
+populate_docs_only() {
+  local i
+  mkdir -p "$1/docs/guide"
+  for i in $(seq 1 25); do
+    printf 'x' > "$1/docs/guide/page$(printf '%02d' "$i").md"
+  done
+}
+
+# The nine-item default root list is a guess at where workspace members
+# might live; no real repository carries all nine. A guard that demands
+# every default root be present before counting can never be satisfied, so
+# the floor is skipped for every scoped source that declares no override --
+# and Check 6 emits one [N/A] per absent default, nine lines for one source.
+root_j="$WORK/fx-j"
+build_nav "$root_j"
+write_sources "$root_j" "[$(git_managed_source docsrc https://example.com/acme/docsrc \
+  '{"files_of_interest": ["docs/**"]}')]"
+cache_j="$WORK/cache-j"
+dest_j="$cache_j/git-managed/docsrc-11223344"
+shallow_clone_into "$dest_j" populate_docs_only
+
+real_j="$(real_file_count "$dest_j")"
+out_j="$(run_verify "$root_j" "$cache_j")"
+c6_j="$(check_section "$out_j" 'Monorepo-coverage')"
+c8_j="$(check_section "$out_j" 'Catalog-density')"
+
+if [ "$real_j" -ge 20 ]; then
+  pass "fixture self-check: the scoped fixture's corpus ($real_j files) clears the density floor"
+else
+  fail "fixture self-check: the scoped fixture's corpus ($real_j files) clears the density floor"
+fi
+if printf '%s' "$c8_j" | grep -qF 'docsrc' && printf '%s' "$c8_j" | grep -q '\[WARN\]'; then
+  pass "catalog-density: the floor stays live for a files_of_interest source that declares no workspace_roots"
+else
+  fail "catalog-density: the floor stays live for a files_of_interest source that declares no workspace_roots" \
+    "catalog-density section: ${c8_j:-<empty>}"
+fi
+
+j_mentions="$(printf '%s' "$c6_j" | grep -c 'docsrc')"
+if [ "$j_mentions" -eq 1 ]; then
+  pass "monorepo-coverage: a scoped source with no workspace_roots is named once, not once per absent default root"
+else
+  fail "monorepo-coverage: a scoped source with no workspace_roots is named once, not once per absent default root" \
+    "$j_mentions line(s) mention docsrc" "monorepo-coverage section: ${c6_j:-<empty>}"
+fi
+
+# ============================================================================
+# A wrong-typed workspace_roots must be named, and must not silently take
+# every later source down with it
+# ============================================================================
+section "workspace_roots type — a bare string is reported, and later sources still get inspected"
+
+populate_k1() { mkdir -p "$1/packages/member-k1"; printf 'x\n' > "$1/packages/member-k1/x.txt"; }
+populate_k2() { mkdir -p "$1/packages/member-k2"; printf 'x\n' > "$1/packages/member-k2/x.txt"; }
+populate_k3() { mkdir -p "$1/packages/member-k3"; printf 'x\n' > "$1/packages/member-k3/x.txt"; }
+
+# `"workspace_roots": "packages"` is the natural typo for a field documented
+# as "top-level directory names". jq's join() cannot iterate a string, so
+# the whole projection errors mid-stream with stderr discarded: the sources
+# after the malformed one are never emitted, get no line of any kind, and
+# the run still exits 0.
+root_k="$WORK/fx-k"
+build_nav "$root_k"
+write_sources "$root_k" "[$(git_managed_source k1 https://example.com/acme/k1),\
+$(git_managed_source k2 https://example.com/acme/k2 '{"workspace_roots": "packages"}'),\
+$(git_managed_source k3 https://example.com/acme/k3)]"
+cache_k="$WORK/cache-k"
+shallow_clone_into "$cache_k/git-managed/k1-aaaa1111" populate_k1
+shallow_clone_into "$cache_k/git-managed/k2-bbbb2222" populate_k2
+shallow_clone_into "$cache_k/git-managed/k3-cccc3333" populate_k3
+
+out_k="$(run_verify "$root_k" "$cache_k")"
+c2_k="$(check_section "$out_k" 'Source entries')"
+c6_k="$(check_section "$out_k" 'Monorepo-coverage')"
+
+if printf '%s' "$c2_k" | grep -q '\[FAIL\]'; then
+  pass "source-entries: a non-array workspace_roots is reported by the shape check"
+else
+  fail "source-entries: a non-array workspace_roots is reported by the shape check" \
+    "source-entries section: ${c2_k:-<empty>}"
+fi
+if printf '%s' "$c6_k" | grep -qF 'member-k3'; then
+  pass "monorepo-coverage: the source registered after the malformed one is still inspected"
+else
+  fail "monorepo-coverage: the source registered after the malformed one is still inspected" \
+    "monorepo-coverage section: ${c6_k:-<empty>}"
+fi
+if printf '%s' "$c6_k" | grep -qF 'member-k1'; then
+  pass "monorepo-coverage: the source registered before the malformed one is still inspected"
+else
+  fail "monorepo-coverage: the source registered before the malformed one is still inspected" \
+    "monorepo-coverage section: ${c6_k:-<empty>}"
+fi
+
 # ----- summary -------------------------------------------------------------
 
 echo

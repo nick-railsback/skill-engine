@@ -286,12 +286,14 @@ else
         (.value | type != "object")
         or ((.value | has("id")) and ((.value.id | type) != "string"))
         or ((.value | has("lifecycle")) and ((.value.lifecycle | type) != "object"))
+        or ((.value | has("workspace_roots")) and ((.value.workspace_roots | type) != "array"))
+        or ((.value | has("files_of_interest")) and ((.value.files_of_interest | type) != "array"))
       )
     | .key | tostring
   ' "$sp_file" 2>/dev/null | head -1)
 
   if [ -n "$shape_violation" ]; then
-    fail "sources[$shape_violation]: entry has wrong shape (not an object, or id is not string, or lifecycle is not object)"
+    fail "sources[$shape_violation]: entry has wrong shape (not an object, or id is not string, or lifecycle is not object, or workspace_roots/files_of_interest is not an array)"
   else
     src_count=$(jq -r '.sources | length' "$sp_file" 2>/dev/null)
     if [ "$src_count" = "0" ]; then
@@ -1237,20 +1239,32 @@ else
       continue
     fi
 
+    # An absent workspace root means different things depending on where
+    # the root came from. One the source DECLARED is news: the maintainer
+    # said members live there and the sparse checkout does not carry it.
+    # One from the nine-item default list is not -- the list is a guess at
+    # where members might live, no repository carries all nine, and
+    # reporting each absence turned a single scoped source into nine
+    # near-identical [N/A] lines.
+    ws_roots_explicit=0
     if [ -n "$ws_roots_csv" ]; then
       IFS=',' read -r -a roots <<< "$ws_roots_csv"
+      ws_roots_explicit=1
     else
       roots=(packages apps libs crates services modules cmd internal pkg)
     fi
 
+    roots_present=0
     for root in "${roots[@]}"; do
       ws_dir="$tree/$root"
       if [ ! -d "$ws_dir" ]; then
-        if [ "$src_kind" = "git-managed" ] && [ "$has_foi" -gt 0 ]; then
-          skip "monorepo-coverage: $src_id's files_of_interest scoping leaves '$root/' out of the checkout -- skipping coverage for that root"
+        if [ "$src_kind" = "git-managed" ] && [ "$has_foi" -gt 0 ] \
+           && [ "$ws_roots_explicit" -eq 1 ]; then
+          skip "monorepo-coverage: $src_id's files_of_interest scoping leaves declared workspace root '$root/' out of the checkout -- skipping coverage for that root"
         fi
         continue
       fi
+      roots_present=$((roots_present + 1))
       while IFS= read -r -d '' member; do
         member_name=$(basename "$member")
         cited=0
@@ -1265,7 +1279,23 @@ else
         fi
       done < <(find "$ws_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
     done
-  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), ((.workspace_roots // []) | join(",")), ((.files_of_interest // []) | length)] | join("\u001f")' "$sp_file" 2>/dev/null)
+
+    # A scoped source whose checkout carries none of the default roots had
+    # nothing inspected at all, which is not the same as clean. Said once,
+    # for the source, rather than once per root it was never going to have.
+    if [ "$src_kind" = "git-managed" ] && [ "$has_foi" -gt 0 ] \
+       && [ "$ws_roots_explicit" -eq 0 ] && [ "$roots_present" -eq 0 ]; then
+      skip "monorepo-coverage: $src_id's files_of_interest checkout carries none of the default workspace roots -- no workspace-member coverage to assess for this source"
+    fi
+  # Both array fields are read through a type guard rather than `// []`.
+  # `join` cannot iterate a string, so a wrong-typed workspace_roots made
+  # the whole expression error mid-stream with stderr discarded: every
+  # source after the malformed one was never emitted, got no line of any
+  # kind, and the run still exited 0. `length` on a string is its character
+  # count, so a wrong-typed files_of_interest was silently read as scoped.
+  # Check 2 is what reports the malformed entry; this guard only keeps it
+  # from silencing its neighbours.
+  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end)] | join("\u001f")' "$sp_file" 2>/dev/null)
   if [ "$monorepo_inspected" -eq 0 ]; then
     : # every per-source skip() already reported why; no aggregate line needed
   elif [ "$monorepo_concerns" -eq 0 ]; then
@@ -1361,19 +1391,26 @@ else
     fi
 
     if [ "$src_kind" = "git-managed" ] && [ "$has_foi" -gt 0 ]; then
-      ws_roots_csv=$(jq -r --arg id "$src_id" '.sources[]? | select(.id == $id) | ((.workspace_roots // []) | join(","))' "$sp_file" 2>/dev/null)
+      ws_roots_csv=$(jq -r --arg id "$src_id" '.sources[]? | select(.id == $id) | (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end)' "$sp_file" 2>/dev/null)
+      # The floor is skipped only when the source DECLARED where its
+      # workspace members live and the checkout does not carry one of those
+      # roots -- then the count is knowably partial. Falling back to the
+      # nine-item default list made the guard unsatisfiable: no repository
+      # carries all nine, so `scoped_out` was always 1 and the floor was
+      # dead for every scoped source that declared no override. With no
+      # override there is nothing declared to be missing, and what the tree
+      # carries IS the fetched corpus -- which is precisely what the
+      # catalog is supposed to cover -- so the floor runs.
       if [ -n "$ws_roots_csv" ]; then
         IFS=',' read -r -a roots <<< "$ws_roots_csv"
-      else
-        roots=(packages apps libs crates services modules cmd internal pkg)
-      fi
-      scoped_out=0
-      for root in "${roots[@]}"; do
-        [ -d "$tree/$root" ] || scoped_out=1
-      done
-      if [ "$scoped_out" -eq 1 ]; then
-        skip "catalog-density: $src_id's files_of_interest scoping leaves at least one workspace root out of the checkout -- file count would be partial, skipping the density floor for this source"
-        continue
+        scoped_out=0
+        for root in "${roots[@]}"; do
+          [ -d "$tree/$root" ] || scoped_out=1
+        done
+        if [ "$scoped_out" -eq 1 ]; then
+          skip "catalog-density: $src_id's files_of_interest scoping leaves at least one declared workspace root out of the checkout -- file count would be partial, skipping the density floor for this source"
+          continue
+        fi
       fi
     fi
 
@@ -1399,7 +1436,7 @@ else
       density_concerns=$((density_concerns + 1))
       printf '  [WARN] source %s has %d files but the catalog carries only %d row(s) (<3); verify post-run summary for a minimal-essence justification\n' "$src_id" "$file_count" "$catalog_rows"
     fi
-  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), ((.files_of_interest // []) | length)] | join("\u001f")' "$sp_file" 2>/dev/null)
+  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end)] | join("\u001f")' "$sp_file" 2>/dev/null)
   if [ "$density_inspected" -eq 0 ]; then
     : # every per-source skip() already reported why; no aggregate line needed
   elif [ "$density_concerns" -eq 0 ]; then

@@ -213,7 +213,14 @@ source, replacing (not augmenting) the default list `packages apps libs
 crates services modules cmd internal pkg`. Set it when a source's
 monorepo layout does not match the default roots — a Go-style tree
 (`cmd/`, `internal/`, `pkg/`) needs no configuration under the default
-list, but a workspace tool with its own top-level convention does. See
+list, but a workspace tool with its own top-level convention does. Setting
+it also changes what an absent root means alongside `files_of_interest`:
+a declared root the sparse checkout does not carry is reported `[N/A]` by
+Check 6 and suppresses Check 8's density floor for that source, because
+the file count is then knowably partial. Absent the override, the default
+list is only a guess at where members might live — no repository carries
+all nine roots — so absences are not reported per root and the density
+floor runs against the fetched corpus. See
 [`07-monorepo-adapter.md`](07-monorepo-adapter.md) for the heuristics'
 cache-tree resolution.
 
