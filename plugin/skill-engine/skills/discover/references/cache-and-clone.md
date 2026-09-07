@@ -76,6 +76,40 @@ When `/skill-engine:discover` is invoked:
    - `kind: "git-managed"` → `~/.cache/skill-engine/git-managed/<source_id>-*/`
    - `kind: "web-doc"` → `~/.cache/skill-engine/web-doc/<source_id>-*/`
 
+   Two flags govern this step for every git-managed in-scope source in
+   one gesture, scoped to the git-managed branch only — the web-doc
+   branch below is unaffected by either flag and keeps prompting exactly
+   as it does today:
+
+   - **`--clone-all`** consents on behalf of every git-managed in-scope
+     source, no prompt.
+   - **`--clone-none`** sets the session-sticky decline for every
+     git-managed in-scope source, no prompt: no cache-miss prompt fires
+     for any of them this run.
+   - With neither flag, the git-managed and web-doc cache-miss prompts
+     below fire exactly as they do today.
+
+   <!-- doctrine:clone-consent-guard:start -->
+   ```bash
+   clone_all=0
+   clone_none=0
+   for arg in "$@"; do
+     case "$arg" in
+       --clone-all) clone_all=1 ;;
+       --clone-none) clone_none=1 ;;
+     esac
+   done
+   if [ "$clone_all" -eq 1 ] && [ "$clone_none" -eq 1 ]; then
+     echo "skill-engine: --clone-all and --clone-none cannot both be set; choose one." >&2
+     exit 1
+   fi
+   exit 0
+   ```
+   <!-- doctrine:clone-consent-guard:end -->
+
+   If both flags are given together, the guard above halts before any
+   clone or prompt runs, with an error naming both flags.
+
    **git-managed probe.** Require that the matched directory's SHA suffix
    equal the SHA already resolved in step 5 for this source, and that it
    actually contain a `.git/` subdirectory, before treating it as a warm
@@ -423,7 +457,8 @@ used by `gh`, `cargo`, and most modern CLI tooling on macOS and Linux.
 
 The engine does not clone without consent. Pre-flight step 6 above is
 the consent point at DISCOVER time; `engine-bootstrap` Step 3.5 is the
-consent point at scaffold time. When the user replies `y` to either
+consent point at scaffold time; `--clone-all` at either point consents
+on behalf of every git-managed source at once instead of one at a time. When the user replies `y` to either
 prompt, the skill itself runs the documented
 `git clone --depth=1 --filter=blob:none <url> ~/.cache/skill-engine/git-managed/<source_id>-<sha>/`
 on the user's behalf; otherwise the cache directory simply remains

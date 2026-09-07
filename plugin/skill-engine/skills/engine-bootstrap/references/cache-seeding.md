@@ -4,6 +4,37 @@ The consent-gated local cache offers for git-managed and web-doc sources — the
 
 ## Step 3.5 — Offer to seed local cache
 
+Two flags govern this step for every git-managed source in one
+gesture, checked before any per-source iteration begins:
+
+- **`--clone-all`** runs the consented-clone path below for every
+  git-managed source, no prompt.
+- **`--clone-none`** skips the cache seed for every git-managed
+  source, no prompt, no clone attempt.
+- With neither flag, the per-source `[y/N]` prompt below fires
+  exactly as it does today.
+
+<!-- doctrine:clone-consent-guard:start -->
+```bash
+clone_all=0
+clone_none=0
+for arg in "$@"; do
+  case "$arg" in
+    --clone-all) clone_all=1 ;;
+    --clone-none) clone_none=1 ;;
+  esac
+done
+if [ "$clone_all" -eq 1 ] && [ "$clone_none" -eq 1 ]; then
+  echo "skill-engine: --clone-all and --clone-none cannot both be set; choose one." >&2
+  exit 1
+fi
+exit 0
+```
+<!-- doctrine:clone-consent-guard:end -->
+
+If both flags are given together, the guard above halts before any
+clone or prompt runs, with an error naming both flags.
+
 After stamping completes, iterate over the intaken sources filtered to
 `kind: git-managed`. For each such source, prompt the user **once**:
 
@@ -317,7 +348,9 @@ used by `gh`, `cargo`, and most modern CLI tooling on macOS and Linux.
 `source_id` is the entry's id from `research/source-paths.json` and
 `<sha>` is the upstream HEAD SHA at the time of clone.
 
-The engine does not clone without consent. Two consent points exist:
+The engine does not clone without consent. Two consent points exist —
+plus `--clone-all`, which consents on behalf of every source at once
+instead of one at a time:
 
 - **Step 3.5 above** prompts once per git-managed source at bootstrap
   time and clones on `y`.

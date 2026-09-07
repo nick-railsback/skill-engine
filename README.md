@@ -192,7 +192,9 @@ Twenty minutes from a fresh Claude Code session to a working contextualizer.
   in your project (including a `verify.sh` you or CI run to audit the
   contextualizer's artifacts — see below).
 - Writes cloned source repositories under `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`,
-  only after you confirm at the per-source opt-in prompt (default: no).
+  only after you confirm at the per-source opt-in prompt (default: no) —
+  or via `--clone-all`, a second opt-in that consents for every source at
+  once.
 - Reads from paths registered in `source-paths.json` — nothing else on
   disk, nothing over the network beyond those clones.
 
