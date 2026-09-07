@@ -154,6 +154,22 @@ expect_verbs "a double-quoted literal naming the form is not an invocation" \
 expect_verbs "a command substitution inside the quotes is still scanned" \
   'echo "$(git -C /tmp push)"' 'push'
 
+section "an unterminated quote does not blank the rest of the line"
+
+# The literal stripper splits on `"` and blanks the even-numbered fields,
+# treating each as the content of one matched pair. With an ODD number of
+# quotes on the line the final even field is not a closed literal at all --
+# it is the tail of the line, following a quote whose partner is on another
+# line -- so blanking it deletes any verb written there. The previous
+# match-based stripper required a closing quote and left such text in
+# place, which means this is a verb main reported and HEAD does not.
+expect_verbs "a lone opening quote does not swallow the verb that follows it" \
+  'The "release step runs git push --force to publish the tag' 'push'
+expect_verbs "a second unterminated-quote shape reports its verb too" \
+  'printf "the tag is published; run git reset --hard to undo' 'reset'
+expect_verbs "a properly closed plain literal is still stripped (the behaviour that must not regress)" \
+  'echo "run git push to publish the tag"' ''
+
 section "prose is still left for doctrine's verb filter to drop"
 
 # This layer does not decide what is a verb. A noun phrase comes out as a

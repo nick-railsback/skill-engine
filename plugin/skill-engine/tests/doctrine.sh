@@ -200,7 +200,24 @@ readonly_violations=$(
       cache_exempt["checkout"]=1
     }
     {
-      exempt = ($3 in cache_exempt) && $4 ~ /^(~|\$HOME|\$\{HOME\})\/\.cache\/skill-engine\//
+      # The target must name a clone this engine owns: under the cache root
+      # AND beneath git-managed/ or web-doc/, which is where every clone
+      # recipe writes. The bare cache root is not a clone, a sibling
+      # directory under the root belongs to nobody here, and a path
+      # carrying dot or dot-dot segments resolves somewhere the prefix
+      # cannot vouch for. All three were flagged before this exemption
+      # existed, and git applies -C cumulatively, so the 4th field the
+      # scanner hands over is the LAST -C, not the first.
+      #
+      # Written as statements rather than one continued expression, and
+      # with no apostrophe or backtick anywhere: this awk program is a
+      # single-quoted shell string, so either character would end it.
+      exempt = 0
+      if (($3 in cache_exempt) && $4 ~ /^(~|\$HOME|\$\{HOME\})\/\.cache\/skill-engine\/(git-managed|web-doc)\/[^[:space:]]/) {
+        exempt = 1
+        if ($4 ~ /(^|\/)\.\.(\/|$)/) { exempt = 0 }
+        if ($4 ~ /(^|\/)\.(\/|$)/) { exempt = 0 }
+      }
       if (($3 in verbs) && !($3 in allow) && !exempt) print
     }
   '
@@ -212,7 +229,7 @@ if [ -n "$readonly_violations" ]; then
     printf "  %s:%s  git %s\n", $1, $2, $3
   }'
   echo "  Allow-list: diff, status, log, show, clone, ls-remote, ls-tree, ls-files, rev-parse, cat-file."
-  echo "  Exception: fetch, sparse-checkout, and checkout are permitted when -C targets an engine-controlled path under ~/.cache/skill-engine/ (literal ~, \$HOME, or \${HOME} only)."
+  echo "  Exception: fetch, sparse-checkout, and checkout are permitted when the LAST -C targets an engine-controlled clone under ~/.cache/skill-engine/git-managed/ or .../web-doc/ (literal ~, \$HOME, or \${HOME} only; no . or .. segments)."
   fail=1
 fi
 

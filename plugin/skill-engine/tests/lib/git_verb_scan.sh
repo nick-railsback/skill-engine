@@ -77,15 +77,24 @@ awk -v root="$root" '
     # deletes the verb between them. split() pairs quotes correctly: odd
     # fields are text outside any quotes, even fields are the content of one
     # matched pair.
+    #
+    # An even field is the content of a closed pair only when a further
+    # field follows it. When the line carries an ODD number of quotes the
+    # last field is even-numbered and has no closing quote -- it is the tail
+    # of the line, after a quote whose partner is on another line -- so
+    # blanking it would delete any verb written there. It is put back
+    # verbatim, opening quote included.
     n = split(line, q, "\"")
     line = q[1]
     for (i = 2; i <= n; i++) {
-      if (i % 2 == 0) {
+      if (i % 2 == 0 && i < n) {
         # A literal that can run or expand something is left untouched. A
         # plain literal is replaced with an empty quoted pair, not a bare
         # space -- a bare space would let a `-C` value collapse into
         # whitespace and merge with the verb that follows it.
         line = line (q[i] ~ /[$`]/ ? "\"" q[i] "\"" : "\"\"")
+      } else if (i % 2 == 0) {
+        line = line "\"" q[i]
       } else {
         line = line q[i]
       }
@@ -121,9 +130,17 @@ awk -v root="$root" '
       # the 3-field contract above gives it nothing to test the exception
       # against. -c is a config assignment (user.email=...), never a
       # directory, and must never be read as one.
+      # git applies -C cumulatively and a later absolute path overrides an
+      # earlier one, so the LAST -C is where the command actually runs.
+      # Reporting the first let a cache-scoped prefix vouch for an
+      # invocation that never touches the cache.
       ctarget = ""
-      if (match(full, /-C[[:space:]]+[^[:space:]]+/)) {
-        ctarget = substr(full, RSTART, RLENGTH)
+      rest = full
+      while (match(rest, /-C[[:space:]]+[^[:space:]]+/)) {
+        ctarget = substr(rest, RSTART, RLENGTH)
+        rest = substr(rest, RSTART + RLENGTH)
+      }
+      if (ctarget != "") {
         sub(/^-C[[:space:]]+/, "", ctarget)
         if (ctarget ~ /^".*"$/) {
           ctarget = substr(ctarget, 2, length(ctarget) - 2)

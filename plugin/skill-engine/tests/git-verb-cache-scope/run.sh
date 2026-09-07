@@ -129,7 +129,10 @@ expect_field3() {
 # invocation, e.g. cache_line '$HOME' 'fetch --depth=1 origin "$sha"'.
 cache_line() {
   local home="$1" verb_args="$2"
-  printf 'git -C "%s/.cache/skill-engine/${source_id}-${sha}" %s' "$home" "$verb_args"
+  # git-managed/ is not decoration: every clone recipe writes under it (or
+  # under web-doc/), and the exemption requires it. Without the segment this
+  # helper built a path production never emits.
+  printf 'git -C "%s/.cache/skill-engine/git-managed/${source_id}-${sha}" %s' "$home" "$verb_args"
 }
 
 # with_scratch_fixture <line> — writes <line> as the sole invocation inside
@@ -243,6 +246,36 @@ expect_reject "sparse-checkout with no -C at all still fails" \
   'git sparse-checkout set docs' 'sparse-checkout'
 expect_reject "checkout with no -C at all still fails" \
   'git checkout main' 'checkout'
+
+section "the cache-scope exemption cannot be satisfied by a second -C, a traversal, or the bare root"
+
+# The exemption reads a -C target and asks whether it looks like a path
+# under the cache root. Three shapes answer yes while running somewhere
+# else entirely, and all three were flagged before the exemption existed.
+expect_reject "a later -C outside the cache root still fails (git applies -C cumulatively)" \
+  'git -C ~/.cache/skill-engine/git-managed/x -C /Users/me/repo checkout main' 'checkout'
+expect_reject "a -C target escaping the cache root through .. still fails" \
+  'git -C ~/.cache/skill-engine/../../repo checkout main' 'checkout'
+expect_reject "the bare cache root is not a clone and still fails" \
+  'git -C ~/.cache/skill-engine/ checkout main' 'checkout'
+expect_reject "a cache-root subdirectory the engine does not own still fails" \
+  'git -C ~/.cache/skill-engine/notacache/x checkout main' 'checkout'
+
+# Non-vacuity: the realistic shape every clone recipe actually writes --
+# under git-managed/ or web-doc/ -- must remain exempt, so the four
+# rejections above are the rule discriminating, not the rule collapsing.
+for scoped in \
+  'git -C "$HOME/.cache/skill-engine/git-managed/${source_id}-${sha}" checkout "$sha"' \
+  'git -C "$HOME/.cache/skill-engine/web-doc/${source_id}-${snap}" checkout "$sha"'
+do
+  with_scratch_fixture "$scoped"
+  reported="$(printf '%s\n' "$DOCTRINE_OUT" | grep -F "$SCRATCH_REL:$SCRATCH_LINE" || true)"
+  if [ -z "$reported" ]; then
+    pass "an engine-owned clone path is still exempt: ${scoped:0:58}..."
+  else
+    fail "an engine-owned clone path is still exempt: ${scoped:0:58}..." "$reported"
+  fi
+done
 
 section "the failure message documents the cache-scoped exception"
 
