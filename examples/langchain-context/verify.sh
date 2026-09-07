@@ -638,11 +638,13 @@ else
     | grep -oE '\(references/[^()]+\)' 2>/dev/null \
     | sed -E 's|^\(references/(.+)\)$|\1|')
 
-  # File-form refs: top-level `*.md` directly under references/.
+  # File-form refs: top-level `*.md` directly under references/. Parameter
+  # expansion, not a `basename` subprocess: a per-file fork costs ~1ms each
+  # and dominates this check's wall time at thousands of references.
   file_form_slugs=()
   while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
-    fname=$(basename "$f")
+    fname="${f##*/}"
     file_form_slugs+=("${fname%.md}")
   done < <(find -L "$CTX_ROOT/references" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null)
 
@@ -695,6 +697,55 @@ else
     nested_dirs+=("${d#"$CTX_ROOT/references/"}")
   done < <(find -L "$CTX_ROOT/references" -mindepth 2 -type d -print0 2>/dev/null)
 
+  # Sorted+deduped slug lists, precomputed once so every membership/set-
+  # difference question below answers via a single `sort`/`comm`/`grep -Fxf`
+  # call instead of a nested-loop scan (the O(n·m) cost this check used to
+  # pay). Every list here traces back to a `sort -u`, so it is safe to feed
+  # directly into `comm`, which requires sorted input.
+  sorted_file_form_slugs=()
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    sorted_file_form_slugs+=("$s")
+  done < <(printf '%s\n' "${file_form_slugs[@]:-}" | sort -u)
+
+  sorted_dir_valid_slugs=()
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    sorted_dir_valid_slugs+=("$s")
+  done < <(printf '%s\n' "${dir_form_valid_slugs[@]:-}" | sort -u)
+
+  sorted_dir_broken_slugs=()
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    sorted_dir_broken_slugs+=("$s")
+  done < <(printf '%s\n' "${dir_form_broken_slugs[@]:-}" | sort -u)
+
+  # cat_targets entries are FILE:<slug> / DIR:<slug>; split into two arrays
+  # by prefix. A single O(n) pass over cat_targets, not a membership test
+  # against another list, so it is not part of the quadratic pattern removed
+  # elsewhere in this check.
+  cat_file_slugs=()
+  cat_dir_slugs=()
+  for entry in "${cat_targets[@]:-}"; do
+    [ -n "$entry" ] || continue
+    case "$entry" in
+      FILE:*) cat_file_slugs+=("${entry#FILE:}") ;;
+      DIR:*) cat_dir_slugs+=("${entry#DIR:}") ;;
+    esac
+  done
+
+  sorted_cat_file_slugs=()
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    sorted_cat_file_slugs+=("$s")
+  done < <(printf '%s\n' "${cat_file_slugs[@]:-}" | sort -u)
+
+  sorted_cat_dir_slugs=()
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    sorted_cat_dir_slugs+=("$s")
+  done < <(printf '%s\n' "${cat_dir_slugs[@]:-}" | sort -u)
+
   if [ "${#file_form_slugs[@]}" -eq 0 ] \
       && [ "${#dir_form_valid_slugs[@]}" -eq 0 ] \
       && [ "${#dir_form_broken_slugs[@]}" -eq 0 ] \
@@ -718,38 +769,24 @@ else
     # directory form (valid OR broken) is a duplicate-primary violation
     # (a reference may not exist in both forms simultaneously). The
     # duplicated slug is recorded but kept in the canonical slug set
-    # exactly once (counted via its file-form entry).
+    # exactly once. A broken directory-form whose slug ALSO has a file-form
+    # is still a duplicate-primary violation regardless of the broken side's
+    # canonical primary status — the invariant fires on the cross-form
+    # presence, not the validity of each side, so both dir-form lists feed
+    # the same intersection.
     duplicate_form_slugs=()
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      duplicate_form_slugs+=("$s")
+    done < <(comm -12 \
+          <(printf '%s\n' "${sorted_file_form_slugs[@]:-}") \
+          <(printf '%s\n' "${sorted_dir_valid_slugs[@]:-}" "${sorted_dir_broken_slugs[@]:-}" | sort -u))
+
     canonical_fs_slugs=()
-    for slug in "${file_form_slugs[@]:-}"; do
-      [ -n "$slug" ] || continue
-      canonical_fs_slugs+=("$slug")
-    done
-    for slug in "${dir_form_valid_slugs[@]:-}"; do
-      [ -n "$slug" ] || continue
-      dup=0
-      for s in "${file_form_slugs[@]:-}"; do
-        if [ "$s" = "$slug" ]; then dup=1; break; fi
-      done
-      if [ "$dup" -eq 1 ]; then
-        duplicate_form_slugs+=("$slug")
-      else
-        canonical_fs_slugs+=("$slug")
-      fi
-    done
-    # A broken directory-form whose slug ALSO has a file-form is still a
-    # duplicate-primary violation regardless of the broken side's canonical
-    # primary status — the invariant fires on the cross-form presence, not
-    # the validity of each side.
-    for slug in "${dir_form_broken_slugs[@]:-}"; do
-      [ -n "$slug" ] || continue
-      for s in "${file_form_slugs[@]:-}"; do
-        if [ "$s" = "$slug" ]; then
-          duplicate_form_slugs+=("$slug")
-          break
-        fi
-      done
-    done
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      canonical_fs_slugs+=("$s")
+    done < <(printf '%s\n' "${sorted_file_form_slugs[@]:-}" "${sorted_dir_valid_slugs[@]:-}" | sort -u)
 
     for dup in "${duplicate_form_slugs[@]:-}"; do
       [ -n "$dup" ] || continue
@@ -798,74 +835,132 @@ else
     # on-disk reference's actual form (a form mismatch produces a broken
     # rendered Markdown link). Slugs already surfaced via a more specific
     # failure (broken directory or duplicate form) are skipped to avoid
-    # double-firing.
-    for entry in "${cat_targets[@]:-}"; do
-      [ -n "$entry" ] || continue
-      cat_form="${entry%%:*}"
-      slug="${entry#*:}"
+    # double-firing. Each declared-form half is handled by a mirrored
+    # two-round `comm` classification: round 1 finds eligible catalog slugs
+    # with no exact match in their declared form; round 2 classifies those
+    # against the *other* form (in both = mismatch, file1-only = phantom).
+    # `comm`'s raw three-column output (no leading tab = file1-only, one
+    # leading tab = file2-only, two leading tabs = in both) keeps the whole
+    # classification in one already-sorted pass.
+    suppressed_slugs=()
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      suppressed_slugs+=("$s")
+    done < <(printf '%s\n' "${sorted_dir_broken_slugs[@]:-}" "${duplicate_form_slugs[@]:-}" | sort -u)
 
-      skip_phantom=0
-      for brk in "${dir_form_broken_slugs[@]:-}"; do
-        if [ "$brk" = "$slug" ]; then skip_phantom=1; break; fi
-      done
-      if [ "$skip_phantom" -eq 0 ]; then
-        for dup in "${duplicate_form_slugs[@]:-}"; do
-          if [ "$dup" = "$slug" ]; then skip_phantom=1; break; fi
-        done
-      fi
-      [ "$skip_phantom" -eq 1 ] && continue
+    eligible_cat_file_slugs=()
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      eligible_cat_file_slugs+=("$s")
+    done < <(grep -vFxf <(printf '%s\n' "${suppressed_slugs[@]:-}") \
+          <(printf '%s\n' "${sorted_cat_file_slugs[@]:-}"))
 
-      fs_form=""
-      for f in "${file_form_slugs[@]:-}"; do
-        if [ "$f" = "$slug" ]; then fs_form="FILE"; break; fi
-      done
-      if [ -z "$fs_form" ]; then
-        for d in "${dir_form_valid_slugs[@]:-}"; do
-          if [ "$d" = "$slug" ]; then fs_form="DIR"; break; fi
-        done
-      fi
+    eligible_cat_dir_slugs=()
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      eligible_cat_dir_slugs+=("$s")
+    done < <(grep -vFxf <(printf '%s\n' "${suppressed_slugs[@]:-}") \
+          <(printf '%s\n' "${sorted_cat_dir_slugs[@]:-}"))
 
-      if [ -z "$fs_form" ]; then
-        if [ "$cat_form" = "DIR" ]; then
-          fail "Catalog row points at references/$slug/ but no matching reference exists (file or directory)"
-        else
-          fail "Catalog row points at references/$slug.md but no matching reference exists (file or directory)"
-        fi
-        bij_ok=0
-      elif [ "$cat_form" != "$fs_form" ]; then
-        if [ "$cat_form" = "DIR" ]; then
-          fail "Catalog row references/$slug/ declares directory form but the on-disk reference is file form references/$slug.md — link will render broken"
-        else
+    # File-declared half: round 1 against sorted_file_form_slugs (its own
+    # declared form), round 2 against sorted_dir_valid_slugs (the other
+    # form) — in both = mismatch (declared file, actual dir); file1-only =
+    # phantom.
+    cat_file_no_match=()
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      cat_file_no_match+=("$s")
+    done < <(comm -23 \
+          <(printf '%s\n' "${eligible_cat_file_slugs[@]:-}") \
+          <(printf '%s\n' "${sorted_file_form_slugs[@]:-}"))
+
+    while IFS= read -r line; do
+      case "$line" in
+        $'\t\t'*)
+          slug="${line#$'\t\t'}"
+          [ -n "$slug" ] || continue
           fail "Catalog row references/$slug.md declares file form but the on-disk reference is directory form references/$slug/ — link will render broken"
-        fi
-        bij_ok=0
-      fi
-    done
+          bij_ok=0
+          ;;
+        $'\t'*) : ;;
+        *)
+          slug="$line"
+          [ -n "$slug" ] || continue
+          fail "Catalog row points at references/$slug.md but no matching reference exists (file or directory)"
+          bij_ok=0
+          ;;
+      esac
+    done < <(comm \
+          <(printf '%s\n' "${cat_file_no_match[@]:-}") \
+          <(printf '%s\n' "${sorted_dir_valid_slugs[@]:-}"))
+
+    # Dir-declared half: mirror of the above with the two forms swapped.
+    cat_dir_no_match=()
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      cat_dir_no_match+=("$s")
+    done < <(comm -23 \
+          <(printf '%s\n' "${eligible_cat_dir_slugs[@]:-}") \
+          <(printf '%s\n' "${sorted_dir_valid_slugs[@]:-}"))
+
+    while IFS= read -r line; do
+      case "$line" in
+        $'\t\t'*)
+          slug="${line#$'\t\t'}"
+          [ -n "$slug" ] || continue
+          fail "Catalog row references/$slug/ declares directory form but the on-disk reference is file form references/$slug.md — link will render broken"
+          bij_ok=0
+          ;;
+        $'\t'*) : ;;
+        *)
+          slug="$line"
+          [ -n "$slug" ] || continue
+          fail "Catalog row points at references/$slug/ but no matching reference exists (file or directory)"
+          bij_ok=0
+          ;;
+      esac
+    done < <(comm \
+          <(printf '%s\n' "${cat_dir_no_match[@]:-}") \
+          <(printf '%s\n' "${sorted_file_form_slugs[@]:-}"))
 
     # Orphan check: every canonical fs slug must appear in the catalog
     # (in some form — form-mismatch is surfaced by the phantom side). The
     # error message distinguishes file form from directory form for
-    # diagnostic clarity.
-    for fs in "${canonical_fs_slugs[@]:-}"; do
-      [ -n "$fs" ] || continue
-      found=0
-      for entry in "${cat_targets[@]:-}"; do
-        slug="${entry#*:}"
-        if [ "$slug" = "$fs" ]; then found=1; break; fi
-      done
-      if [ "$found" -ne 1 ]; then
-        is_dir=0
-        for dv in "${dir_form_valid_slugs[@]:-}"; do
-          if [ "$dv" = "$fs" ]; then is_dir=1; break; fi
-        done
-        if [ "$is_dir" -eq 1 ]; then
-          fail "references/$fs/ exists with canonical primary but no catalog row points at it (run /skill-engine:self-audit to repair)"
-        else
-          fail "references/$fs.md exists but no catalog row points at it (run /skill-engine:self-audit to repair)"
-        fi
-        bij_ok=0
-      fi
-    done
+    # diagnostic clarity. Same two-step shape as the phantom check above but
+    # only one round deep — orphan has no "wrong-form" case, a slug is
+    # either cataloged (in some form) or it isn't.
+    orphan_slugs=()
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      orphan_slugs+=("$s")
+    done < <(comm -23 \
+          <(printf '%s\n' "${canonical_fs_slugs[@]:-}") \
+          <(printf '%s\n' "${sorted_cat_file_slugs[@]:-}" "${sorted_cat_dir_slugs[@]:-}" | sort -u))
+
+    # orphan_slugs only contains canonical fs slugs (already known to be
+    # file-form OR valid-dir-form), so any orphan slug that also appears in
+    # sorted_dir_valid_slugs is decisively dir-form; anything else is
+    # decisively file-form. One `comm` call classifies both in a single
+    # already-sorted pass.
+    while IFS= read -r line; do
+      case "$line" in
+        $'\t\t'*)
+          slug="${line#$'\t\t'}"
+          [ -n "$slug" ] || continue
+          fail "references/$slug/ exists with canonical primary but no catalog row points at it (run /skill-engine:self-audit to repair)"
+          bij_ok=0
+          ;;
+        $'\t'*) : ;;
+        *)
+          slug="$line"
+          [ -n "$slug" ] || continue
+          fail "references/$slug.md exists but no catalog row points at it (run /skill-engine:self-audit to repair)"
+          bij_ok=0
+          ;;
+      esac
+    done < <(comm \
+          <(printf '%s\n' "${orphan_slugs[@]:-}") \
+          <(printf '%s\n' "${sorted_dir_valid_slugs[@]:-}"))
 
     if [ "$bij_ok" -eq 1 ]; then
       total=${#canonical_fs_slugs[@]}
