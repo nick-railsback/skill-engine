@@ -289,21 +289,35 @@ is_format_example_block() {
   return 0
 }
 
-# locate_parser_block <file> — scans the WHOLE reference for fenced
-# blocks labeled bash/sh/shell/awk (case-insensitive), the shapes a
-# parsing one-liner would plausibly be shown in. Sets PARSER_BLOCK to the
-# single match's content (and PARSER_ERR empty), or PARSER_BLOCK empty
-# with PARSER_ERR naming why: none found, or more than one candidate
-# (ambiguous — refused rather than guessed at).
+# locate_parser_block <file> — scans the "Batch intake: --sources-file"
+# section of the reference (from that heading to the next '##'/'###'
+# heading) for fenced blocks labeled bash/sh/shell/awk (case-insensitive),
+# the shapes a parsing one-liner would plausibly be shown in. Scoped to
+# that section, not the whole file, because the reference can legitimately
+# carry other executable fenced blocks for unrelated features elsewhere
+# (e.g. the activation guard's own sentinel-delimited find block) — this
+# scanner only owns the sources-file section's namespace, not the file's.
+# Sets PARSER_BLOCK to the single match's content (and PARSER_ERR empty),
+# or PARSER_BLOCK empty with PARSER_ERR naming why: none found, or more
+# than one candidate (ambiguous — refused rather than guessed at).
 PARSER_BLOCK=""
 PARSER_ERR=""
 locate_parser_block() {
   local file="$1"
+  local section_re='^### Batch intake: `--sources-file`'
+  local next_heading_re='^#{2,3}[[:space:]]'
   local fence_open_re='^[[:space:]]*```([A-Za-z]*)[[:space:]]*$'
-  local in_fence=0 info="" info_lc="" buf="" line
+  local in_fence=0 info="" info_lc="" buf="" line in_section=0
   local -a matches=()
   local -a heads=()
   while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$in_section" -eq 0 ]; then
+      [[ "$line" =~ $section_re ]] && in_section=1
+      continue
+    fi
+    if [ "$in_fence" -eq 0 ] && [[ "$line" =~ $next_heading_re ]]; then
+      break
+    fi
     if [[ "$line" =~ $fence_open_re ]]; then
       if [ "$in_fence" -eq 1 ]; then
         info_lc="$(printf '%s' "$info" | tr '[:upper:]' '[:lower:]')"

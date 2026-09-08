@@ -33,29 +33,6 @@ engine workflow (`discover`, `refresh`, `status`, `self-audit`,
 slash commands from the project working directory (the parent of
 `.claude/`); the workflows locate the root themselves.
 
-## Activation guard
-
-This skill assumes no contextualizer is installed under
-`.claude/skills/*-context/` yet.
-
-1. From the project working directory, look for an existing contextualizer:
-
-   ```bash
-   find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
-   ```
-
-   If any match is a non-empty directory, surface a one-line warning
-   naming the path, list the files that would be overwritten, and pause
-   for explicit confirmation before continuing. The condition is
-   files-present, NOT a parseable `research/.research-state.json`: a
-   corrupted state marker must not bypass this guard, because the
-   directory may still hold a curated `SKILL.md` and a populated
-   `research/source-paths.json` that stamping would overwrite. The
-   `using-skill-engine` router sends both new and corrupt-marker
-   directories here; either way, existing files pause for confirmation.
-
-2. Otherwise, proceed.
-
 ## Step 1 — Intake
 
 Accept one or more sources: positional arguments (straight to Step 2)
@@ -86,6 +63,15 @@ After Step 2 derives a slug, ask the user once for the contextualizer
 name — the engine appends `-context`. A default is offered when the
 sources share a useful kebab-case prefix. Default-derivation rules and
 input validation are in [`references/intake-and-detection.md`](references/intake-and-detection.md).
+
+## Activation guard (same slug only)
+
+Once Step 2.5 has the accepted `<contextualizer-slug>`, check whether a
+contextualizer with that exact slug already exists; if its directory is
+non-empty, pause for confirmation before Step 3 stamps anything. A
+different slug's contextualizer existing alongside it is not a
+collision and needs no pause. Detection mechanics and the confirmation
+prompt are in [`references/intake-and-detection.md`](references/intake-and-detection.md).
 
 ## Step 3 — Stamping
 

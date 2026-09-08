@@ -29,8 +29,7 @@
 #     without weakening its existing "(default: no)" clause.
 #   - The flag names appear nowhere else in the shipped plugin surface or
 #     the project README — not in either navigator SKILL.md, not in any
-#     other reference — and the two navigators are otherwise untouched:
-#     byte-identical to their current content.
+#     other reference.
 #
 # THIS IS A PROSE-ONLY SKILL PAIR. engine-bootstrap and discover run as a
 # model reading SKILL.md and its references, not as a program a fixture
@@ -180,14 +179,6 @@ assert_str() {
     pass "$label"
   else
     fail "$label" "string not found: $lit"
-  fi
-}
-
-sha256_of_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
   fi
 }
 
@@ -465,30 +456,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# The two navigators stay byte-identical, and the flags appear nowhere
-# outside the two references and the README consent sentence.
+# The flags appear nowhere outside the two references and the README
+# consent sentence.
+#
+# This section used to also pin both navigator SKILL.md files
+# byte-identical to their exact chunk-02-era SHA256 — a check that only
+# ever meant "this chunk's own diff didn't touch these files," not "these
+# files must never change again." As an absolute, un-expiring pin it broke
+# the first time an unrelated, later, legitimate chunk edited
+# engine-bootstrap/SKILL.md (chunk 03-activation-guard-slug, 2026-09-07),
+# which the flag-scoping check below does not: the property that actually
+# needs to survive future chunks — these two flags never leaking into a
+# navigator — is exactly what it asserts. Retired rather than re-baselined,
+# maintainer-approved, so the next legitimate navigator edit doesn't hit
+# the same wall.
 # ---------------------------------------------------------------------------
 
-banner "navigators untouched, flags scoped to the declared surfaces"
-
-BOOTSTRAP_SKILL_BASELINE_SHA256="08ce80fe2357008bb16794df56c702ef4aee328f3c1d708e76d1453a5abd5be7"
-DISCOVER_SKILL_BASELINE_SHA256="18097c0f3855886eef3502426c76700cb39b97793f8ac572f463c4f9ca951e2e"
-
-bootstrap_skill_sha="$(sha256_of_file "$BOOTSTRAP_SKILL")"
-if [ "$bootstrap_skill_sha" = "$BOOTSTRAP_SKILL_BASELINE_SHA256" ]; then
-  pass "skillmd_bootstrap_byte_identical_to_baseline"
-else
-  fail "skillmd_bootstrap_byte_identical_to_baseline" \
-    "expected sha256 $BOOTSTRAP_SKILL_BASELINE_SHA256, got $bootstrap_skill_sha"
-fi
-
-discover_skill_sha="$(sha256_of_file "$DISCOVER_SKILL")"
-if [ "$discover_skill_sha" = "$DISCOVER_SKILL_BASELINE_SHA256" ]; then
-  pass "skillmd_discover_byte_identical_to_baseline"
-else
-  fail "skillmd_discover_byte_identical_to_baseline" \
-    "expected sha256 $DISCOVER_SKILL_BASELINE_SHA256, got $discover_skill_sha"
-fi
+banner "flags scoped to the declared surfaces"
 
 # The oracle's own test directory is excluded by path (not by grep's
 # --exclude-dir, whose directory-matching semantics vary too much across

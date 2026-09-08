@@ -272,3 +272,28 @@ name-keyed — duplicate `<name>-context` navigators across sibling
 directories resolve non-deterministically).
 
 The accepted name becomes the **`<contextualizer-slug>`** used in Step 3.
+
+## Activation guard — same-slug collision only
+
+The guard runs after the slug is known (Step 2.5) and before anything
+is stamped: once the slug is accepted, check whether a contextualizer
+with that exact slug already exists, before Step 3 stamps anything:
+
+<!-- doctrine:activation-guard-find:start -->
+```bash
+slug="$1"
+find .claude/skills -mindepth 1 -maxdepth 1 -type d -name "${slug}-context" 2>/dev/null
+```
+<!-- doctrine:activation-guard-find:end -->
+
+If the match is a non-empty directory, surface a one-line warning
+naming the path, list the files that would be overwritten, and pause
+for explicit confirmation before continuing. The condition is
+files-present, NOT a parseable `research/.research-state.json`: a
+corrupted state marker must not bypass this guard, because the
+directory may still hold a curated `SKILL.md` and a populated
+`research/source-paths.json` that stamping would overwrite. The
+`using-skill-engine` router sends both new and corrupt-marker
+directories here; either way, existing files pause for confirmation. A
+*different* slug's contextualizer existing alongside it is not a
+collision — bootstrapping proceeds with no pause.
