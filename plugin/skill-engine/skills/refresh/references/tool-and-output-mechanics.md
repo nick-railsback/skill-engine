@@ -88,29 +88,8 @@ if [ "<old_sha>" = "<new_sha>" ]; then
 fi
 
 source_id="<source_id>"
-old_sha="<old_sha>"
-new_sha="<new_sha>"
 
-if ! git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-<old_sha>" fetch --depth=1 origin "<new_sha>"; then
-  printf 'skill-engine: failed to fetch %s for %s -- advance aborted, %s-%s left intact\n' \
-    "<new_sha>" "<source_id>" "<source_id>" "<old_sha>" >&2
-  exit 1
-fi
-
-git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-<old_sha>" checkout --detach "<new_sha>"
-
-cache_dir="$HOME/.cache/skill-engine/git-managed/${source_id}-${old_sha}"
-
-since_tmpfile="$(mktemp)"
-git -C "$cache_dir" -c core.quotePath=false diff --name-status --no-renames "$old_sha" "$new_sha" \
-  | cut -f2- \
-  | jq -R . \
-  | jq -s --arg from "$old_sha" --arg to "$new_sha" \
-      '{from_sha: $from, to_sha: $to, files: map({path: .})}' \
-  > "$since_tmpfile"
-
-inventory_json="$(python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" --since-json "$since_tmpfile")"
-rm -f "$since_tmpfile"
+inventory_json="$("$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" advance "$source_id" "<old_sha>" "<new_sha>")" || exit $?
 
 mkdir -p research
 inv_file="research/.discover-inventory.json"
@@ -120,11 +99,6 @@ printf '%s' "$existing" \
   | jq --arg sid "$source_id" --argjson entry "$inventory_json" '.[$sid] = $entry' \
   > "${inv_file}.tmp"
 mv "${inv_file}.tmp" "$inv_file"
-
-mv "$cache_dir" "$HOME/.cache/skill-engine/git-managed/${source_id}-${new_sha}"
-
-find "$HOME/.cache/skill-engine/git-managed" -mindepth 1 -maxdepth 1 -type d \
-  -name "${source_id}-*" ! -name "${source_id}-${new_sha}" -exec rm -rf {} +
 ```
 <!-- doctrine:cache-advance-recipe:end -->
 

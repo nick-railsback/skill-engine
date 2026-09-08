@@ -87,8 +87,9 @@ fi
 # Cache-scoped exception (conditional, not part of the allow-list above):
 #   fetch, sparse-checkout, and checkout are additionally permitted when the
 #   invocation's -C target is a source-literal path under
-#   ~/.cache/skill-engine/, spelled ~, $HOME, or ${HOME} only -- a variable
-#   that merely resolves there at runtime does not qualify. No other verb is
+#   ~/.cache/skill-engine/, spelled ~, $HOME, ${HOME}, or the
+#   ${SKILL_ENGINE_CACHE_ROOT:-...} override form only -- a variable that
+#   merely resolves there at runtime does not qualify. No other verb is
 #   exempt; pull, reset, worktree, and the rest stay denied everywhere.
 #
 # Scope:
@@ -193,9 +194,10 @@ readonly_violations=$(
       verbs["archive"]=1; verbs["format-patch"]=1; verbs["request-pull"]=1
       verbs["grep"]=1; verbs["branch"]=1; verbs["remote"]=1
       # Conditional exception: these three verbs are permitted when -C
-      # targets an engine-controlled clone under ~/.cache/skill-engine/.
-      # Closed on purpose -- pull, reset, worktree, and the rest stay
-      # denied everywhere regardless of -C target.
+      # targets an engine-controlled clone under ~/.cache/skill-engine/ or
+      # its ${SKILL_ENGINE_CACHE_ROOT:-...} override spelling. Closed on
+      # purpose -- pull, reset, worktree, and the rest stay denied
+      # everywhere regardless of -C target.
       cache_exempt["fetch"]=1; cache_exempt["sparse-checkout"]=1
       cache_exempt["checkout"]=1
     }
@@ -212,11 +214,20 @@ readonly_violations=$(
       # Written as statements rather than one continued expression, and
       # with no apostrophe or backtick anywhere: this awk program is a
       # single-quoted shell string, so either character would end it.
+      #
+      # -F: splits on every colon in the line, and the
+      # ${SKILL_ENGINE_CACHE_ROOT:-...} override spelling has one of its
+      # own -- naively reading $4 truncates it at that colon. Rejoin
+      # anything -F: split past field 4 to recover the real target; a
+      # target with no embedded colon (every literal ~/$HOME/${HOME}
+      # spelling) leaves NF at 4 and this loop a no-op.
+      ctarget = $4
+      for (i = 5; i <= NF; i++) { ctarget = ctarget ":" $i }
       exempt = 0
-      if (($3 in cache_exempt) && $4 ~ /^(~|\$HOME|\$\{HOME\})\/\.cache\/skill-engine\/(git-managed|web-doc)\/[^[:space:]]/) {
+      if (($3 in cache_exempt) && ctarget ~ /^((~|\$HOME|\$\{HOME\})\/\.cache\/skill-engine|\$\{SKILL_ENGINE_CACHE_ROOT:-[^}]*\})\/(git-managed|web-doc)\/[^[:space:]]/) {
         exempt = 1
-        if ($4 ~ /(^|\/)\.\.(\/|$)/) { exempt = 0 }
-        if ($4 ~ /(^|\/)\.(\/|$)/) { exempt = 0 }
+        if (ctarget ~ /(^|\/)\.\.(\/|$)/) { exempt = 0 }
+        if (ctarget ~ /(^|\/)\.(\/|$)/) { exempt = 0 }
       }
       if (($3 in verbs) && !($3 in allow) && !exempt) print
     }
@@ -229,7 +240,7 @@ if [ -n "$readonly_violations" ]; then
     printf "  %s:%s  git %s\n", $1, $2, $3
   }'
   echo "  Allow-list: diff, status, log, show, clone, ls-remote, ls-tree, ls-files, rev-parse, cat-file."
-  echo "  Exception: fetch, sparse-checkout, and checkout are permitted when the LAST -C targets an engine-controlled clone under ~/.cache/skill-engine/git-managed/ or .../web-doc/ (literal ~, \$HOME, or \${HOME} only; no . or .. segments)."
+  echo "  Exception: fetch, sparse-checkout, and checkout are permitted when the LAST -C targets an engine-controlled clone under ~/.cache/skill-engine/git-managed/ or .../web-doc/ (literal ~, \$HOME, \${HOME}, or the \${SKILL_ENGINE_CACHE_ROOT:-...} override form only; no . or .. segments)."
   fail=1
 fi
 

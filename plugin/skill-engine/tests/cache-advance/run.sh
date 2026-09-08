@@ -535,7 +535,11 @@ else
     else
       pass "the recipe issues no git clone"
     fi
-    if printf '%s\n' "$recipe_verbs" | grep -qx 'fetch'; then
+    # A raw `fetch` verb in the extracted block is the direct signal; a
+    # `cache-git.sh` mention is the same claim made once the recipe
+    # delegates its git invocations to that shared helper instead of
+    # spelling them out inline (chunk 08-cache-git-helper).
+    if printf '%s\n' "$recipe_verbs" | grep -qx 'fetch' || grep -qF 'cache-git.sh' "$RECIPE_TEMPLATE"; then
       pass "the recipe advances via git fetch, not a fresh clone"
     else
       fail "the recipe advances via git fetch, not a fresh clone" \

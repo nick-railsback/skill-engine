@@ -178,46 +178,23 @@ When `/skill-engine:discover` is invoked:
    decline.
 
    **On consent (git-managed):** clone via the same atomic-rename idiom
-   used by `engine-bootstrap/SKILL.md` Step 3.5 so a failed or
-   interrupted clone does not leave a half-written cache directory at
-   the canonical path. The `<ref>` token below resolves to the source
-   entry's `branch` field if present, else `HEAD`. The `--branch` flag
-   on `git clone` is included only when an explicit branch is set:
+   used by `engine-bootstrap/SKILL.md` Step 3.5, via `cache-git.sh` — the
+   shipped helper that owns every cache-mutating git invocation, so the
+   atomic-rename idiom (a failed or interrupted clone never leaves a
+   half-written cache directory at the canonical path), the
+   unsafe-`source_id` guard, and the `SKILL_ENGINE_CACHE_ROOT` override
+   live there once instead of once per recipe. The `<ref>` token below
+   resolves to the source entry's `branch` field if present, else `HEAD`:
 
    ```bash
-   # ref = source entry's "branch" if present, else HEAD
-   # Refuse an unsafe source_id before it becomes a cache path component
-   # (mirrors engine-bootstrap Step 3.5). Skip this source on a bad id — do
-   # not exit, so a multi-source DISCOVER keeps pre-flighting the rest.
-   case "<source_id>" in
-     ""|-*|*[!a-z0-9-]*)
-       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2 ;;
-     *)
-       # `--` terminates git option parsing so a '-'-leading url is not read as a flag.
-       sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
-       if [ -z "$sha" ]; then
-         # Empty SHA: the ref does not exist upstream (or ls-remote failed).
-         # Building `<source_id>-` would land a cache path no lookup matches —
-         # decline to clone this source and use the CLI fallback for it.
-         echo "skill-engine: <source_id> @ <ref> not found upstream (empty ls-remote) — declining to clone; using CLI fallback" >&2
-       else
-         mkdir -p ~/.cache/skill-engine/git-managed/
-         dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
-         tmpdir="${dest}.tmp.$$"
-         if [ "<ref>" = "HEAD" ]; then
-           git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"
-         else
-           git clone --depth=1 --filter=blob:none --branch "<ref>" -- "<url>" "$tmpdir"
-         fi && mv "$tmpdir" "$dest" || rm -rf "$tmpdir"
-       fi ;;
-   esac
+   "$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" clone "<source_id>" "<url>" "<ref>"
    ```
 
-   The empty-SHA branch above handles a `git ls-remote` that returns nothing
-   for an explicitly-named ref (the ref does not exist upstream, or the probe
-   failed): it surfaces a one-line diagnostic naming the source and ref,
-   declines to clone that source, and falls back to the CLI path for it — it
-   does not abort DISCOVER.
+   On a refused `source_id` (not a safe path component) or an empty `git
+   ls-remote` for `<ref>` (the ref does not exist upstream, or the probe
+   failed), `cache-git.sh` prints a one-line diagnostic naming the source
+   and ref and exits non-zero — decline to clone that source and use the
+   CLI fallback for it; do not abort DISCOVER.
 
    On success, prefer local reads under the new cache directory for the
    rest of this DISCOVER run. On clone failure, emit one line ("Couldn't
@@ -232,67 +209,19 @@ When `/skill-engine:discover` is invoked:
    in` — never left bare for the shell to glob-expand.
 
    ```bash
-   case "<source_id>" in
-     ""|-*|*[!a-z0-9-]*)
-       echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping clone" >&2 ;;
-     *)
-       sha=$(git ls-remote -- "<url>" "<ref>" | cut -f1)
-       if [ -z "$sha" ]; then
-         echo "skill-engine: <source_id> @ <ref> not found upstream (empty ls-remote) — declining to clone; using CLI fallback" >&2
-       else
-         mkdir -p ~/.cache/skill-engine/git-managed/
-         dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
-         tmpdir="${dest}.tmp.$$"
-         clone_ok=0
-         if [ "<ref>" = "HEAD" ]; then
-           git clone --filter=blob:none --no-checkout --depth=1 --single-branch -- "<url>" "$tmpdir" && clone_ok=1
-         else
-           git clone --filter=blob:none --no-checkout --depth=1 --single-branch --branch "<ref>" -- "<url>" "$tmpdir" && clone_ok=1
-         fi
-         if [ "$clone_ok" -eq 1 ] \
-           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout init --no-cone \
-           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout set <files_of_interest entries...> \
-           && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" checkout ; then
-           missing=0
-           for entry in <files_of_interest entries...>; do
-             if [ -z "$(git -C "$tmpdir" ls-files -- "$entry")" ]; then
-               probe="${entry%/\*\*}"
-               probe="${probe%/\*}"
-               ancestor="$probe"
-               while [ -n "$ancestor" ] && [ ! -d "$tmpdir/$ancestor" ]; do
-                 case "$ancestor" in
-                   */*) ancestor="${ancestor%/*}" ;;
-                   *) ancestor="" ;;
-                 esac
-               done
-               siblings=$(find "$tmpdir${ancestor:+/$ancestor}" -mindepth 1 -maxdepth 2 \
-                 -type d -not -path '*/.git' -not -path '*/.git/*' 2>/dev/null \
-                 | sed "s#^$tmpdir/##" | sort | sed 's#$#/#' | paste -sd, - | sed 's/,/, /g')
-               # A resolved-no-files entry skips only this source's cache seed
-               # and continues to the next source; it does not abort the run.
-               echo "skill-engine: files_of_interest entry '$entry' resolved no files in checkout; nearest siblings under '${ancestor:-.}/': $siblings" >&2
-               missing=1
-             fi
-           done
-           if [ "$missing" -eq 1 ]; then
-             rm -rf "$tmpdir"
-           else
-             mv "$tmpdir" "$dest"
-           fi
-         else
-           rm -rf "$tmpdir"
-         fi
-       fi ;;
-   esac
+   "$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" sparse-clone "<source_id>" "<url>" "<ref>" -- <files_of_interest entries...>
    ```
 
    On success, prefer local reads under the new cache directory for the
-   rest of this DISCOVER run, exactly as the block above. On a clone-level
-   failure, emit the same one-line fallback message the block above emits
-   ("Couldn't clone ..."). On a validation failure (`missing=1`), the
-   per-entry diagnostics are the complete report — no extra summary line,
-   same reasoning as Step 2. Same `ls-files`-vs-`-e` rationale as Step 2
-   applies here too — not repeated in full.
+   rest of this DISCOVER run, exactly as the block above. On a refused
+   `source_id` or an empty `ls-remote`, `cache-git.sh` emits the same
+   one-line fallback diagnostic the block above emits. On a
+   `files_of_interest` entry that resolves no files in the checkout,
+   `cache-git.sh` reports it (naming the entry and the nearest sibling
+   directories) and discards the clone — the per-entry diagnostic is the
+   complete report, no extra summary line, same reasoning as Step 2. Same
+   `ls-files`-vs-`-e` rationale as Step 2 applies here too — not repeated
+   in full.
 
    **On consent (web-doc):** execute the bootstrap Step 3.6 crawl
    procedure inline (sitemap fetch, page-budget enforcement, atomic
@@ -343,30 +272,22 @@ When `/skill-engine:discover` is invoked:
      shallow boundary, so any range walk between the two SHAs has no
      connecting history to walk. A two-tree `git diff` needs none.
 
-     `discover_inventory.py --last-checked-sha` now performs that same
-     two-tree diff internally, so the choice between the two is one of
-     shape, not correctness — this recipe keeps the computation inline so
-     the JSON it feeds `--since-json` is visible at the call site. (An
-     earlier revision of this paragraph justified the split by a `git log`
-     range walk in the Python that dropped deletions; that walk is gone,
-     and folding the three implementations into one is tracked separately.)
+     `discover_inventory.py --last-checked-sha` performs that same
+     two-tree diff internally (delegating to `cache-git.sh
+     since-last-check`, the same shared verb the in-place advance recipe
+     uses — see `tool-and-output-mechanics.md` § Cache garbage collection),
+     so this recipe calls it directly instead of recomputing the diff
+     inline. (An earlier revision of this paragraph justified an inline
+     recompute by a `git log` range walk in the Python that dropped
+     deletions; that walk is gone, and the since-last-check computation
+     now has one shared implementation instead of three.)
 
      ```bash
-     if [ -n "$last_checked_sha" ]; then
-       since_tmpfile=$(mktemp)
-       git -C "$cache_dir" -c core.quotePath=false diff --name-status --no-renames \
-           "$last_checked_sha" HEAD \
-         | cut -f2- \
-         | jq -R . \
-         | jq -s --arg from "$last_checked_sha" --arg to "$(git -C "$cache_dir" rev-parse HEAD)" \
-             '{from_sha: $from, to_sha: $to, files: map({path: .})}' \
-         > "$since_tmpfile"
-     fi
      python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" \
-       ${since_tmpfile:+--since-json "$since_tmpfile"}
+       ${last_checked_sha:+--last-checked-sha "$last_checked_sha"}
      ```
 
-     omitting `--since-json` entirely when the source entry's
+     omitting `--last-checked-sha` entirely when the source entry's
      `lifecycle.last_checked_sha` is null.
 
    - **Else** (no cache — declined or never offered), fetch a tree

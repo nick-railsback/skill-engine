@@ -85,10 +85,11 @@ WELL_KNOWN_FORGE_HOSTS = {
 }
 
 
-def accepted_hosts(references_dir: Path) -> dict[str, str | None]:
-    """Hostnames whose permalinks this corpus may be credited for, mapped
-    to the forge grammar each is scoped to (`None` = unscoped: credited
-    under any of the five grammars).
+def resolve_registry(references_dir: Path) -> dict | None:
+    """The sources registry to use for `references_dir`: its own
+    `research/source-paths.json` when present and usable, else the live
+    sibling's registry when `references_dir` sits under a `.proposed`
+    staging directory, else `None`.
 
     The registry is found by where it sits — beside the references directory
     handed in — never by what that directory is called: DISCOVER lints an
@@ -97,9 +98,31 @@ def accepted_hosts(references_dir: Path) -> dict[str, str | None]:
 
     A staged proposal (`<name>.proposed/`) is a sparse copy-on-write, so it
     may or may not carry a registry of its own. When it does, that copy
-    governs; when it does not, the live skill beside it does. The staged
-    registry replaces rather than unions, which is what lets a proposal that
-    *drops* a source stop crediting it before promotion.
+    governs; when it does not (missing, unparseable, *or* a `sources` field
+    that isn't a list — a proposal doesn't get read as "intentionally zero
+    sources," it gets read as "this registry is unusable"), the live skill
+    beside it does. The staged registry replaces rather than unions, which
+    is what lets a proposal that *drops* a source stop crediting it before
+    promotion.
+    """
+    root = references_dir.parent
+    registry = _load_registry(root / "research" / "source-paths.json")
+    malformed = registry is None or not isinstance(registry.get("sources"), list)
+    if malformed and root.name.endswith(".proposed"):
+        live = root.with_name(root.name[: -len(".proposed")])
+        live_registry = _load_registry(live / "research" / "source-paths.json")
+        if live_registry is not None:
+            registry = live_registry
+    return registry
+
+
+def accepted_hosts(references_dir: Path) -> dict[str, str | None]:
+    """Hostnames whose permalinks this corpus may be credited for, mapped
+    to the forge grammar each is scoped to (`None` = unscoped: credited
+    under any of the five grammars).
+
+    Resolves its registry via `resolve_registry()` — see that function for
+    the live/staged fallback rule.
 
     github.com is always accepted and is always scoped to the github
     grammar, so a bare corpus with no registry in sight grades exactly as
@@ -113,11 +136,7 @@ def accepted_hosts(references_dir: Path) -> dict[str, str | None]:
     """
     hosts: dict[str, str | None] = {"github.com": "github"}
 
-    root = references_dir.parent
-    registry = _load_registry(root / "research" / "source-paths.json")
-    if registry is None and root.name.endswith(".proposed"):
-        live = root.with_name(root.name[: -len(".proposed")])
-        registry = _load_registry(live / "research" / "source-paths.json")
+    registry = resolve_registry(references_dir)
     if registry is None:
         return hosts
 
