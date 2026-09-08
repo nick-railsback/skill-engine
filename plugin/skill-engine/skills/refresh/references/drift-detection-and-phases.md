@@ -201,8 +201,46 @@ does not auto-mutate references on lifecycle transition.
 
 ## Phases
 
-The four phases below give REFRESH a concrete sequential shape after
+The phases below give REFRESH a concrete sequential shape after
 pre-flight. Run them in order; each phase's outputs feed the next.
+
+### Phase 0.5 — Archive detection (git-managed, forge-dispatched)
+
+For every in-scope `git-managed` source, read the forge's archived flag
+with one read-only API call before Phase 1 runs, dispatched by URL
+host:
+
+| Host | Read | Field |
+|---|---|---|
+| `github.com` | `gh api repos/<owner>/<repo>` | `.archived` |
+| Any other host `gh` resolves (GitHub Enterprise) | `GH_HOST=<host> gh api repos/<owner>/<repo>` | `.archived` |
+| GitLab (host contains `gitlab`) | a read-only `GET /api/v4/projects/<url-encoded path>` via WebFetch or the available MCP fetch tool | `.archived` |
+| Anything else (Bitbucket, Azure DevOps, a `gh`-unresolvable host, …) | not called | n/a — `unknown` |
+
+Every host outside the first three rows is `unknown`: no call is made
+and no transition is staged. Both reads are unauthenticated: no token
+is passed to `gh api`, and no token is passed to the GitLab read — both
+hit the host's own public API (the engine does not perform HTTP itself
+— see "Tool preference for git-managed sources" below).
+
+When the flag is `true`, stage the transition using the copy-on-write
+recipe above (**Lifecycle state**): write `archived: true` for that
+source into `$CTX_PROPOSED/research/source-paths.json`, seeding the
+proposed file first if this run hasn't staged a write yet. The manifest
+records `source-paths.json` as `modified`. The live file is untouched
+until `/skill-engine:apply` promotes the proposal — REFRESH never flips
+`archived` live.
+
+When the flag is `false`, or the host is `unknown`, no transition is
+staged. State the number of sources checked and the number unknown in
+the post-run summary: `<N> sources checked, <M> unknown-host (not
+counted against N)`.
+
+A source already `archived: true` in the live file was already excluded
+before Phase 0.5 runs (Pre-flight step 4, "Identify in-scope sources").
+A source archived only by a pending, unapplied proposal is still
+`archived: false` in the live read baseline and is still probed here
+and at Phase 1.
 
 ### Phase 1 — HEAD probe (kind-dispatched)
 

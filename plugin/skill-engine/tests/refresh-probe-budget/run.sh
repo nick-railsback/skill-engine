@@ -7,7 +7,7 @@
 # before any network call, and STATUS renders importance and the budget's
 # projected skip count. Prose-only skills get prose oracles (feature.md's
 # own constraint): REFRESH is executed by the model, not by this harness,
-# so criteria 2-6 are wrap-normalized text-presence checks against the
+# so criteria 2-5 are wrap-normalized text-presence checks against the
 # three reference docs the model reads, not a live REFRESH run. Criterion
 # 1 is the one piece with a concrete, executable artifact -- "the
 # reference ... carries the jq or shell that produces the order" -- so it
@@ -34,7 +34,9 @@
 #      refresh.
 #   6. refresh/SKILL.md is byte-identical to the pre-chunk baseline (it is
 #      NOT in this chunk's declared scope -- 4 bytes of headroom per
-#      feature.md's router-ceiling constraint).
+#      feature.md's router-ceiling constraint). RETIRED 2026-09-08 by
+#      chunk 07 -- see the retirement note where the check used to live,
+#      below.
 #
 # JUDGMENT CALLS -- spec.md is silent or ambiguous on these; the choices
 # below are this oracle's, not the spec's, and are flagged in Track V's
@@ -86,11 +88,12 @@
 # every criterion-1..5 prose check below fails for genuine absence, and
 # criterion 1's fenced-block extraction finds no block to extract at all
 # (a clean, named FAIL -- "no snippet found" -- not a harness crash;
-# nothing downstream of it runs). Criterion 6 is a PRESERVATION check and
-# is expected to PASS right now and to keep passing through this chunk's
-# own diff (refresh/SKILL.md is not in scope) -- see the retirement note
-# at REFRESH_SKILL_BASELINE_SHA256 below for when it will legitimately go
-# red for a reason that has nothing to do with this chunk.
+# nothing downstream of it runs). At authoring time this file also carried
+# a criterion 6 -- refresh/SKILL.md byte-identical to the pre-chunk
+# baseline, a PRESERVATION check expected to PASS and to keep passing
+# through chunk 06's own diff (refresh/SKILL.md was not in its scope) --
+# retired 2026-09-08 by chunk 07, which edits that same file by roadmap
+# design; see the retirement note where that check used to live, below.
 #
 # -e is intentionally omitted: every assertion runs and reports, not abort
 # at the first red one. The scratch directory this file creates is
@@ -596,28 +599,17 @@ else
 fi
 
 # ===========================================================================
-# Criterion 6 — refresh/SKILL.md (not in this chunk's declared scope) is
-# byte-identical to the pre-chunk baseline.
+# Criterion 6 — refresh/SKILL.md byte-identity to the pre-chunk baseline.
 #
-# RETIREMENT NOTE: a later chunk on this same feature branch rewrites
-# refresh/SKILL.md by roadmap design (a router-file edit unrelated to this
-# chunk's own probe_budget/importance scope). Once that lands, this pin
-# goes permanently red for a reason that has nothing to do with chunk 06 —
-# same shape as tests/sparse-clone/run.sh's own retired verify.sh pin (see
-# that file's "Preservation" section comment). Retire this check then, the
-# same way.
+# RETIRED 2026-09-08: chunk 07-archive-detection-staged rewrites
+# refresh/SKILL.md's manual-flagging sentence by roadmap design (feature.md
+# named this chunk-07 edit before chunk 06 was even planned) — a router-file
+# edit unrelated to this chunk's own probe_budget/importance scope. This pin
+# would now go permanently red for a reason that has nothing to do with
+# chunk 06, same shape as tests/sparse-clone/run.sh's own retired verify.sh
+# pin and clone-consent-flags/run.sh's retired navigator-SKILL.md pin.
+# Retired rather than re-baselined, following that established pattern.
 # ===========================================================================
-
-banner "criterion 6 — refresh/SKILL.md is byte-identical to the pre-chunk baseline"
-
-REFRESH_SKILL_BASELINE_SHA256="d5c3a569b61feb20a4f34df059c2dfb59d513161bb8e8380405807b63e2f4f8b"
-refresh_skill_hash="$(sha256_of_file "$REFRESH_SKILL")"
-if [ "$refresh_skill_hash" = "$REFRESH_SKILL_BASELINE_SHA256" ]; then
-  pass "c6_refresh_skill_md_byte_identical_to_baseline"
-else
-  fail "c6_refresh_skill_md_byte_identical_to_baseline" \
-    "expected sha256 $REFRESH_SKILL_BASELINE_SHA256, got $refresh_skill_hash"
-fi
 
 # ---------------------------------------------------------------------------
 # Summary.

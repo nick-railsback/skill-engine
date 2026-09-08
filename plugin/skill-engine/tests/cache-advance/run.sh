@@ -905,32 +905,15 @@ else
   fi
 fi
 
-section "doc consistency: refresh/SKILL.md and discover/SKILL.md stay byte-identical to the baseline"
-
-# Frozen at authoring time: feature.md's byte-ceiling constraint excludes
-# both routers from this feature entirely, so any change at all — from
-# this fix or anything else — is a regression, not a legitimate edit.
-REFRESH_SKILL_SHA256="d5c3a569b61feb20a4f34df059c2dfb59d513161bb8e8380405807b63e2f4f8b"
-DISCOVER_SKILL_SHA256="18097c0f3855886eef3502426c76700cb39b97793f8ac572f463c4f9ca951e2e"
-
-refresh_skill="$PLUGIN_ROOT/skills/refresh/SKILL.md"
-discover_skill="$PLUGIN_ROOT/skills/discover/SKILL.md"
-
-if [ -f "$refresh_skill" ] && [ "$(sha256_of_file "$refresh_skill")" = "$REFRESH_SKILL_SHA256" ]; then
-  pass "refresh/SKILL.md is byte-identical to the baseline"
-else
-  fail "refresh/SKILL.md is byte-identical to the baseline" \
-    "expected sha256: $REFRESH_SKILL_SHA256" \
-    "got: $([ -f "$refresh_skill" ] && sha256_of_file "$refresh_skill" || echo "<file missing>")"
-fi
-
-if [ -f "$discover_skill" ] && [ "$(sha256_of_file "$discover_skill")" = "$DISCOVER_SKILL_SHA256" ]; then
-  pass "discover/SKILL.md is byte-identical to the baseline"
-else
-  fail "discover/SKILL.md is byte-identical to the baseline" \
-    "expected sha256: $DISCOVER_SKILL_SHA256" \
-    "got: $([ -f "$discover_skill" ] && sha256_of_file "$discover_skill" || echo "<file missing>")"
-fi
+# The "routers stay byte-identical to the baseline" check that lived here
+# (PR #14, v0.8.0) pinned an invariant scoped to that PR's own feature.md
+# ("this feature" in the removed comment meant v0.8.0's, not any future
+# one). v0.9.0's many-sources chunk 07 (Fork E: staged archive detection)
+# intentionally edits both routers' "does NOT do" sentences; each router's
+# own byte-neutral-or-smaller ceiling is enforced going forward by
+# chunk 07's own oracle (plugin/skill-engine/tests/archive-detection/) and
+# by doctrine checks 18/24, so removing this pin doesn't drop coverage —
+# it retires an invariant that no longer holds by design.
 
 echo
 echo "Passed: $pass_count"

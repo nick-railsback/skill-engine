@@ -146,9 +146,9 @@ contextualizers) and catches dead-link drift that accumulates silently.
 
 ## What this skill does NOT do
 
-- It does not detect upstream archival automatically. The user
-  manually flags a source `archived: true`; the engine treats it as
-  `removed` for sweep purposes thereafter.
+- It does not auto-apply an archived transition. GitHub/GitLab
+  archival is staged `archived: true`; the reviewer's `apply` accepts
+  it.
 - It does not rewrite inner-path changes on `moved` sources. The outer
   URL is rewritten on accept; inner-path drift is flagged for manual
   review.
