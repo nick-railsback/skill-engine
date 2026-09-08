@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "sources": [
+    { "id": "acme-widgets", "kind": "git-managed", "url": "https://github.com/acme/widgets", "status": "intake", "lifecycle": { "state": "reachable" }, "importance": 1 }
+  ]
+}

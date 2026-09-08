@@ -224,6 +224,17 @@ floor runs against the fetched corpus. See
 [`07-monorepo-adapter.md`](07-monorepo-adapter.md) for the heuristics'
 cache-tree resolution.
 
+**`probe_budget`** — optional, document-root (not per-entry). A JSON
+integer ≥ 1 that caps how many sources REFRESH probes in a single session.
+Absent means REFRESH probes all sources every session — the field only
+narrows an unbounded default, it never widens it. The bound is enforced by
+`source-paths.schema.json`; see [`03-engine.md`](03-engine.md) § Source-paths
+additive fields for REFRESH's behavior under it.
+
+**`importance`** — optional, per-entry. A JSON integer from 1 to 5
+(lowest to highest priority) used to order REFRESH's probing under
+`probe_budget`. Absent defaults to 3, the neutral priority.
+
 **Citations resolve by path+content-hash.** No per-source sub-region granularity is enforced at the schema level; reference files cite their source by the `(source_id, path, sha)` triple. The chunked-source granularity layer that earlier engine versions carried has retired — DISCOVER now decides the partition it likes during a session, writes references that satisfy the four invariants, and the engine validates output via `verify.sh` rather than constraining the partition shape.
 
 **Required fields per entry post-DISCOVER-first-run.** `id`, `kind`, `url`-or-`path`, `status`, `lifecycle.state`. The contextualizer verify.sh's `source-entries` check (see [`plugin/skill-engine/engine-bootstrap-templates/verify.sh`](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/verify.sh)) enforces these required fields and the three enum constraints (`kind`, `status`, `lifecycle.state`) on every contextualizer invocation.
