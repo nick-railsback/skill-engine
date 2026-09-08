@@ -27,6 +27,19 @@ When `/skill-engine:refresh` is invoked:
 
    and exit cleanly.
 
+1.1. **`probe_budget` validation.** Read the root-level `probe_budget`
+   field, if present. It MUST be a JSON integer ≥ 1; a value of `0`, a
+   negative integer, or a non-integer (a string, a float with a
+   fractional part) fails REFRESH at activation — before any network
+   call — naming both the field and the offending value:
+
+   ```
+   probe_budget is invalid: <value> (must be a JSON integer ≥ 1). Fix research/source-paths.json and re-run.
+   ```
+
+   Exit non-zero. Absent `probe_budget` is valid and means: probe all
+   promoted sources every session (no cap).
+
 1.5. **Cache layout migration (one-time).** Earlier engine versions
    stored git-managed clones flat at
    `~/.cache/skill-engine/<source_id>-<sha>/`. <!-- doctrine:legacy-cache-layout -->
@@ -223,6 +236,35 @@ result, before continuing to Phase 2. REFRESH never clones on its own
 pre-flight step 6 and `engine-bootstrap` Step 3.5 as consent points), so
 when no local cache exists for the source, REFRESH's existing CLI fallback
 is unchanged.
+
+**Promotion and ordering.** After Phase 1 completes for every in-scope
+source, the `git-managed` sources whose newly-probed SHA differs from
+their previously-recorded `last_checked_sha` (see above) are
+*promoted* — they are candidates to proceed to Re-read scoping.
+Promoted sources are ordered by descending `importance` (absent ⇒ 3);
+ties are broken by oldest recorded probe timestamp first
+(`lifecycle.last_checked`, missing ⇒ treated as `1970-01-01T00:00:00Z`
+so never-probed sources sort to the front); further ties are broken by
+ascending source `id`. The ordering recipe:
+
+```jq
+.sources | sort_by([-(.importance // 3), (.lifecycle.last_checked // "1970-01-01T00:00:00Z"), .id]) | .[].id
+```
+
+When `probe_budget: N` is set, at most N promoted sources — in this
+order — proceed to Re-read scoping; every in-scope source still
+receives its Phase 1 probe above regardless of `probe_budget` — only
+the probe step is budgeted (it controls model-token cost, not network
+cost, so the cheap `git ls-remote`/HTTP HEAD check always runs).
+Sources beyond the budget are explicitly skipped, not silently
+dropped — render once, in the post-run summary's Coverage report:
+
+```
+"M of K sources skipped this session due to probe_budget=N (next-eligible: <list>)"
+```
+
+Absent `probe_budget`, every promoted source proceeds — in the order
+above — and no skip line is printed.
 
 ### Re-read scoping (git-managed)
 

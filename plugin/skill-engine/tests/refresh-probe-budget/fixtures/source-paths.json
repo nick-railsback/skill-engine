@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "gamma-never-probed",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/gamma",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 3,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked_sha": "aaa1111",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "alpha-probed-recent",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/alpha",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 3,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-01-01T00:00:00Z",
+        "last_checked_sha": "bbb2222",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "zzz-high-importance",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/zzz",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 5,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-08-01T00:00:00Z",
+        "last_checked_sha": "ccc3333",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "beta-never-probed",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/beta",
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked_sha": "ddd4444",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    }
+  ]
+}

@@ -185,7 +185,9 @@ four components (no multi-column tables, no interactive menus):
    path+content-hash. When a git-managed source advanced this run, also
    list the re-emit candidate set (N of M references cite changed paths),
    grouped by source, and the uncited-change count (K changed paths no
-   reference cites).
+   reference cites). When `probe_budget` capped this session, include the
+   skip line documented in Phase 1 ("Promotion and ordering") as part of
+   this report.
 2. **Skip-reasoning.** For both sources and references the model
    considered but skipped: "I skipped source Z because... I left
    reference X unchanged because..." Empty-skip case allowed.
