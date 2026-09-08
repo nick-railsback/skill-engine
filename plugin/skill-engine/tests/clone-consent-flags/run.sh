@@ -101,13 +101,15 @@ PLUGIN_ROOT="$REPO_ROOT/plugin/skill-engine"
 
 CACHE_SEEDING_REL="skills/engine-bootstrap/references/cache-seeding.md"
 CACHE_AND_CLONE_REL="skills/discover/references/cache-and-clone.md"
+INTAKE_AND_DETECTION_REL="skills/engine-bootstrap/references/intake-and-detection.md"
 CACHE_SEEDING="$PLUGIN_ROOT/$CACHE_SEEDING_REL"
 CACHE_AND_CLONE="$PLUGIN_ROOT/$CACHE_AND_CLONE_REL"
+INTAKE_AND_DETECTION="$PLUGIN_ROOT/$INTAKE_AND_DETECTION_REL"
 README="$REPO_ROOT/README.md"
 BOOTSTRAP_SKILL="$PLUGIN_ROOT/skills/engine-bootstrap/SKILL.md"
 DISCOVER_SKILL="$PLUGIN_ROOT/skills/discover/SKILL.md"
 
-for f in "$CACHE_SEEDING" "$CACHE_AND_CLONE" "$README" "$BOOTSTRAP_SKILL" "$DISCOVER_SKILL"; do
+for f in "$CACHE_SEEDING" "$CACHE_AND_CLONE" "$INTAKE_AND_DETECTION" "$README" "$BOOTSTRAP_SKILL" "$DISCOVER_SKILL"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: expected surface is missing entirely: $f" >&2
     exit 69
@@ -483,10 +485,20 @@ banner "flags scoped to the declared surfaces"
 # arguments — never recursively — so no implementation's own directory-
 # exclusion quirks are in the loop at all.
 SCOPE_SCAN_LIST="$(mktemp "$WORK/flag-scope-scan-list-XXXXXX")"
-find "$PLUGIN_ROOT" -type f -not -path "*/tests/$(basename "$SCRIPT_DIR")/*" > "$SCOPE_SCAN_LIST"
+find "$PLUGIN_ROOT" -type f -not -path "*/tests/$(basename "$SCRIPT_DIR")/*" \
+  -not -path "*/tests/bootstrap-probe/*" > "$SCOPE_SCAN_LIST"
 printf '%s\n' "$README" >> "$SCOPE_SCAN_LIST"
 
-ALLOWED_FLAG_FILES=("$CACHE_SEEDING" "$CACHE_AND_CLONE" "$README")
+# intake-and-detection.md joined the allowlist in chunk
+# 04-bootstrap-probe-reachability: its opt-in reachability-probe section
+# documents how the probe's findings interact with `--clone-all` (probed-
+# unreachable sources are excluded from that flag's seed), the same
+# "documents the flag, doesn't leak it into an unrelated navigator"
+# standard the three files below already meet. tests/bootstrap-probe/ is
+# excluded from the scan above for the same reason this file's own test
+# directory already is: its use of the flag names is inside test
+# assertions checking *other* files' prose, not a documentation surface.
+ALLOWED_FLAG_FILES=("$CACHE_SEEDING" "$CACHE_AND_CLONE" "$INTAKE_AND_DETECTION" "$README")
 
 flag_scope_check() {
   local label="$1" flag="$2"

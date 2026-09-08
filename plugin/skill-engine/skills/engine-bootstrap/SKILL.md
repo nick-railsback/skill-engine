@@ -73,6 +73,13 @@ different slug's contextualizer existing alongside it is not a
 collision and needs no pause. Detection mechanics and the confirmation
 prompt are in [`references/intake-and-detection.md`](references/intake-and-detection.md).
 
+## Reachability probe (opt-in, `--probe`)
+
+Before Step 3, `--probe` runs one read-only reachability check per
+`git-managed` source and asks once if any are unreachable; absent the
+flag, none of this runs. Mechanics and the table are in
+[`references/intake-and-detection.md`](references/intake-and-detection.md).
+
 ## Step 3 — Stamping
 
 Bootstrap writes directly to the live tree — unlike DISCOVER and
@@ -92,7 +99,7 @@ After stamping, offer per-source consent-gated caching: a `git clone`
 per `git-managed` source, a robots-respecting crawl per `web-doc`
 source. Decline leaves the source registered with an empty cache;
 DISCOVER re-prompts on a later cache miss — the only network operation
-bootstrap performs. Exact prompts, the atomic-clone bash, the crawl
+bootstrap performs absent `--probe`. Exact prompts, the atomic-clone bash, the crawl
 procedure, and the manifest schema are in
 [`references/cache-seeding.md`](references/cache-seeding.md).
 
@@ -139,7 +146,7 @@ posture (goal-given delegation) is documented in
 
 ## What this skill does NOT do
 
-- It does not crawl, fetch, or probe upstream for content. The only
+- It does not crawl or fetch upstream content. Absent `--probe`, the only
   network operation bootstrap performs is the explicit user-consented
   `git clone` in Step 3.5, and it writes solely to
   `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`. Lifecycle probes and
@@ -148,7 +155,7 @@ posture (goal-given delegation) is documented in
 - It does not propose additional sources or expand source coverage —
   those belong to DISCOVER.
 - It does not validate the existence or reachability of supplied sources at
-  intake. If the user pastes a broken URL or a path that doesn't exist,
+  intake unless `--probe` is given. If the user pastes a broken URL or a path that doesn't exist,
   bootstrap stamps the entry anyway and the lifecycle probe on the first
   DISCOVER run surfaces the issue. (The Step 3.5 clone offer may also
   reveal the URL is broken — but its failure mode is a one-line

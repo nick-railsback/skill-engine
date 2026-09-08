@@ -297,3 +297,52 @@ directory may still hold a curated `SKILL.md` and a populated
 directories here; either way, existing files pause for confirmation. A
 *different* slug's contextualizer existing alongside it is not a
 collision — bootstrapping proceeds with no pause.
+
+## Reachability probe — `--probe`
+
+With `--probe`, after the activation guard and before Step 3
+(stamping), run the recipe below once per intaken `git-managed` source
+(non-`git-managed` sources get no row) and print one table: one row
+per URL, `reachable` or `unreachable`, and for unreachable rows the
+first line of git's error.
+
+<!-- doctrine:reachability-probe:start -->
+```bash
+url="$1"
+ref="${2:-}"
+if [ -z "$ref" ]; then
+  ref="HEAD"
+fi
+err_file="$(mktemp)"
+trap 'rm -f "$err_file"' EXIT
+out="$(git ls-remote -- "$url" "$ref" 2>"$err_file")"
+rc=$?
+err="$(head -n1 "$err_file")"
+if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
+  if [ -z "$err" ]; then
+    err="no error text was returned"
+  fi
+  printf 'unreachable\t%s\t%s\n' "$url" "$err"
+else
+  printf 'reachable\t%s\t\n' "$url"
+fi
+```
+<!-- doctrine:reachability-probe:end -->
+
+Classify unreachable whenever the invocation exits non-zero **or**
+returns empty stdout — never on exit code alone. A reachable
+repository probed against a nonexistent branch exits zero with nothing
+on either stream; that row states plainly that no error text was
+returned rather than showing a blank field.
+
+The table is shown before the confirmation question below it. When
+any row is unreachable, ask once:
+
+> `<N>` of `<M>` sources are unreachable (see table above). Continue
+> anyway? [y/N]
+
+On decline, nothing is stamped. On consent, every source is stamped
+and unreachable sources are excluded from any `--clone-all` seed (see
+[`cache-seeding.md`](cache-seeding.md)) — the per-source `[y/N]`
+prompt and `--clone-none` are unaffected. Without `--probe`, none of
+this runs and intake makes no network call, exactly as today.

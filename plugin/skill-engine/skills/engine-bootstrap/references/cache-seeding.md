@@ -1,6 +1,6 @@
 # Cache seeding
 
-The consent-gated local cache offers for git-managed and web-doc sources — the only network operations bootstrap performs — plus the manual-materialization fallback.
+The consent-gated local cache offers for git-managed and web-doc sources — the only network operations bootstrap performs absent `--probe` — plus the manual-materialization fallback.
 
 ## Step 3.5 — Offer to seed local cache
 
@@ -8,11 +8,14 @@ Two flags govern this step for every git-managed source in one
 gesture, checked before any per-source iteration begins:
 
 - **`--clone-all`** runs the consented-clone path below for every
-  git-managed source, no prompt.
+  git-managed source, no prompt — except a source `--probe` flagged
+  unreachable, which this step skips even under `--clone-all`.
 - **`--clone-none`** skips the cache seed for every git-managed
   source, no prompt, no clone attempt.
 - With neither flag, the per-source `[y/N]` prompt below fires
-  exactly as it does today.
+  exactly as it does today — cloning remains the only network
+  operation this step performs absent `--probe`, which runs its own
+  reachability check earlier, at intake.
 
 <!-- doctrine:clone-consent-guard:start -->
 ```bash
@@ -36,7 +39,12 @@ If both flags are given together, the guard above halts before any
 clone or prompt runs, with an error naming both flags.
 
 After stamping completes, iterate over the intaken sources filtered to
-`kind: git-managed`. For each such source, prompt the user **once**:
+`kind: git-managed`. Under `--clone-all`, first drop any source
+`--probe` flagged unreachable from that iteration entirely — no clone
+attempt for it — before running the consented-clone path on the rest;
+this exclusion is specific to `--clone-all`'s blanket consent, and does
+not change the per-source prompt (no flags) or `--clone-none` below.
+For each remaining such source, prompt the user **once**:
 
 ```
 Pre-clone <source_id> from <url> into ~/.cache/skill-engine/git-managed/?
