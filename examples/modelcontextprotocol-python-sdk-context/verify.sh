@@ -500,6 +500,47 @@ else
         | join("")
       ' "$sp_file" 2>/dev/null)
 
+      # importance and probe_budget, enforced here for the same reason
+      # crawl_budget is: the schema's own description of crawl_budget
+      # promises "verify.sh enforces the same rule, keeping the two
+      # enforcers equivalent", and these two fields inherited the promise
+      # without the enforcement. The gap is reachable — CI validates the
+      # template and the bundled examples against the schema, never a live
+      # registry — so a hand-edited `"importance": 9` would otherwise pass
+      # every gate this repo runs and then pin that source to the head of
+      # every budgeted REFRESH session.
+      #
+      # One jq pass for all sources rather than a `has()` probe per entry:
+      # the per-entry shape above already costs a fork per source, and
+      # there is no reason to add a second.
+      read_lines < <(jq -r '
+        .sources | to_entries[]
+        | select(.value | type == "object")
+        | select(.value | has("importance"))
+        | select((.value.importance | type) != "number"
+                 or (.value.importance | floor) != .value.importance
+                 or .value.importance < 1
+                 or .value.importance > 5)
+        | "\(.key)\(.value.id // "")\(.value.importance | tostring)"
+      ' "$sp_file" 2>/dev/null)
+      for bad_imp in "${READ_LINES_RESULT[@]:-}"; do
+        [ -n "$bad_imp" ] || continue
+        IFS=$'\x1f' read -r imp_idx imp_id imp_raw <<< "$bad_imp"
+        fail "sources[$imp_idx] ($imp_id): importance '$imp_raw' is not an integer in [1, 5]"
+        entries_ok=0
+      done
+
+      if jq -e 'has("probe_budget")' "$sp_file" >/dev/null 2>&1; then
+        pb_raw="$(jq -r '.probe_budget | tostring' "$sp_file" 2>/dev/null)"
+        if ! printf '%s' "$pb_raw" | grep -qE '^[0-9]+$'; then
+          fail "probe_budget '$pb_raw' is not an integer"
+          entries_ok=0
+        elif [ "$pb_raw" -lt 1 ]; then
+          fail "probe_budget '$pb_raw' is not >= 1"
+          entries_ok=0
+        fi
+      fi
+
       if [ "$entries_ok" -eq 1 ]; then
         noun="entries"
         [ "$src_count" -eq 1 ] && noun="entry"

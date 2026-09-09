@@ -741,6 +741,65 @@ else
   pass "check6-discrimination: cited member 'web-api' does not warn"
 fi
 
+# ===========================================================================
+# additive-field-parity -- importance and probe_budget are enforced by
+# verify.sh, not by the schema alone
+# ===========================================================================
+section "additive-field-parity -- verify.sh bounds importance and probe_budget like the schema does"
+
+# The schema advertises the parity explicitly on the analogous field:
+# crawl_budget's description says "verify.sh enforces the same rule, keeping
+# the two enforcers equivalent". The two fields this PR added inherited the
+# claim without the enforcement, and the gap is not theoretical: CI runs
+# check-jsonschema against the template and the bundled examples only
+# (scripts/ci-local.sh), never against a live registry, so a hand-edited
+# `"importance": 9` reaches the ordering sort unchallenged and pins that
+# source to the head of every budgeted session for good (PR #15 review,
+# finding 13).
+
+c9_ctx="$WORK/c9-additive-fields"
+build_nav "$c9_ctx"
+mkdir -p "$c9_ctx/references"
+write_sources "$c9_ctx" "[$(git_managed_source hot-src https://example.com/acme/hot | jq '.importance = 9')]"
+c9_out="$(run_verify "$c9_ctx" "$WORK/c9-empty-cache")"
+c9_c2="$(check_section "$c9_out" 'Source entries')"
+if printf '%s' "$c9_c2" | grep -qE '\[FAIL\].*importance'; then
+  pass "additive-field-parity: an out-of-range importance (9, schema bounds it to [1,5]) fails verify.sh"
+else
+  fail "additive-field-parity: an out-of-range importance (9, schema bounds it to [1,5]) fails verify.sh" \
+    "${c9_c2:-<empty>}"
+fi
+
+c9b_ctx="$WORK/c9-bad-probe-budget"
+build_nav "$c9b_ctx"
+mkdir -p "$c9b_ctx/references"
+mkdir -p "$c9b_ctx/research"
+jq -n --argjson s "[$(git_managed_source ok-src https://example.com/acme/ok)]" \
+  '{schema_version: 1, probe_budget: 0, sources: $s}' > "$c9b_ctx/research/source-paths.json"
+c9b_out="$(run_verify "$c9b_ctx" "$WORK/c9b-empty-cache")"
+c9b_c2="$(check_section "$c9b_out" 'Source entries')"
+if printf '%s' "$c9b_c2" | grep -qE '\[FAIL\].*probe_budget'; then
+  pass "additive-field-parity: probe_budget 0 (schema requires >= 1) fails verify.sh"
+else
+  fail "additive-field-parity: probe_budget 0 (schema requires >= 1) fails verify.sh" "${c9b_c2:-<empty>}"
+fi
+
+# Preservation: the valid values, and absence, stay clean -- a bound that
+# rejects everything would satisfy both assertions above.
+c9c_ctx="$WORK/c9-valid-additive"
+build_nav "$c9c_ctx"
+mkdir -p "$c9c_ctx/references" "$c9c_ctx/research"
+jq -n --argjson s "[$(git_managed_source edge-lo https://example.com/acme/lo | jq '.importance = 1'),$(git_managed_source edge-hi https://example.com/acme/hi | jq '.importance = 5'),$(git_managed_source no-imp https://example.com/acme/none)]" \
+  '{schema_version: 1, probe_budget: 1, sources: $s}' > "$c9c_ctx/research/source-paths.json"
+c9c_out="$(run_verify "$c9c_ctx" "$WORK/c9c-empty-cache")"
+c9c_c2="$(check_section "$c9c_out" 'Source entries')"
+if printf '%s' "$c9c_c2" | grep -qE '\[FAIL\].*(importance|probe_budget)'; then
+  fail "additive-field-parity preservation: importance 1 and 5, an absent importance, and probe_budget 1 are all accepted" \
+    "${c9c_c2:-<empty>}"
+else
+  pass "additive-field-parity preservation: importance 1 and 5, an absent importance, and probe_budget 1 are all accepted"
+fi
+
 # ---- Check 6: a member name carrying a newline keeps its own pattern ----
 # `members` is filled from `find -print0` and is newline-safe; the escaped
 # copy it is indexed against was filled from a newline-delimited producer,
