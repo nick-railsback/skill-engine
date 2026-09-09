@@ -84,26 +84,37 @@ fail() {
 # ---------------------------------------------------------------------------
 # The fixture: an anchor-rich text whose needle matches in the FIRST window.
 #
-# ANCHOR_N windows of roughly (2 * WINDOW + |anchor|) bytes each. At 4,000
-# windows that is ~2MB of upstream output against a needle satisfied
-# immediately -- far past the 64KB pipe buffer Linux and macOS both default
-# to, and past the 1MB ceiling F_SETPIPE_SZ allows, so the race is not a
-# race here: the upstream is guaranteed to still be writing when a -q
-# downstream leaves.
+# Sizing note, because the arithmetic is not the obvious one: `grep -o` emits
+# NON-OVERLAPPING matches, so one ~507-byte window consumes every anchor
+# inside it -- roughly 16 of them at this filler width -- rather than
+# producing one window per anchor. 32,000 anchors therefore yield about
+# 2,300 windows and ~1.06MB of stream, not 32,000 windows. What has to be
+# large is the STREAM, so that is what the assertion below measures; source
+# length is not a proxy for it.
+#
+# ~1.06MB clears the 64KB pipe buffer Linux and macOS both default to by
+# ~17x, and also clears the 1MB ceiling F_SETPIPE_SZ permits, so a reader
+# that leaves early cannot be rescued by buffering however the pipe is
+# sized. The upstream is guaranteed to still be writing.
 # ---------------------------------------------------------------------------
 
-ANCHOR_N=4000
+ANCHOR_N=32000
 WINDOW=250
 ANCHOR='unknown'
 NEEDLE='(no transition|not staged)'
 
 BIG="$(awk -v n="$ANCHOR_N" 'BEGIN { for (i = 1; i <= n; i++) printf "unknown no transition filler-%d ", i }')"
 
-if [ "${#BIG}" -gt 100000 ]; then
-  pass "fixture: window stream will exceed any pipe buffer (${#BIG} bytes of source text)"
+# wc drains to EOF, so measuring the stream cannot itself trip the defect.
+STREAM_BYTES="$(printf '%s' "$BIG" \
+  | grep -oiE ".{0,${WINDOW}}${ANCHOR}.{0,${WINDOW}}" | wc -c | tr -d ' ')"
+
+if [ "${STREAM_BYTES:-0}" -gt 262144 ]; then
+  pass "fixture: the window stream is $STREAM_BYTES bytes, past any pipe buffer a reader can be given"
 else
-  fail "fixture: window stream will exceed any pipe buffer" \
-    "built only ${#BIG} bytes; the control below cannot reproduce the defect at this size"
+  fail "fixture: the window stream is past any pipe buffer a reader can be given" \
+    "measured only ${STREAM_BYTES:-0} bytes of stream from ${#BIG} bytes of source;" \
+    "the control below cannot reproduce the defect at this size"
 fi
 
 # ---------------------------------------------------------------------------
