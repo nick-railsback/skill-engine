@@ -59,6 +59,12 @@ CTX_ROOT="${CTX_ROOT:-$SCRIPT_DIR}"
 passed=0
 failed=0
 
+# A literal newline, for `case` patterns that need to test for one. $'\n'
+# is not usable in a case pattern, and an inline literal newline inside the
+# pattern list is a syntax error.
+LF='
+'
+
 pass() {
   passed=$((passed + 1))
   printf '  [PASS] %s\n' "$1"
@@ -216,6 +222,25 @@ url_origin() {
 # wrongly suppress an uncited-* warning.
 ere_escape() {
   printf '%s\n' "$@" | sed 's/[][(){}.*+?^$|\\]/\\&/g'
+}
+
+# Single-value ERE escape, byte-identical to ere_escape's per-line output
+# but done with parameter expansion instead of a sed fork. Two reasons to
+# have it: a caller that indexes escaped values in lockstep with an array
+# built by `find -print0` cannot use a newline-delimited producer at all
+# (a member name containing a newline arrives as two entries, or as one
+# with a leading blank dropped, and every later index shifts), and doing
+# it in-shell costs no fork, so a per-member loop is cheaper here than the
+# single batched call it replaces. Backslash is escaped first, so the
+# escapes this adds are not re-escaped by a later pass. Sets
+# ERE_ESCAPE_ONE_RESULT -- no nameref, same bash 3.2 constraint as
+# read_lines.
+ere_escape_one() {
+  local s="$1" c
+  for c in '\' '[' ']' '(' ')' '{' '}' '.' '*' '+' '?' '^' '$' '|'; do
+    s="${s//"$c"/\\$c}"
+  done
+  ERE_ESCAPE_ONE_RESULT="$s"
 }
 
 # Reads newline-separated stdin into READ_LINES_RESULT, skipping
@@ -1284,7 +1309,21 @@ else
 
       members=()
       while IFS= read -r -d '' member; do
-        members+=("${member##*/}")
+        member="${member##*/}"
+        # A name carrying a newline cannot be expressed as a citation
+        # pattern at all: grep -E reads a newline in its pattern as a
+        # separator between alternatives, so such a name does not become a
+        # stricter or looser test -- it splits the whole alternation into
+        # two broken ones and mis-scores every OTHER member of this root.
+        # Excluded from the batch and reported, rather than silently
+        # dropped or silently poisoning its siblings.
+        case "$member" in
+          *"$LF"*)
+            skip "monorepo-coverage: $src_id has a workspace member under '$root/' whose directory name contains a newline -- not expressible as a citation pattern, so that member's coverage is not assessed"
+            continue
+            ;;
+        esac
+        members+=("$member")
       done < <(find "$ws_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
 
       # One grep -rohE alternation per root instead of one grep -r per
@@ -1293,13 +1332,20 @@ else
       # substring/case rather than comm/sort-based set membership, so the
       # WARN emission order below (native `find` order, via the members
       # array) is not reordered by a sort. member_escs mirrors members by
-      # index (one batched ere_escape call, not one fork per member) so the
-      # boundary-match fallback below never re-forks per member either.
+      # index, built one member at a time through ere_escape_one -- which
+      # forks for none of them, so this is cheaper than the batched
+      # ere_escape call it replaces AND survives a member name containing a
+      # newline. The batched form could not: `members` is NUL-delimited
+      # from `find -print0`, its escaped copy was newline-delimited, and a
+      # single newline in a directory name desynchronised the two arrays
+      # for every member after it.
       cited_blob=$'\n'
       member_escs=()
       if [ "${#members[@]}" -gt 0 ]; then
-        read_lines < <(ere_escape "${members[@]}")
-        member_escs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
+        for member_name in "${members[@]}"; do
+          ere_escape_one "$member_name"
+          member_escs+=("$ERE_ESCAPE_ONE_RESULT")
+        done
         if [ -d "$CTX_ROOT/references" ]; then
           alt=""
           for esc in "${member_escs[@]}"; do

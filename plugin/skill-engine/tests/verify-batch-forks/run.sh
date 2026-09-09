@@ -665,6 +665,56 @@ else
   pass "check6-discrimination: cited member 'web-api' does not warn"
 fi
 
+# ---- Check 6: a member name carrying a newline keeps its own pattern ----
+# `members` is filled from `find -print0` and is newline-safe; the escaped
+# copy it is indexed against was filled from a newline-delimited producer,
+# which cannot represent a member whose name contains one. The two are read
+# in lockstep, so any disagreement silently tests one member against another
+# member's pattern (PR #15 review, finding 11).
+#
+# The fixture makes that observable without depending on `find`'s ordering:
+# a member named "\nfoo" alongside a genuinely cited member "foo". Under the
+# newline-delimited producer, "\nfoo" escapes to an empty line plus "foo",
+# the empty line is dropped as blank, and the uncited member ends up carrying
+# the cited one's pattern -- so it is scored as cited and never warns. Either
+# find order gives the same result, because the collision is between the two
+# names rather than between two positions.
+
+c6nl_ctx="$WORK/c6-newline-member"
+build_nav "$c6nl_ctx"
+mkdir -p "$c6nl_ctx/references"
+printf '# ref\n\nOnly packages/foo is cited here.\n' > "$c6nl_ctx/references/ref.md"
+c6nl_cache="$WORK/c6-newline-cache"
+c6nl_tree="$c6nl_cache/git-managed/nlsrc-33334444"
+mkdir -p "$c6nl_tree/packages/foo" "$c6nl_tree/packages/$(printf '\nfoo')"
+write_sources "$c6nl_ctx" "[$(git_managed_source nlsrc https://example.com/acme/nlsrc)]"
+c6nl_out="$(run_verify "$c6nl_ctx" "$c6nl_cache")"
+c6nl_c6="$(check_section "$c6nl_out" 'Monorepo-coverage')"
+
+# Such a name cannot be turned into a citation pattern at all -- grep -E
+# reads a newline inside its pattern as a separator between alternatives,
+# so the name does not merely test loosely, it splits the whole root's
+# alternation into two broken ones. The requirement is therefore that the
+# member is reported as unassessed, by name of the condition, rather than
+# scored either way.
+if printf '%s' "$c6nl_c6" | grep -qF 'whose directory name contains a newline'; then
+  pass "check6-newline-member: a member name carrying a newline is reported as unassessed, naming the reason"
+else
+  fail "check6-newline-member: a member name carrying a newline is reported as unassessed, naming the reason" \
+    "the member was silently scored instead -- either as cited (tested against a sibling's escaped pattern) or not at all" \
+    "${c6nl_c6:-<empty>}"
+fi
+# The other half, and the one that matters more: whatever happens to the
+# pathological name must not change the verdict for its siblings. 'foo' is
+# genuinely cited and must stay unwarned.
+c6nl_warns="$(printf '%s' "$c6nl_c6" | grep -c 'is not cited in any reference' || true)"
+if [ "$c6nl_warns" -eq 0 ]; then
+  pass "check6-newline-member: the genuinely cited sibling 'foo' is unaffected by it"
+else
+  fail "check6-newline-member: the genuinely cited sibling 'foo' is unaffected by it" \
+    "expected no uncited warnings, got $c6nl_warns" "${c6nl_c6:-<empty>}"
+fi
+
 # ---- Check 7 discrimination: cited vs. uncited, and prefix overlap ----
 # Check 7 wraps BOTH sides in \b (\b$id\b), and '-' is a non-word
 # character, so today a reference citing "acme-core-utils" already
