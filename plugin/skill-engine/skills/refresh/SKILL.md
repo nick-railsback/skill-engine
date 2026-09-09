@@ -78,8 +78,9 @@ quality.
 Guard against an unapplied proposal, locate `research/source-paths.json`,
 migrate legacy cache layout and thin-schema state, detect `verify.sh`
 template drift, honor `--hint`/`--lifecycle-only`, and filter to
-in-scope sources. Then run the four-phase probe against every in-scope
-source: HEAD probe, decay check, re-crawl + diff surfacing, cache GC.
+in-scope sources. Then run the probe phases against every in-scope
+source: archive check (Phase 0.5), HEAD probe, decay check, re-crawl +
+diff surfacing, cache GC.
 Full mechanics are in
 [`references/drift-detection-and-phases.md`](references/drift-detection-and-phases.md).
 Read it before your first source read of a run.

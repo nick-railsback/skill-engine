@@ -17,7 +17,8 @@ contextualizer's structure. REFRESH writes to it instead of
 `/skill-engine:apply <name>` to promote the proposal. Drift-detection
 reads still come from the live `$CTX_ROOT/...` — the user's
 last-applied state is the baseline against which drift is measured —
-but every write goes to `$CTX_PROPOSED/...`. See `discover/SKILL.md`
+but every write goes to `$CTX_PROPOSED/...`. See
+`discover/references/staging-and-contextualizer-model.md`
 § Staging directory for the full model (manifest schema, three
 commands, REVIEW.md template stamping) — including the sandbox-block
 diagnostic to emit when a `$CTX_PROPOSED` write under `.claude/skills/**`
@@ -136,8 +137,9 @@ the wrong shape.
 Reference files that REFRESH rewrites use **soft wrapping**: one paragraph
 per line, no hard line breaks at fixed column widths. If an incoming
 reference is already hard-wrapped (legacy artifact from a prior DISCOVER),
-REFRESH unwraps it during the rewrite. See `discover/SKILL.md` "Markdown
-style for emitted references" for the full convention.
+REFRESH unwraps it during the rewrite. See
+`discover/references/proposal-and-post-run.md` § Markdown style for
+emitted references for the full convention.
 
 ## Post-run summary
 
@@ -145,10 +147,11 @@ Before rendering the summary, finalize the staging directory. The proposed
 tree is a sparse copy-on-write, so verify against an **ephemeral merged tree**
 (live overlaid with this run's changes and the manifest's removals applied),
 not against `$CTX_PROPOSED/` directly — the exact procedure and bash are in
-`discover/SKILL.md` § Post-run summary. Confirm `verify.sh` exits 0 against
-that merged tree, then write `$CTX_PROPOSED/.review/manifest.json` per the
-schema and stamping convention documented in `discover/SKILL.md` § Staging
-directory. A non-zero `verify.sh` exit aborts the proposed-dir write with a
+`discover/references/proposal-and-post-run.md` § Post-run summary. Confirm
+`verify.sh` exits 0 against that merged tree, then write
+`$CTX_PROPOSED/.review/manifest.json` per the schema and stamping convention
+documented in `discover/references/staging-and-contextualizer-model.md`
+§ Staging directory. A non-zero `verify.sh` exit aborts the proposed-dir write with a
 diagnostic; the user never sees a `REVIEW.md` for a broken proposal.
 
 At end-of-run, produce a paragraph-form summary for the author with

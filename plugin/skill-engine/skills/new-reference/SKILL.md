@@ -80,7 +80,8 @@ instead of to `$CTX_ROOT`; the live skill is untouched until the user runs
 **for writes**; the same asymmetry holds for `references/foo`, `SKILL.md`,
 and `verify.sh`. (The full staging contract — copy-on-write population,
 `.review/manifest.json`, the `REVIEW.md` scaffold, and the
-review/apply/discard gate — is documented once in `discover/SKILL.md`
+review/apply/discard gate — is documented once in
+`discover/references/staging-and-contextualizer-model.md`
 § Staging directory; NEW follows it verbatim.)
 
 **Guard against an unapplied proposal.** If `$CTX_PROPOSED` already exists,
@@ -115,10 +116,11 @@ the pre-fixture-harness three-check gate ends with `verify.sh`.)
 
 Because `$CTX_PROPOSED/` is a sparse copy-on-write tree, run `verify.sh`
 against an **ephemeral merged view** of live + this proposal's changes, not
-against `$CTX_PROPOSED/` directly — exactly as `discover/SKILL.md`
-§ Post-run summary documents. Then write `$CTX_PROPOSED/.review/manifest.json`
-(one entry per file, per the schema in `discover/SKILL.md` § Staging
-directory) and stamp `$CTX_PROPOSED/.review/REVIEW.md` from
+against `$CTX_PROPOSED/` directly — exactly as
+`discover/references/proposal-and-post-run.md` § Post-run summary documents.
+Then write `$CTX_PROPOSED/.review/manifest.json` (one entry per file, per the
+schema in `discover/references/staging-and-contextualizer-model.md`
+§ Staging directory) and stamp `$CTX_PROPOSED/.review/REVIEW.md` from
 `$CLAUDE_PLUGIN_ROOT/engine-bootstrap-templates/REVIEW.md.template` (the
 `<name>` substitution as in DISCOVER). NEW MUST NOT write directly to
 `$CTX_ROOT` — the new reference, the catalog row, and any
@@ -134,5 +136,5 @@ promoted together by `/skill-engine:apply <name>`.
 Soft wrap reference prose: one paragraph per line, no hard line breaks at
 fixed column widths. The example contextualizer at
 [`examples/modelcontextprotocol-python-sdk-context/`](https://github.com/nick-railsback/skill-engine/tree/main/examples/modelcontextprotocol-python-sdk-context) shows the intended style; the
-`discover/SKILL.md` "Markdown style for emitted references" section
-documents the convention in full.
+`discover/references/proposal-and-post-run.md` § Markdown style for emitted
+references documents the convention in full.

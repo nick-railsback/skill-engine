@@ -15,15 +15,15 @@ Invoke `/skill-engine:review <name>` after DISCOVER or REFRESH has surfaced a "P
 
 The `<name>` argument is the contextualizer slug *without* the `-context` suffix. `/skill-engine:review vitejs-vite` operates on `<install>/vitejs-vite-context.proposed/`.
 
-Bare invocation (no argument) works when exactly one `*-context.proposed/` directory exists under `<install>`. When zero match, surface `no proposed staging dir found under <install>` and exit cleanly. When two or more match, surface the list and ask which one (mirrors `discover/SKILL.md`'s "Multiple contextualizers" pattern).
+Bare invocation (no argument) works when exactly one `*-context.proposed/` directory exists under `<install>`. When zero match, surface `no proposed staging dir found under <install>` and exit cleanly. When two or more match, surface the list and ask which one (mirrors the resolution order in `discover/references/staging-and-contextualizer-model.md` § Selecting a contextualizer).
 
-Resolve `<install>` from the live contextualizer location. The proposed directory always sits as a sibling of the live `<name>-context/` directory; `<install>` is whichever level the live skill is installed at (`~/.claude/skills/`, `~/.claude/local/skills/`, or `<repo>/.claude/skills/`). Iterate the same three roots `using-skill-engine`'s router walks (see the "Locating the contextualizer root" block in `discover/SKILL.md`); the first match wins.
+Resolve `<install>` from the live contextualizer location. The proposed directory always sits as a sibling of the live `<name>-context/` directory; `<install>` is whichever level the live skill is installed at (`~/.claude/skills/`, `~/.claude/local/skills/`, or `<repo>/.claude/skills/`). Iterate the same three roots `using-skill-engine`'s router walks (the locator script every engine skill runs, in `shared/locator-block.md`); the first match wins.
 
 ## First pass — manifest and diff command
 
 When `REVIEW.md` exists but Step 1 still contains the literal `___` blanks (i.e., the user has not yet filled their predictions), do the following in order:
 
-1. **Read the manifest.** Parse `<install>/<name>-context.proposed/.review/manifest.json`. The schema is documented in `discover/SKILL.md` § Output contract; the relevant fields here are `entries[].path` and `entries[].status` (`added` / `modified` / `removed` / `unchanged`).
+1. **Read the manifest.** Parse `<install>/<name>-context.proposed/.review/manifest.json`. The schema is documented in `discover/references/staging-and-contextualizer-model.md` § Staging directory; the relevant fields here are `entries[].path` and `entries[].status` (`added` / `modified` / `removed` / `unchanged`).
 
 2. **Print the summary.** Render one paragraph per status bucket. Group `added`, `modified`, and `removed` entries by status; omit `unchanged` from the print (it is recorded in the manifest for `apply` to consume but is not interesting to a reviewer). One line per file, prefixed with the status verb:
 

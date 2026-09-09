@@ -6,8 +6,9 @@ What Step 3 copies into the live tree, the per-kind `source-paths.json` entry sh
 
 **Bootstrap writes directly to the live tree.** Unlike DISCOVER and
 REFRESH, which stage their writes to `<slug>-context.proposed/` for
-explicit user review before promotion (see `discover/SKILL.md` §
-Staging directory), bootstrap stamps straight into
+explicit user review before promotion (see
+`discover/references/staging-and-contextualizer-model.md`
+§ Staging directory), bootstrap stamps straight into
 `.claude/skills/<slug>-context/`. There is nothing to review yet — the
 user has explicitly invoked bootstrap to scaffold a fresh
 contextualizer from templates, and there is no pre-existing live tree

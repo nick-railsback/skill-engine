@@ -6,7 +6,7 @@ The six checks apply runs before mutating either tree, in order, and the exact h
 
 Run these in order. Any failure halts the apply and exits non-zero without mutating either tree.
 
-1. **Manifest exists and parses.** `<install>/<name>-context.proposed/.review/manifest.json` must exist and parse as JSON with the schema documented in `discover/SKILL.md` § Output contract. If absent or unparseable, surface a one-line diagnostic and exit.
+1. **Manifest exists and parses.** `<install>/<name>-context.proposed/.review/manifest.json` must exist and parse as JSON with the schema documented in `discover/references/staging-and-contextualizer-model.md` § Staging directory. If absent or unparseable, surface a one-line diagnostic and exit.
 
 2. **`REVIEW.md` exists and parses.** `<install>/<name>-context.proposed/.review/REVIEW.md` must exist. Read it in full (Step 1, Step 2, and Step 3).
 

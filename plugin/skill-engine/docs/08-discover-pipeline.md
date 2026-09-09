@@ -121,8 +121,9 @@ cited; a `removed` source is referenced), the model emits a lifecycle
 sweep dry-run per [`04-delivery.md`](04-delivery.md). The
 proposal-token + per-file SHA gates protect against drift between
 propose-time and apply-time. Conservative default: any non-zero probe
-exit maps to `unknown`, not `removed`. The user sets `archived: true`
-manually; the engine never auto-flips it.
+exit maps to `unknown`, not `removed`. `archived: true` is set by the
+user by hand, or staged for the reviewer by REFRESH's Phase 0.5 forge
+probe; neither pipeline ever flips it in the live file.
 
 ## Tool preference
 
@@ -241,7 +242,9 @@ model believes deserve their own reference. The doctrine:
   enforced schema.
 - It does not do live registry calls for commodity filtering by
   default.
-- It does not auto-detect "archived" upstream state.
+- It does not auto-detect "archived" upstream state. REFRESH's Phase
+  0.5 does — a forge-dispatched read that stages `archived: true` for
+  the reviewer; DISCOVER only honors the flag it finds.
 - It does not track inner-path changes on `moved` sources. The outer
   URL is rewritten on accept; inner-path drift is flagged.
 - It does not auto-rewrite SHA-pinned URLs on moved sources to point

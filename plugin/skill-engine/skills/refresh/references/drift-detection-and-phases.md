@@ -1,6 +1,6 @@
 # Drift detection and phases
 
-The pre-flight guards and migrations REFRESH runs before touching any source, plus the four-phase probe it runs against every in-scope source.
+The pre-flight guards and migrations REFRESH runs before touching any source, plus the probe phases — 0.5 through 4 — it runs against every in-scope source.
 
 ## Pre-flight
 
@@ -15,8 +15,9 @@ When `/skill-engine:refresh` is invoked:
    ```
 
    Exit cleanly. This run's copy-on-write staging tree is built fresh from the
-   live baseline once the guard passes. (Same guard as `discover/SKILL.md`
-   § Pre-flight step 0 — neither route may build on a stale proposed tree.)
+   live baseline once the guard passes. (Same guard as
+   `discover/references/cache-and-clone.md` § Pre-flight step 0 — neither
+   route may build on a stale proposed tree.)
 
 1. **Locate state.** Read `research/source-paths.json`. If the file is
    missing, unparseable, or `sources[]` is empty, render:
@@ -107,8 +108,10 @@ When `/skill-engine:refresh` is invoked:
      entry is `{status: "added", sha_before: null, sha_after: <content-hash-of-engine-template>}`,
      matching the manifest's null-field convention for `added` entries. The
      `sha_*` fields use the same content-hash form (7-char prefix) the rest
-     of the manifest uses — see `discover/SKILL.md` § Staging directory for
-     the manifest example. The SHA-256 used for the equality comparison
+     of the manifest uses — see
+     `discover/references/staging-and-contextualizer-model.md`
+     § Staging directory for the manifest example. The SHA-256 used for
+     the equality comparison
      above is the engine-internal signal; the manifest's `sha_*` fields are
      the user-visible record.
    - **Live `verify.sh` present and SHAs differ.** Write the engine template
@@ -139,7 +142,8 @@ When `/skill-engine:refresh` is invoked:
    packages/foo's reference is stale even though SHA matched'`,
    `--hint='re-check the migration guide pages'`). Treat hints as
    authoritative author input that shapes this run's refresh emphasis —
-   the same contract as `discover/SKILL.md` § Hint passthrough.
+   the same contract as `discover/references/cache-and-clone.md`
+   § Pre-flight step 4 (Hint passthrough).
 
 3. **Idempotency check (no-op gate).** Before re-reading any source,
    check `research/.discover-cache.json` (gitignored runtime state)

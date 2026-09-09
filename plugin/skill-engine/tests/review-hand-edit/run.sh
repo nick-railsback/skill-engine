@@ -431,7 +431,13 @@ resolving_name_hash="$(awk '
     f && /^## / { exit }
     f { print }
   ' "$REVIEW_SKILL" 2>/dev/null | sha256_of_stdin)"
-if [ "$resolving_name_hash" = "ed70f0db85c044aca222dc7547fe8390f9bb12d11d47a4b00d58880ede9e9001" ]; then
+# Re-baselined once since the hand-edit-detection change that introduced this
+# guard: the section's two cross-references pointed into `discover/SKILL.md` at
+# sections the v0.6.0 split had already moved out of that file ("Multiple
+# contextualizers", "Locating the contextualizer root" — neither existed any
+# more). Repointing them is a deliberate, unrelated correction, so the constant
+# moves with it; the guard's job is still to catch drift nobody intended.
+if [ "$resolving_name_hash" = "9db5251af8fdbc64239f7b047895db0ae897cfbde94d7da8fab7f811f3c0aa74" ]; then
   pass "review/SKILL.md: the existing 'Resolving <name>' section, unrelated to hand-edit detection, is untouched"
 else
   fail "review/SKILL.md: the existing 'Resolving <name>' section, unrelated to hand-edit detection, is untouched" \
