@@ -968,6 +968,79 @@ else
   fi
 fi
 
+section "must-preserve: advancing one source does not garbage-collect a sibling whose id shares its prefix"
+
+# The GC glob is `-name "<source_id>-*"`, and source_id is validated as
+# [a-z0-9-]+ -- so `api` and `api-docs` are both legal ids in the same
+# registry, and advancing `api` matched `api-docs-<sha>` and rm -rf'd it.
+# The next DISCOVER or REFRESH for api-docs then re-clones from scratch,
+# with nothing recording why. 07-monorepo-adapter.md already documents the
+# READER side as requiring a bare-hex suffix, "so a sibling id ... is not
+# mistaken for the source's own tree"; the deleter side never got the same
+# treatment (PR #15 review, finding 15).
+
+if ! $HAVE_RECIPE; then
+  fail "advancing one source leaves a prefix-sharing sibling's cache intact" "$NO_RECIPE_REASON"
+else
+  FX7="$TMPROOT/fx-prefix-gc"
+  UPSTREAM7="$FX7/upstream"
+  mkdir -p "$FX7"
+  SHA_A7="$(upstream_init_commit_a "$UPSTREAM7")"
+  HOME7="$FX7/home"
+  CACHE_GM7="$HOME7/.cache/skill-engine/git-managed"
+  SOURCE_ID7="api"
+
+  if ! seed_cache_shallow "$UPSTREAM7" "$CACHE_GM7" "$SOURCE_ID7" "$SHA_A7"; then
+    fail "advancing one source leaves a prefix-sharing sibling's cache intact" \
+      "fixture setup failed: could not seed a --depth=1 scratch cache from the scratch upstream"
+  else
+    SHA_B7="$(upstream_add_commit_b "$UPSTREAM7")"
+    # A second, independent source whose id begins with the first one's id
+    # plus the same separator the suffix uses.
+    SIBLING_DIR7="$CACHE_GM7/api-docs-abc1234def5678"
+    mkdir -p "$SIBLING_DIR7"
+    printf 'belongs to api-docs\n' > "$SIBLING_DIR7/marker.txt"
+    # And one that IS this source's own superseded directory, to keep the
+    # GC's actual job asserted alongside what it must not touch.
+    STALE_OWN7="$CACHE_GM7/api-0000000000000000000000000000000000000000"
+    mkdir -p "$STALE_OWN7"
+    printf 'superseded api checkout\n' > "$STALE_OWN7/marker.txt"
+
+    CTX_ROOT7="$FX7/ctxroot"
+    mkdir -p "$CTX_ROOT7"
+
+    run_recipe "$RECIPE_TEMPLATE" "$HOME7" "$SOURCE_ID7" "$SHA_A7" "$SHA_B7" "$CTX_ROOT7"
+
+    if [ "$RUN_RC" -eq 0 ]; then
+      pass "fixture self-check: the advance itself succeeds"
+    else
+      fail "fixture self-check: the advance itself succeeds" "exit: $RUN_RC" "output:" "$RUN_OUT"
+    fi
+
+    if [ -f "$SIBLING_DIR7/marker.txt" ]; then
+      pass "advancing 'api' leaves 'api-docs-<sha>' untouched"
+    else
+      fail "advancing 'api' leaves 'api-docs-<sha>' untouched" \
+        "$SIBLING_DIR7 was deleted — the GC glob matched another source's cache directory" \
+        "surviving directories:" "$(find "$CACHE_GM7" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)"
+    fi
+
+    if [ ! -d "$STALE_OWN7" ]; then
+      pass "the source's own superseded directory is still collected"
+    else
+      fail "the source's own superseded directory is still collected" \
+        "$STALE_OWN7 survived — narrowing the glob must not stop the GC doing its job"
+    fi
+
+    if [ -d "$CACHE_GM7/${SOURCE_ID7}-${SHA_B7}" ]; then
+      pass "the advanced directory for 'api' is present at the new SHA"
+    else
+      fail "the advanced directory for 'api' is present at the new SHA" \
+        "expected: $CACHE_GM7/${SOURCE_ID7}-${SHA_B7}"
+    fi
+  fi
+fi
+
 # ---- DISCOVER cache-hit check: SHA-aware hit/miss decision ---------------
 # DISCOVER pre-flight step 6 (cache-and-clone.md) probes for a warm
 # git-managed cache directory before offering to clone. Today's fenced

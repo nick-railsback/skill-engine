@@ -252,8 +252,25 @@ cmd_advance() {
 
   mv "$cache_dir" "$cache_root/git-managed/${source_id}-${new_sha}"
 
-  find "$cache_root/git-managed" -mindepth 1 -maxdepth 1 -type d \
-    -name "${source_id}-*" ! -name "${source_id}-${new_sha}" -exec rm -rf {} +
+  # `-name "${source_id}-*"` alone is not this source's directories: source
+  # ids are [a-z0-9-]+, so `api` and `api-docs` are both legal in one
+  # registry and the glob matched `api-docs-<sha>` while advancing `api` --
+  # deleting another source's cache, after which its next DISCOVER re-cloned
+  # from scratch with nothing recording why. 07-monorepo-adapter.md already
+  # requires the READER to see a bare-hex suffix "so a sibling id is not
+  # mistaken for the source's own tree"; the deleter gets the same rule
+  # here. `find` has no portable regex for it, so the suffix is checked in
+  # the shell.
+  while IFS= read -r -d '' stale; do
+    stale_suffix="${stale##*/}"
+    stale_suffix="${stale_suffix#"${source_id}-"}"
+    case "$stale_suffix" in
+      ""|*[!0-9a-f]*) continue ;;
+    esac
+    [ "$stale_suffix" = "$new_sha" ] && continue
+    rm -rf "$stale"
+  done < <(find "$cache_root/git-managed" -mindepth 1 -maxdepth 1 -type d \
+    -name "${source_id}-*" -print0)
 
   printf '%s\n' "$inventory_json"
 }
