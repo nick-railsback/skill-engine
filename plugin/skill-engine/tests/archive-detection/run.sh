@@ -418,6 +418,62 @@ else
 fi
 
 # ===========================================================================
+# Phase 0.5's dispatch is by table order, its `gh api` calls are not
+# unauthenticated, and a call that fails is `unknown` (PR #15 review,
+# finding 9).
+# ===========================================================================
+
+banner "Phase 0.5 dispatch order, auth claim, and failed-call rule"
+
+# The table IS the dispatch: the doc tells the model to read it top-down and
+# take the first matching row. With the GitLab row below "any other host gh
+# resolves", a host like gitlab.company.com matches the catch-all first and
+# gets `GH_HOST=gitlab.company.com gh api repos/...`, which cannot work.
+# Asserted on the raw section, not the wrap-normalized copy, because row
+# order is the property and normalization destroys it.
+PHASE05_RAW="$(awk '/^### Phase 0\.5/,/^### Phase 1/' "$DRIFT_MD")"
+gl_row="$(printf '%s\n' "$PHASE05_RAW" | grep -niE '^\|[^|]*gitlab' | head -n1 | cut -d: -f1)"
+ghe_row="$(printf '%s\n' "$PHASE05_RAW" | grep -niE '^\|[^|]*any other host' | head -n1 | cut -d: -f1)"
+if [ -z "${gl_row:-}" ] || [ -z "${ghe_row:-}" ]; then
+  fail "phase05_gitlab_row_precedes_gh_catchall" \
+    "could not locate both rows in the Phase 0.5 table (gitlab row: ${gl_row:-<none>}, catch-all row: ${ghe_row:-<none>})"
+elif [ "$gl_row" -lt "$ghe_row" ]; then
+  pass "phase05_gitlab_row_precedes_gh_catchall"
+else
+  fail "phase05_gitlab_row_precedes_gh_catchall" \
+    "the GitLab row is at table line $gl_row, below the 'any other host gh resolves' catch-all at line $ghe_row" \
+    "a self-hosted GitLab host matches the catch-all first and is dispatched to gh"
+fi
+
+# `gh api` reads GH_TOKEN/GITHUB_TOKEN or the gh auth keychain. Not passing
+# a token on the command line does not make the call unauthenticated, and
+# the difference is not cosmetic: github.com's genuinely unauthenticated
+# limit is 60 requests/hour, inside the range this feature exists to serve.
+if printf '%s' "$DRIFT_N" | grep -qiE 'reads are unauthenticated|unauthenticated: no token'; then
+  fail "phase05_no_false_unauthenticated_claim" \
+    "Phase 0.5 still claims its reads are unauthenticated; gh api uses whatever ambient credentials are present"
+else
+  pass "phase05_no_false_unauthenticated_claim"
+fi
+
+if near "$DRIFT_N" 'gh api' '(GH_TOKEN|GITHUB_TOKEN|gh auth|ambient)' 250; then
+  pass "phase05_names_ambient_credentials"
+else
+  fail "phase05_names_ambient_credentials" \
+    "expected the ambient-credential behaviour (GH_TOKEN / GITHUB_TOKEN / gh auth) documented within 250 chars of 'gh api'"
+fi
+
+# Without a rule, a model reading a missing .archived field off a 403 or a
+# 404 body has nothing telling it that is not `false`, and reports the
+# source as confirmed-live.
+if near_all "$DRIFT_N" 'unknown' 250 '(non-2xx|rate limit|429|403)'; then
+  pass "phase05_failed_call_maps_to_unknown"
+else
+  fail "phase05_failed_call_maps_to_unknown" \
+    "expected a failed-call rule (non-2xx / rate limit / 403 / 429) documented within 250 chars of 'unknown'"
+fi
+
+# ===========================================================================
 # Preservation: archived sources stay excluded from Phase 1 exactly as
 # today, including one staged by a proposal still awaiting apply.
 # ===========================================================================

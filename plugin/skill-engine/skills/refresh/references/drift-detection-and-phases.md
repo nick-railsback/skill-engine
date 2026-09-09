@@ -213,15 +213,41 @@ host:
 | Host | Read | Field |
 |---|---|---|
 | `github.com` | `gh api repos/<owner>/<repo>` | `.archived` |
+| GitLab: `gitlab.com` or one of its subdomains | a read-only `GET /api/v4/projects/<url-encoded path>` via WebFetch or the available MCP fetch tool | `.archived` |
 | Any other host `gh` resolves (GitHub Enterprise) | `GH_HOST=<host> gh api repos/<owner>/<repo>` | `.archived` |
-| GitLab (host contains `gitlab`) | a read-only `GET /api/v4/projects/<url-encoded path>` via WebFetch or the available MCP fetch tool | `.archived` |
 | Anything else (Bitbucket, Azure DevOps, a `gh`-unresolvable host, …) | not called | n/a — `unknown` |
 
-Every host outside the first three rows is `unknown`: no call is made
-and no transition is staged. Both reads are unauthenticated: no token
-is passed to `gh api`, and no token is passed to the GitLab read — both
-hit the host's own public API (the engine does not perform HTTP itself
-— see "Tool preference for git-managed sources" below).
+Read the table top-down and take the first row whose host matches. The
+GitLab row sits above the `gh`-resolves row deliberately: that row is a
+catch-all, so a self-hosted `gitlab.company.com` would match it first
+and be dispatched to `GH_HOST=gitlab.company.com gh api repos/…`, which
+cannot succeed. Matching is on the registered URL's host, and a
+substring test for `gitlab` is wrong in both directions — it claims
+`notgitlab.example.com`, and it misses a self-hosted GitLab on a
+company domain. Any host not identified by an exact rule falls to the
+last row and is `unknown`; no call is made and no transition is staged.
+
+Owner and repo come from the registered `url`: drop a trailing `.git`,
+accept the `git@host:owner/repo` SSH form as well as
+`https://host/owner/repo`, and take the first two path segments. For
+GitLab, url-encode the whole project path instead — deeper segments are
+subgroups, not a repo name.
+
+The engine passes no token of its own to either read (it does not
+perform HTTP itself — see "Tool preference for git-managed sources"
+below). That is not the same as the call being unauthenticated: `gh
+api` uses whatever ambient credentials `gh` already has — an exported
+token in the environment, otherwise the `gh auth` login keychain — so
+do not describe this read as unauthenticated or reason about its rate
+limit as if it were. Where the call genuinely is unauthenticated,
+github.com allows 60 requests/hour, which a contextualizer carrying
+tens of sources will exhaust part-way through this phase if it
+refreshes more than once in an hour.
+
+**Any call that does not return 2xx is `unknown`** — a 403 rate limit,
+a 404 for a private or renamed repository, a timeout, a transport
+failure. A missing `.archived` field in a non-2xx body is never read as
+`false`.
 
 When the flag is `true`, stage the transition using the copy-on-write
 recipe above (**Lifecycle state**): write `archived: true` for that
@@ -231,10 +257,13 @@ records `source-paths.json` as `modified`. The live file is untouched
 until `/skill-engine:apply` promotes the proposal — REFRESH never flips
 `archived` live.
 
-When the flag is `false`, or the host is `unknown`, no transition is
+When the flag is `false`, or the outcome is `unknown`, no transition is
 staged. State the number of sources checked and the number unknown in
-the post-run summary: `<N> sources checked, <M> unknown-host (not
-counted against N)`.
+the post-run summary, keeping the two kinds of unknown apart — a host
+nobody tried and a host that answered with an error are different
+facts, and collapsing them hides an outage behind a config gap:
+`<N> sources checked, <M> unknown-host, <F> check failed (neither M nor
+F counted against N)`.
 
 A source already `archived: true` in the live file was already excluded
 before Phase 0.5 runs (Pre-flight step 4, "Identify in-scope sources").
