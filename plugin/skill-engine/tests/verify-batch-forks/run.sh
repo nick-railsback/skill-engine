@@ -123,6 +123,23 @@ section() {
   printf '\n══ %s ══\n' "$1"
 }
 
+# now_ms — wall clock in integer milliseconds.
+#
+# `date +%s` resolves to whole seconds, and every timing oracle below
+# differences two of them and then differences THOSE (full minus stubbed).
+# Each of the four readings truncates independently, so a contribution that
+# is really ~0.1s can report anywhere in -2..2 purely from truncation --
+# which is how a check whose measured cost is 0s came to fail a `< 2s`
+# bound intermittently on a loaded runner. Nothing was slow; the ruler had
+# no smaller markings than the thing being measured.
+#
+# python3 rather than `date +%s%N` (not portable to the BSD date macOS
+# ships) or bash 5's EPOCHREALTIME (macOS ships bash 3.2). Seventeen suites
+# under tests/ already call python3, and CI installs it.
+now_ms() {
+  python3 -c 'import time; print(int(time.time() * 1000))'
+}
+
 # Collapse runs of whitespace (newlines included) to one space, so a
 # phrase assertion against a hard-wrapped source-text region does not
 # depend on where the phrase happened to break across lines.
@@ -313,19 +330,19 @@ c1_stub="$WORK/c1-stub-verify.sh"
 build_stubbed_verify "$VERIFY_SH" "$c1_stub" "Reference frontmatter (reference-frontmatter)"
 chmod +x "$c1_stub"
 
-t0=$(date +%s)
+t0=$(now_ms)
 c1_full_out="$(run_verify "$c1_ctx" "$WORK/c1-empty-cache")"
 c1_full_rc=$?
-t1=$(date +%s)
+t1=$(now_ms)
 t_full=$((t1 - t0))
 
-t2=$(date +%s)
+t2=$(now_ms)
 c1_stub_out="$(CTX_ROOT="$c1_ctx" SKILL_ENGINE_CACHE_ROOT="$WORK/c1-empty-cache" bash "$c1_stub" 2>&1)"
-t3=$(date +%s)
+t3=$(now_ms)
 t_stub=$((t3 - t2))
 
 c1_diff=$((t_full - t_stub))
-info "N=2000: full=${t_full}s stubbed=${t_stub}s Check-5-contribution=${c1_diff}s"
+info "N=2000: full=${t_full}ms stubbed=${t_stub}ms Check-5-contribution=${c1_diff}ms"
 
 if printf '%s' "$c1_stub_out" | grep -qF 'Reference frontmatter (reference-frontmatter) stubbed out for timing isolation'; then
   pass "check5-timing: stubbed copy runs to completion and skips Check 5 as intended"
@@ -415,11 +432,11 @@ else
     "${c5f_ctrl_c5:-<empty>}"
 fi
 
-if [ "$c1_diff" -lt 2 ]; then
-  pass "check5-timing: Check 5's own wall-clock contribution at N=2,000 is under 2s (got ${c1_diff}s)"
+if [ "$c1_diff" -lt 2000 ]; then
+  pass "check5-timing: Check 5's own wall-clock contribution at N=2,000 is under 2s (got ${c1_diff}ms)"
 else
-  fail "check5-timing: Check 5's own wall-clock contribution at N=2,000 is under 2s (got ${c1_diff}s)" \
-    "full=${t_full}s stubbed=${t_stub}s"
+  fail "check5-timing: Check 5's own wall-clock contribution at N=2,000 is under 2s (got ${c1_diff}ms)" \
+    "full=${t_full}ms stubbed=${t_stub}ms"
 fi
 
 # ---- Check 5 preservation: today's exact PASS/FAIL text, unchanged ----
@@ -637,19 +654,19 @@ build_stubbed_verify "$VERIFY_SH" "$c3_stub" \
   "Catalog-density floor (catalog-density)"
 chmod +x "$c3_stub"
 
-t0=$(date +%s)
+t0=$(now_ms)
 c3_full_out="$(run_verify "$c3_ctx" "$c3_cache")"
 c3_full_rc=$?
-t1=$(date +%s)
+t1=$(now_ms)
 t_full3=$((t1 - t0))
 
-t2=$(date +%s)
+t2=$(now_ms)
 c3_stub_out="$(CTX_ROOT="$c3_ctx" SKILL_ENGINE_CACHE_ROOT="$c3_cache" bash "$c3_stub" 2>&1)"
-t3=$(date +%s)
+t3=$(now_ms)
 t_stub3=$((t3 - t2))
 
 c3_diff=$((t_full3 - t_stub3))
-info "150 members / 150 companions over 2000 references: full=${t_full3}s stubbed=${t_stub3}s Checks-6+7-contribution=${c3_diff}s"
+info "150 members / 150 companions over 2000 references: full=${t_full3}ms stubbed=${t_stub3}ms Checks-6+7-contribution=${c3_diff}ms"
 
 if printf '%s' "$c3_stub_out" | grep -qF 'Monorepo-coverage heuristic (monorepo-coverage) stubbed out for timing isolation'; then
   pass "check6-7-timing: stubbed copy runs to completion and skips Checks 6+7 as intended"
@@ -670,11 +687,11 @@ else
   fail "check6-7-timing: fixture self-check -- at least $((MEMBER_COUNT + COMPANION_COUNT)) WARN lines fired (got $c3_warn_count)"
 fi
 
-if [ "$c3_diff" -lt 2 ]; then
-  pass "check6-7-timing: Checks 6+7's combined wall-clock contribution is under 2s (got ${c3_diff}s)"
+if [ "$c3_diff" -lt 2000 ]; then
+  pass "check6-7-timing: Checks 6+7's combined wall-clock contribution is under 2s (got ${c3_diff}ms)"
 else
-  fail "check6-7-timing: Checks 6+7's combined wall-clock contribution is under 2s (got ${c3_diff}s)" \
-    "full=${t_full3}s stubbed=${t_stub3}s"
+  fail "check6-7-timing: Checks 6+7's combined wall-clock contribution is under 2s (got ${c3_diff}ms)" \
+    "full=${t_full3}ms stubbed=${t_stub3}ms"
 fi
 
 # ---- Check 6 discrimination: cited vs. uncited, and prefix overlap ----
