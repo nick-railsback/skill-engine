@@ -339,6 +339,82 @@ else
   fail "check5-timing: 2,000-reference contextualizer passes all checks" "$c1_full_out"
 fi
 
+section "check5-awk-failure -- a batched awk that cannot run must not report a clean corpus"
+
+# The batch passes every reference file as an argv entry, and the code's own
+# comment names the condition under which that stops working: a corpus large
+# enough to approach ARG_MAX. With stderr discarded and the exit status
+# never read, that failure produced an empty result set, left fm_ok at 1,
+# and printed "N references start with a Markdown body" -- asserting a
+# property nothing had evaluated. The pre-batch per-file loop degraded one
+# file at a time and could not produce a whole-corpus false green (PR #15
+# review, finding 12).
+#
+# ARG_MAX itself is not reproducible in a test at any sane fixture size, so
+# the failure is injected where its effect is identical: a stubbed `awk`
+# earlier on PATH that refuses this one invocation. It is selected by the
+# arguments Check 5 uses -- reference .md paths as positional args -- not by
+# the awk program's internals, and everything else is handed to the real awk
+# untouched, so the rest of the run is unaffected.
+
+c5f_ctx="$WORK/c5-awk-failure"
+build_nav "$c5f_ctx"
+mkdir -p "$c5f_ctx/references"
+printf '# ref\n\nBody text, no frontmatter.\n' > "$c5f_ctx/references/ref.md"
+write_sources "$c5f_ctx" "[]"
+
+c5f_stubdir="$WORK/c5-awk-stub"
+mkdir -p "$c5f_stubdir"
+c5f_real_awk="$(command -v awk)"
+cat > "$c5f_stubdir/awk" <<STUB
+#!/usr/bin/env bash
+case "\$*" in
+  */references/*.md*)
+    echo "awk: stubbed exec failure (stands in for ARG_MAX)" >&2
+    exit 2
+    ;;
+esac
+exec "$c5f_real_awk" "\$@"
+STUB
+chmod +x "$c5f_stubdir/awk"
+
+c5f_out="$(PATH="$c5f_stubdir:$PATH" CTX_ROOT="$c5f_ctx" \
+  SKILL_ENGINE_CACHE_ROOT="$WORK/c5f-empty-cache" bash "$VERIFY_SH" 2>&1)"
+c5f_c5="$(check_section "$c5f_out" 'Reference frontmatter')"
+
+if printf '%s' "$c5f_c5" | grep -qE '\[PASS\].*start(s)? with a Markdown body'; then
+  fail "check5-awk-failure: a failed batch must not report the corpus clean" \
+    "the check reported every reference as frontmatter-free without having evaluated any of them" \
+    "${c5f_c5:-<empty>}"
+else
+  pass "check5-awk-failure: a failed batch does not report the corpus clean"
+fi
+
+if printf '%s' "$c5f_c5" | grep -qE '\[FAIL\].*(awk|could not)'; then
+  pass "check5-awk-failure: the run says the frontmatter check could not be evaluated"
+else
+  fail "check5-awk-failure: the run says the frontmatter check could not be evaluated" \
+    "a check that did not run has to say so; silence here is indistinguishable from a clean corpus" \
+    "${c5f_c5:-<empty>}"
+fi
+
+# No assertion on verify.sh's own exit status here: this minimal fixture
+# already exits non-zero for unrelated checks, so "exits non-zero" would
+# pass whether or not Check 5 noticed anything. The two assertions above are
+# the ones that discriminate.
+
+# Calibration: the same fixture with no stub on PATH must pass Check 5
+# cleanly, so the three assertions above are reacting to the injected
+# failure and not to something wrong with the fixture itself.
+c5f_ctrl_out="$(CTX_ROOT="$c5f_ctx" SKILL_ENGINE_CACHE_ROOT="$WORK/c5f-ctrl-cache" bash "$VERIFY_SH" 2>&1)"
+c5f_ctrl_c5="$(check_section "$c5f_ctrl_out" 'Reference frontmatter')"
+if printf '%s' "$c5f_ctrl_c5" | grep -qE '\[PASS\].*start(s)? with a Markdown body'; then
+  pass "check5-awk-failure calibration: the same fixture passes Check 5 with the real awk"
+else
+  fail "check5-awk-failure calibration: the same fixture passes Check 5 with the real awk" \
+    "${c5f_ctrl_c5:-<empty>}"
+fi
+
 if [ "$c1_diff" -lt 2 ]; then
   pass "check5-timing: Check 5's own wall-clock contribution at N=2,000 is under 2s (got ${c1_diff}s)"
 else

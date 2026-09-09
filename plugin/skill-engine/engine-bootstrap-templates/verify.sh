@@ -1019,8 +1019,18 @@ else
     # line yet" state. Passing every reference file as an argv entry could
     # approach shell ARG_MAX on a corpus of tens of thousands of files —
     # out of scope at this chunk's 2,000-file bound.
+    #
+    # The exit status is captured rather than discarded, and that is the
+    # whole reason this is not a process substitution: `read_lines < <(awk
+    # …)` reports the status of `read_lines`, never awk's. An awk that
+    # could not run — the ARG_MAX case the comment above names, a broken
+    # PATH, an unreadable file — produced no output, which is
+    # indistinguishable from a clean corpus, and the check then asserted a
+    # property it had never evaluated. The per-file loop this replaced
+    # degraded one file at a time and could not go wrong corpus-wide.
     fm_ok=1
-    read_lines < <(awk '
+    fm_rc=0
+    fm_hits="$(awk '
       FNR == 1 { seen_nonblank = 0 }
       !seen_nonblank && /[^[:space:]]/ {
         line = $0
@@ -1028,14 +1038,20 @@ else
         seen_nonblank = 1
         if (line ~ /^---[[:space:]]*$/) print FILENAME
       }
-    ' "${ref_files[@]}" 2>/dev/null)
+    ' "${ref_files[@]}" 2>/dev/null)" || fm_rc=$?
 
-    for bad in "${READ_LINES_RESULT[@]:-}"; do
-      [ -n "$bad" ] || continue
-      rel="${bad#"$CTX_ROOT/"}"
-      fail "$rel starts with YAML frontmatter — references carry no frontmatter (02-artifact-contract.md § No YAML frontmatter on references)"
+    if [ "$fm_rc" -ne 0 ]; then
+      fail "reference frontmatter not evaluated — the single awk pass over $ref_count reference file(s) exited $fm_rc (a corpus large enough to exceed ARG_MAX lands here); no conclusion is drawn about the corpus"
       fm_ok=0
-    done
+    else
+      read_lines <<< "$fm_hits"
+      for bad in "${READ_LINES_RESULT[@]:-}"; do
+        [ -n "$bad" ] || continue
+        rel="${bad#"$CTX_ROOT/"}"
+        fail "$rel starts with YAML frontmatter — references carry no frontmatter (02-artifact-contract.md § No YAML frontmatter on references)"
+        fm_ok=0
+      done
+    fi
 
     if [ "$fm_ok" -eq 1 ]; then
       noun="references"; [ "$ref_count" -eq 1 ] && noun="reference"
