@@ -173,6 +173,21 @@ cmd_advance() {
     exit 0
   fi
 
+  # Checked here, before anything is fetched or checked out. This is the one
+  # subcommand that needs $CLAUDE_PLUGIN_ROOT (it locates
+  # discover_inventory.py), and `set -u` turns an unset one into an abort
+  # wherever it is first dereferenced. Dereferenced at its point of use, that
+  # abort lands after `checkout --detach` has already moved the tree, leaving
+  # <id>-<old_sha>/ holding new_sha's content -- and DISCOVER's pre-flight
+  # trusts that directory's SHA suffix (PR #15 review, finding 4). A set-but-
+  # wrong value is not detectable until the script it names is invoked; the
+  # trap below is what keeps that case from leaking.
+  if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    printf 'skill-engine: advance needs CLAUDE_PLUGIN_ROOT set (it locates discover_inventory.py) -- nothing fetched, %s-%s untouched\n' \
+      "$source_id" "$old_sha" >&2
+    exit 1
+  fi
+
   if ! git -C "${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/${source_id}-${old_sha}" fetch --depth=1 origin "$new_sha"; then
     printf 'skill-engine: failed to fetch %s for %s -- advance aborted, %s-%s left intact\n' \
       "$new_sha" "$source_id" "$source_id" "$old_sha" >&2
@@ -183,11 +198,17 @@ cmd_advance() {
 
   local cache_dir="$cache_root/git-managed/${source_id}-${old_sha}"
 
-  local since_tmpfile inventory_json
-  since_tmpfile="$(mktemp)"
+  # An explicit template, not a bare `mktemp`: BSD mktemp (macOS) ignores
+  # TMPDIR without one and always writes under the per-user confstr dir, so
+  # the two platforms would put this file in different places. The trap is
+  # what makes every abort between here and the removal -- a
+  # CLAUDE_PLUGIN_ROOT pointing at no install, a failed diff, an interrupt --
+  # clean up after itself instead of leaving the scratch file behind.
+  local since_tmpfile="" inventory_json
+  trap 'rm -f "${since_tmpfile:-}" 2>/dev/null || :' EXIT
+  since_tmpfile="$(mktemp "${TMPDIR:-/tmp}/skill-engine-advance.XXXXXX")"
   cmd_since_last_check "$cache_dir" "$old_sha" "$new_sha" > "$since_tmpfile"
   inventory_json="$(python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" --since-json "$since_tmpfile")"
-  rm -f "$since_tmpfile"
 
   # The inventory merge happens HERE, before the rename, because the rename
   # is the only step that changes what the next session sees: once

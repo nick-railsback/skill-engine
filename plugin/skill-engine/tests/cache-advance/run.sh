@@ -848,6 +848,126 @@ else
   fi
 fi
 
+section "must-guard: advance validates its environment before touching the checkout, and leaks no temp file"
+
+# Driven against bin/cache-git.sh directly rather than through the recipe,
+# because the environment under test is the one the recipe needs to find the
+# helper at all: $CLAUDE_PLUGIN_ROOT. The scenario is the header's own -- a
+# maintainer running the helper by hand, or a harness that does not export
+# it. `set -u` is in force, so an unguarded dereference aborts the script;
+# what matters is WHERE it aborts. Dereferenced after the fetch and the
+# `checkout --detach`, it leaves <id>-<old_sha>/ holding new_sha's tree,
+# and DISCOVER's pre-flight explicitly trusts that directory's SHA suffix
+# (PR #15 review, finding 4).
+
+FX6="$TMPROOT/fx-guard"
+UPSTREAM6="$FX6/upstream"
+mkdir -p "$FX6"
+SHA_A6="$(upstream_init_commit_a "$UPSTREAM6")"
+HOME6="$FX6/home"
+CACHE_GM6="$HOME6/.cache/skill-engine/git-managed"
+SOURCE_ID6="acme-widgets"
+CACHE_GIT_SH="$PLUGIN_ROOT/bin/cache-git.sh"
+
+if ! seed_cache_shallow "$UPSTREAM6" "$CACHE_GM6" "$SOURCE_ID6" "$SHA_A6"; then
+  fail "advance refuses a missing CLAUDE_PLUGIN_ROOT before it fetches or checks out" \
+    "fixture setup failed: could not seed a --depth=1 scratch cache from the scratch upstream"
+else
+  SHA_B6="$(upstream_add_commit_b "$UPSTREAM6")"
+  old_dir6="$CACHE_GM6/${SOURCE_ID6}-${SHA_A6}"
+  CTX_ROOT6="$FX6/ctxroot"
+  mkdir -p "$CTX_ROOT6/research"
+
+  guard_out="$(cd "$CTX_ROOT6" && env -u CLAUDE_PLUGIN_ROOT HOME="$HOME6" \
+    bash "$CACHE_GIT_SH" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
+    "research/.discover-inventory.json" 2>&1)"
+  guard_rc=$?
+
+  if [ "$guard_rc" -ne 0 ]; then
+    pass "advance exits non-zero when CLAUDE_PLUGIN_ROOT is not set"
+  else
+    fail "advance exits non-zero when CLAUDE_PLUGIN_ROOT is not set" "exit: $guard_rc" "$guard_out"
+  fi
+
+  if printf '%s' "$guard_out" | grep -qF 'CLAUDE_PLUGIN_ROOT' \
+     && ! printf '%s' "$guard_out" | grep -qF 'unbound variable'; then
+    pass "advance names CLAUDE_PLUGIN_ROOT in a diagnostic of its own, rather than aborting on an unbound variable"
+  else
+    fail "advance names CLAUDE_PLUGIN_ROOT in a diagnostic of its own, rather than aborting on an unbound variable" \
+      "output: ${guard_out:-<empty>}"
+  fi
+
+  head6="$(git -C "$old_dir6" rev-parse HEAD 2>/dev/null || echo '<no such directory>')"
+  if [ "$head6" = "$SHA_A6" ]; then
+    pass "the cached checkout is still at the old SHA — the refusal came before the fetch and the checkout"
+  else
+    fail "the cached checkout is still at the old SHA — the refusal came before the fetch and the checkout" \
+      "expected HEAD $SHA_A6, found: $head6" \
+      "a directory named <id>-<old_sha> whose tree is at new_sha is what DISCOVER's pre-flight trusts the suffix against"
+  fi
+
+  # Temp-file hygiene, on a failure path that lands inside the window: the
+  # since-last-check scratch file is mktemp'd, filled, and read by
+  # discover_inventory.py, and any abort between the mktemp and its removal
+  # used to leave the file behind (the --probe recipe in
+  # intake-and-detection.md sets a trap; this did not). The abort used here
+  # is a CLAUDE_PLUGIN_ROOT that is set but does not point at an install --
+  # the other half of the same environment mistake as above, and the reason
+  # the guard checks only for a missing value: a wrong one is not detectable
+  # until the script it names is actually invoked. TMPDIR is an empty
+  # scratch directory, so the check is exact rather than a heuristic over
+  # whatever else is in the system temp dir.
+  LEAK_TMPDIR="$FX6/leak-tmp"
+  BOGUS_ROOT="$FX6/not-an-install"
+  mkdir -p "$LEAK_TMPDIR" "$BOGUS_ROOT"
+  leak_out="$(cd "$CTX_ROOT6" && env HOME="$HOME6" CLAUDE_PLUGIN_ROOT="$BOGUS_ROOT" \
+    TMPDIR="$LEAK_TMPDIR" bash "$CACHE_GIT_SH" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
+    "research/.discover-inventory.json" 2>&1)"
+  leak_rc=$?
+
+  if [ "$leak_rc" -ne 0 ]; then
+    pass "fixture self-check: a CLAUDE_PLUGIN_ROOT with no discover_inventory.py really did abort the advance mid-run"
+  else
+    fail "fixture self-check: a CLAUDE_PLUGIN_ROOT with no discover_inventory.py really did abort the advance mid-run" \
+      "exit: $leak_rc" "$leak_out"
+  fi
+
+  leaked6="$(find "$LEAK_TMPDIR" -mindepth 1 2>/dev/null)"
+  if [ -z "$leaked6" ]; then
+    pass "an aborted advance leaves no temp file behind"
+  else
+    fail "an aborted advance leaves no temp file behind" "found under TMPDIR:" "$leaked6"
+  fi
+
+  # Calibration. The assertion above is a preservation assertion over a
+  # scratch directory that is empty to begin with, so "nothing was left
+  # behind" is also what a run that never reached the mktemp reports, and
+  # what a run whose mktemp ignored TMPDIR reports (BSD mktemp does exactly
+  # that without an explicit template -- this assertion was silently vacuous
+  # for that reason before the helper grew one). Re-running the identical
+  # abort against a copy of the helper with only the cleanup trap removed
+  # has to leave the file behind; if it does not, the check above is not
+  # watching the right directory.
+  CALIB_TMPDIR="$FX6/calib-tmp"
+  CALIB_HELPER="$FX6/cache-git-no-trap.sh"
+  mkdir -p "$CALIB_TMPDIR"
+  sed '/trap .*since_tmpfile/d' "$CACHE_GIT_SH" > "$CALIB_HELPER"
+  if cmp -s "$CALIB_HELPER" "$CACHE_GIT_SH"; then
+    fail "calibration: an aborted advance leaves no temp file behind" \
+      "removing the cleanup trap changed nothing in bin/cache-git.sh — there is no trap to calibrate against"
+  else
+    ( cd "$CTX_ROOT6" && env HOME="$HOME6" CLAUDE_PLUGIN_ROOT="$BOGUS_ROOT" \
+      TMPDIR="$CALIB_TMPDIR" bash "$CALIB_HELPER" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
+      "research/.discover-inventory.json" >/dev/null 2>&1 ) || true
+    if [ -n "$(find "$CALIB_TMPDIR" -mindepth 1 2>/dev/null)" ]; then
+      pass "calibration: the same abort without the cleanup trap does leave a temp file, so the check above is watching the right directory"
+    else
+      fail "calibration: the same abort without the cleanup trap does leave a temp file, so the check above is watching the right directory" \
+        "nothing appeared under $CALIB_TMPDIR either way — the no-leak assertion above proves nothing"
+    fi
+  fi
+fi
+
 # ---- DISCOVER cache-hit check: SHA-aware hit/miss decision ---------------
 # DISCOVER pre-flight step 6 (cache-and-clone.md) probes for a warm
 # git-managed cache directory before offering to clone. Today's fenced
