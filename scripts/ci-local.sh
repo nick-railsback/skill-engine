@@ -115,13 +115,36 @@ run_tests() {
   need jq
   # The loop, not a hand-enumerated list: a new tests/<name>/run.sh is
   # included automatically instead of being green-by-omission.
-  local t
-  for t in plugin/skill-engine/tests/*/run.sh; do
+  #
+  # Every suite runs even after one goes red. A bare `bash "$t"` let this
+  # script's own `set -e` abort the loop at the first failure, so the suites
+  # sorting after it never ran at all — locally or in CI — while the run
+  # still read as a complete one. That is how a red dogfood-corpus-refresh
+  # (13th of 44 alphabetically) hid a red dogfood-review-manifest through the
+  # whole v0.9.0 cycle: 12 suites ran, 31 plus hooks-audit did not, and
+  # fixing the first red is what would have exposed the second. Collect
+  # failures instead and name them together at the end; the non-zero exit is
+  # unchanged, and so is `all`'s "passed" line, which is still gated on it.
+  #
+  # A counter plus a string, not an array: macOS ships bash 3.2, where
+  # "${#arr[@]}" on an empty array trips `set -u`.
+  local t total=0 failed_count=0 failed_list=""
+  for t in plugin/skill-engine/tests/*/run.sh \
+           plugin/skill-engine/tests/hooks-audit.sh; do
+    total=$((total + 1))
     echo "== $t =="
-    bash "$t"
+    if ! bash "$t"; then
+      failed_count=$((failed_count + 1))
+      failed_list="${failed_list}  ${t}
+"
+    fi
   done
-  echo "== plugin/skill-engine/tests/hooks-audit.sh =="
-  bash plugin/skill-engine/tests/hooks-audit.sh
+
+  if [ "$failed_count" -gt 0 ]; then
+    printf '\nci-local: %d of %d test suites FAILED:\n%s' \
+      "$failed_count" "$total" "$failed_list"
+    return 1
+  fi
 }
 
 run_examples() {
