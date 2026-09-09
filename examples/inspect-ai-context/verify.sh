@@ -1234,7 +1234,13 @@ else
     tree=""
     if [ "$src_kind" = "git-managed" ]; then
       if ! tree="$(resolve_git_managed_tree "$src_id")"; then
-        if [ -n "$src_path" ] && [ -d "$src_path" ]; then
+        # Absolute only. verify.sh never cd's, so a relative `path` is a
+        # question about the caller's working directory rather than about
+        # the source -- and nothing constrains `path` on a git-managed
+        # entry, so "docs" is schema-valid there and was inert before this
+        # fallback existed. Followed relatively, it made this check
+        # enumerate the maintainer's own ./docs/ as the upstream tree.
+        if [ "${src_path#/}" != "$src_path" ] && [ -d "$src_path" ]; then
           tree="$src_path"
         else
           skip "monorepo-coverage: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping workspace-member coverage for this source"
@@ -1464,7 +1470,11 @@ else
     tree=""
     if [ "$src_kind" = "git-managed" ]; then
       if ! tree="$(resolve_git_managed_tree "$src_id")"; then
-        if [ -n "$src_path" ] && [ -d "$src_path" ]; then
+        # Absolute only -- same reasoning as the monorepo-coverage check
+        # above: a relative `path` resolves against the caller's working
+        # directory, and the density floor would then be computed against
+        # an unrelated file count.
+        if [ "${src_path#/}" != "$src_path" ] && [ -d "$src_path" ]; then
           tree="$src_path"
         else
           skip "catalog-density: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping density check for this source"

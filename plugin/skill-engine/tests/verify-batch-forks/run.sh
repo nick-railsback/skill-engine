@@ -767,6 +767,49 @@ else
     "Check 6: ${c4n_c6:-<empty>}" "Check 8: ${c4n_c8:-<empty>}"
 fi
 
+# ---- Must-reject: a RELATIVE path resolves against whatever directory
+# verify.sh happens to be run from, so it must not be followed at all ----
+#
+# verify.sh never cd's, so `[ -d "$src_path" ]` on a relative path is a
+# question about the caller's working directory, not about the source. The
+# schema constrains `path` on a web-doc entry (null or empty) and constrains
+# `url` on external-doc and local-path, but the git-managed branch requires
+# only a non-empty url -- so `"path": "docs"` on a git-managed source is
+# schema-valid, and was simply ignored before the fallback existed. Run from
+# a project root that has a ./docs/, the fallback made both checks enumerate
+# the maintainer's OWN tree as if it were the upstream one: bogus uncited-
+# member warnings, and a density floor computed against an unrelated file
+# count (PR #15 review, finding 5).
+
+c4rel_ctx="$WORK/c4-path-relative"
+build_nav "$c4rel_ctx"
+mkdir -p "$c4rel_ctx/references"
+write_sources "$c4rel_ctx" "[$(git_managed_with_path_source relpath-src https://example.com/acme/relpath-src docs)]"
+# The caller's own working directory, carrying a ./docs/ of its own -- the
+# ordinary shape of a repository root, and what a relative `path` would
+# resolve against.
+c4rel_cwd="$WORK/c4-relative-cwd"
+mkdir -p "$c4rel_cwd/docs/packages/impostor"
+printf 'x\n' > "$c4rel_cwd/docs/packages/impostor/x.txt"
+c4rel_out="$(cd "$c4rel_cwd" && CTX_ROOT="$c4rel_ctx" SKILL_ENGINE_CACHE_ROOT="$WORK/c4rel-empty-cache" bash "$VERIFY_SH" 2>&1)"
+c4rel_c6="$(check_section "$c4rel_out" 'Monorepo-coverage')"
+c4rel_c8="$(check_section "$c4rel_out" 'Catalog-density')"
+
+if printf '%s' "$c4rel_c6" | grep -qF 'relpath-src has no local cache tree' \
+  && printf '%s' "$c4rel_c8" | grep -qF 'relpath-src has no local cache tree'; then
+  pass "git-managed-path-fallback must-reject: a relative path is not followed -- both checks report the documented no-cache-tree [N/A]"
+else
+  fail "git-managed-path-fallback must-reject: a relative path is not followed -- both checks report the documented no-cache-tree [N/A]" \
+    "Check 6: ${c4rel_c6:-<empty>}" "Check 8: ${c4rel_c8:-<empty>}"
+fi
+if printf '%s' "$c4rel_c6" | grep -qF 'workspace member impostor'; then
+  fail "git-managed-path-fallback must-reject: the caller's own ./docs/ is never enumerated as the source's tree" \
+    "a directory belonging to whoever ran verify.sh was reported as an uncited workspace member of relpath-src" \
+    "${c4rel_c6:-<empty>}"
+else
+  pass "git-managed-path-fallback must-reject: the caller's own ./docs/ is never enumerated as the source's tree"
+fi
+
 # ---- Preservation: path null (today's shape), no cache tree -- unaffected ----
 
 c4z_ctx="$WORK/c4-path-null"
