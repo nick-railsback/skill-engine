@@ -1315,10 +1315,19 @@ else
         # POSIX leftmost-longest alternation matching can make a longer
         # registered name (e.g. "foo-bar") swallow a shorter one ("foo")
         # at the same grep -o start position, so an exact-line lookup in
-        # cited_blob alone under-counts; this boundary test also matches
-        # "foo" occurring inside an emitted "foo-bar" token, replicating
-        # independent `grep -qE "\bfoo\b"` semantics without an extra fork.
-        if [[ $cited_blob =~ [^[:alnum:]_]${esc}[^[:alnum:]_] ]]; then
+        # cited_blob alone under-counts; this test also matches "foo"
+        # occurring at the start of an emitted "foo-bar" token.
+        #
+        # The left anchor is a newline, not a generic non-word character,
+        # because the predicate being replicated was
+        # `grep -rqE "<root>/<member>\b"` -- anchored on the root prefix.
+        # Every blob entry is a grep -o match that began at the "<root>/"
+        # position and had that prefix stripped, so entry-start IS the
+        # anchor position, and a leading newline is what tests for it. A
+        # generic [^[:alnum:]_] on the left drops the anchor: "api" would
+        # match inside a cited sibling's "web-api" at the '-', scoring an
+        # uncited workspace member as cited (PR #15 review, finding 1).
+        if [[ $cited_blob =~ $'\n'${esc}[^[:alnum:]_] ]]; then
           cited=1
         fi
         if [ "$cited" -eq 0 ]; then

@@ -608,14 +608,32 @@ fi
 # substring match, and must still escape a literal '.' in a member name
 # (ere_escape, shared with Check 7's own grep -rqE construction) so
 # "my.pkg" is not silently satisfied by an unrelated "myXpkg" citation.
+#
+# The predicate being replaced was `grep -rqE "<root>/<member>\b"` -- LEFT
+# anchored on the root prefix, not just word-bounded. The two shapes only
+# diverge when one member's name is a boundary-suffix of another member
+# that IS cited, because the batched form tests the root-stripped blob:
+# "api" against a blob holding "web-api" finds it preceded by '-'. A
+# collision pair with no separator between the names ("foo"/"foobar")
+# cannot tell the two predicates apart -- the boundary test rejects it
+# either way -- so the separator pair below is what actually pins the
+# anchor. Check 7's own block immediately after this one reasons about
+# exactly this '-'-is-a-word-boundary property; Check 6 needs the stronger
+# claim because its anchor is a path prefix, not a word boundary.
+#
+# This is a preservation assertion, and no red->green step calibrates one
+# (the property is present in both states by construction). It is
+# calibrated by mutation instead: strip the leading anchor back out of the
+# check and this assertion fires. See PR #15 review, finding 1.
 
 c6d_ctx="$WORK/c6-discriminate"
 build_nav "$c6d_ctx"
 mkdir -p "$c6d_ctx/references"
-printf '# ref\n\nSee packages/foobar for details.\nAlso see packages/myXpkg.\n' > "$c6d_ctx/references/ref.md"
+printf '# ref\n\nSee packages/foobar for details.\nAlso see packages/myXpkg.\nThe HTTP layer lives in packages/web-api.\n' > "$c6d_ctx/references/ref.md"
 c6d_cache="$WORK/c6-discriminate-cache"
 c6d_tree="$c6d_cache/git-managed/discsrc-11112222"
-mkdir -p "$c6d_tree/packages/foo" "$c6d_tree/packages/foobar" "$c6d_tree/packages/my.pkg"
+mkdir -p "$c6d_tree/packages/foo" "$c6d_tree/packages/foobar" "$c6d_tree/packages/my.pkg" \
+  "$c6d_tree/packages/api" "$c6d_tree/packages/web-api"
 write_sources "$c6d_ctx" "[$(git_managed_source discsrc https://example.com/acme/discsrc)]"
 c6d_out="$(run_verify "$c6d_ctx" "$c6d_cache")"
 c6d_c6="$(check_section "$c6d_out" 'Monorepo-coverage')"
@@ -634,6 +652,17 @@ if printf '%s' "$c6d_c6" | grep -qF '[WARN] workspace member my.pkg under discsr
   pass "check6-discrimination: 'my.pkg' still warns -- ere_escape's literal-dot escaping survives (an unescaped '.' would wrongly match the decoy 'myXpkg' citation)"
 else
   fail "check6-discrimination: 'my.pkg' still warns -- ere_escape's literal-dot escaping survives" "${c6d_c6:-<empty>}"
+fi
+if printf '%s' "$c6d_c6" | grep -qF '[WARN] workspace member api under discsrc is not cited in any reference (verify post-run summary for an explicit skip-reason)'; then
+  pass "check6-discrimination: uncited member 'api' warns even though the cited sibling 'web-api' ends in it -- the <root>/ prefix anchor is intact"
+else
+  fail "check6-discrimination: uncited member 'api' warns even though the cited sibling 'web-api' ends in it -- the <root>/ prefix anchor is intact" \
+    "a citation of packages/web-api must not score packages/api as cited" "${c6d_c6:-<empty>}"
+fi
+if printf '%s' "$c6d_c6" | grep -qF 'member web-api'; then
+  fail "check6-discrimination: cited member 'web-api' (via packages/web-api) must not warn" "${c6d_c6:-<empty>}"
+else
+  pass "check6-discrimination: cited member 'web-api' does not warn"
 fi
 
 # ---- Check 7 discrimination: cited vs. uncited, and prefix overlap ----
