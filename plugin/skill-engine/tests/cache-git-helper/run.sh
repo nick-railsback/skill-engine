@@ -972,6 +972,65 @@ else
   done
 fi
 
+# ===========================================================================
+# Section 7 — a second seed for an already-cached source does not nest a
+# clone inside the warm one
+# ===========================================================================
+
+section "re-running a cache seed for an already-cached source leaves one clone, not a nested pair"
+
+# `mv <dir> <existing dir>` moves the source INSIDE the destination rather
+# than refusing, and neither cmd_clone nor cmd_sparse_clone tested for the
+# destination first. bootstrap Step 3.5 prompts and clones unconditionally
+# -- unlike DISCOVER it has no warm-cache probe -- so running it twice for
+# the same source resolves the same SHA, finds $dest already there, and
+# lands the second clone at git-managed/<id>-<sha>/<id>-<sha>.tmp.<pid>/.
+# The outer directory still holds a valid .git/, so every warm-cache probe
+# downstream reports a hit and the duplicate is never noticed (PR #15
+# review, finding 14).
+
+DUP_ROOT="$TMPROOT/dup-seed-root"
+mkdir -p "$DUP_ROOT"
+dup_dest="$DUP_ROOT/git-managed/dup-src-$RCP_SHA_B"
+
+dup_out1="$(SKILL_ENGINE_CACHE_ROOT="$DUP_ROOT" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+  bash "$PLUGIN_ROOT/bin/cache-git.sh" clone dup-src "file://$RCP_UPSTREAM" HEAD 2>&1)"
+dup_rc1=$?
+dup_out2="$(SKILL_ENGINE_CACHE_ROOT="$DUP_ROOT" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+  bash "$PLUGIN_ROOT/bin/cache-git.sh" clone dup-src "file://$RCP_UPSTREAM" HEAD 2>&1)"
+dup_rc2=$?
+
+if [ "$dup_rc1" -eq 0 ] && [ -d "$dup_dest/.git" ]; then
+  pass "fixture self-check: the first seed populates the cache directory"
+else
+  fail "fixture self-check: the first seed populates the cache directory" \
+    "exit: $dup_rc1" "expected: $dup_dest/.git" "$dup_out1"
+fi
+
+dup_nested="$(find "$dup_dest" -mindepth 1 -maxdepth 1 -type d -name 'dup-src-*' 2>/dev/null)"
+if [ -z "$dup_nested" ]; then
+  pass "the second seed leaves no clone nested inside the warm cache directory"
+else
+  fail "the second seed leaves no clone nested inside the warm cache directory" \
+    "found inside $dup_dest:" "$dup_nested" \
+    "second-run exit: $dup_rc2" "second-run output: $dup_out2"
+fi
+
+dup_gits="$(find "$DUP_ROOT/git-managed" -maxdepth 3 -type d -name '.git' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$dup_gits" = "1" ]; then
+  pass "exactly one checkout exists under the cache root after two seeds"
+else
+  fail "exactly one checkout exists under the cache root after two seeds" \
+    "found $dup_gits .git directories under $DUP_ROOT/git-managed"
+fi
+
+if [ "$dup_rc2" -eq 0 ]; then
+  pass "the second seed is not an error -- the cache is already what it would have produced"
+else
+  fail "the second seed is not an error -- the cache is already what it would have produced" \
+    "exit: $dup_rc2" "$dup_out2"
+fi
+
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

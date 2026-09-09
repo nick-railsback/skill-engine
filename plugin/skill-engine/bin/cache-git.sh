@@ -39,6 +39,27 @@ usage() {
   exit 1
 }
 
+# install_clone <tmpdir> <dest> — move a finished staging clone into place,
+# unless something already occupies <dest>.
+#
+# The guard is the point: `mv <dir> <existing dir>` moves the source INSIDE
+# the destination instead of refusing, so an unguarded mv turns a second
+# seed of an already-cached source into
+# git-managed/<id>-<sha>/<id>-<sha>.tmp.<pid>/. The outer directory still
+# carries a valid .git/, so every warm-cache probe downstream reports a hit
+# and the nested duplicate is never noticed. A destination that exists is
+# already the same commit -- the directory name carries the SHA this
+# invocation just resolved -- so discarding the staging clone is the whole
+# correct response.
+install_clone() {
+  local tmpdir="$1" dest="$2"
+  if [ -e "$dest" ]; then
+    rm -rf "$tmpdir"
+    return 0
+  fi
+  mv "$tmpdir" "$dest"
+}
+
 cmd_clone() {
   local source_id="$1" url="$2" ref="${3:-HEAD}"
 
@@ -62,14 +83,14 @@ cmd_clone() {
 
   if [ "$ref" = "HEAD" ]; then
     if git clone --depth=1 --filter=blob:none -- "$url" "$tmpdir"; then
-      mv "$tmpdir" "$dest"
+      install_clone "$tmpdir" "$dest"
     else
       rm -rf "$tmpdir"
       exit 1
     fi
   else
     if git clone --depth=1 --filter=blob:none --branch "$ref" -- "$url" "$tmpdir"; then
-      mv "$tmpdir" "$dest"
+      install_clone "$tmpdir" "$dest"
     else
       rm -rf "$tmpdir"
       exit 1
@@ -144,7 +165,7 @@ cmd_sparse_clone() {
       rm -rf "$tmpdir"
       exit 1
     else
-      mv "$tmpdir" "$dest"
+      install_clone "$tmpdir" "$dest"
     fi
   else
     rm -rf "$tmpdir"
