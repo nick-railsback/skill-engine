@@ -501,6 +501,33 @@ else
     "expected 'probe_budget' documented near 'only the probe step'/'model-token cost' (fetch cost is not budgeted)"
 fi
 
+# The schema's own field description is a fourth surface, and the one a
+# model reads when it is looking at source-paths.json rather than at
+# REFRESH's phases. It said the opposite of criterion 2 -- "Caps how many
+# sources REFRESH probes in a single session" -- so a model reading the
+# schema budgeted the probe while a model reading Phase 1 budgeted the
+# re-read, and a maintainer who set probe_budget: 5 could not predict what
+# the next REFRESH would do (PR #15 review, finding 6).
+#
+# A must-reject on the one surface that contradicted the rule, not a
+# three-documents-agree grep: the description has to name the step that is
+# actually capped, and must not say the capped thing is probing. Criterion
+# 2 above already pins the rule itself in the docs.
+SCHEMA_JSON="$PLUGIN_ROOT/engine-bootstrap-templates/source-paths.schema.json"
+pb_desc="$(jq -r '.properties.probe_budget.description // ""' "$SCHEMA_JSON" 2>/dev/null)"
+if [ -z "$pb_desc" ]; then
+  fail "c2_schema_description_budgets_the_reread_not_the_probe" \
+    "no probe_budget description found in $SCHEMA_JSON"
+elif ! printf '%s' "$pb_desc" | grep -qiE 're-?read|re-?crawl|proceed'; then
+  fail "c2_schema_description_budgets_the_reread_not_the_probe" \
+    "the description never names the step the budget caps (re-read / re-crawl / proceed):" "$pb_desc"
+elif printf '%s' "$pb_desc" | grep -qiE '(caps|limits|how many)[^.]*\bprobes\b'; then
+  fail "c2_schema_description_budgets_the_reread_not_the_probe" \
+    "the description says the budget caps probing; criterion 2 says every in-scope source is probed regardless:" "$pb_desc"
+else
+  pass "c2_schema_description_budgets_the_reread_not_the_probe"
+fi
+
 # ===========================================================================
 # Criterion 3 — invalid probe_budget (0, negative, non-integer) fails
 # REFRESH at activation, naming the field and value, before any network

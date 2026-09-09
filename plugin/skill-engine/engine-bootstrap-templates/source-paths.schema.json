@@ -20,7 +20,7 @@
     "probe_budget": {
       "type": "integer",
       "minimum": 1,
-      "description": "Document-root, optional. Caps how many sources REFRESH probes in a single session. Absent means REFRESH probes all sources every session. Values 0, negative integers, and non-integer types fail loudly."
+      "description": "Document-root, optional. Caps how many probe-promoted sources REFRESH carries into re-read scoping in a single session. The Phase 1 probe itself is never capped: every in-scope source is probed every session, because this budget bounds model-token cost, not network cost. Absent means every promoted source proceeds to re-read. Values 0, negative integers, and non-integer types fail loudly."
     }
   },
   "$defs": {

@@ -37,7 +37,7 @@ When `/skill-engine:refresh` is invoked:
    probe_budget is invalid: <value> (must be a JSON integer ≥ 1). Fix research/source-paths.json and re-run.
    ```
 
-   Exit non-zero. Absent `probe_budget` is valid and means: probe all
+   Exit non-zero. Absent `probe_budget` is valid and means: re-read all
    promoted sources every session (no cap).
 
 1.5. **Cache layout migration (one-time).** Earlier engine versions
@@ -289,11 +289,12 @@ ascending source `id`. The ordering recipe:
 .sources | sort_by([-(.importance // 3), (.lifecycle.last_checked // "1970-01-01T00:00:00Z"), .id]) | .[].id
 ```
 
-When `probe_budget: N` is set, at most N promoted sources — in this
-order — proceed to Re-read scoping; every in-scope source still
-receives its Phase 1 probe above regardless of `probe_budget` — only
-the probe step is budgeted (it controls model-token cost, not network
-cost, so the cheap `git ls-remote`/HTTP HEAD check always runs).
+When `probe_budget: N` is set, the budgeted step is the re-read, never
+the Phase 1 probe: the budget bounds model-token cost, not network
+cost, so the cheap `git ls-remote`/HTTP HEAD check above always runs
+for every in-scope source. At most N promoted sources — in the order
+above — proceed to Re-read scoping; every in-scope source is still
+probed regardless of `probe_budget`.
 Sources beyond the budget are explicitly skipped, not silently
 dropped — render once, in the post-run summary's Coverage report:
 
@@ -301,8 +302,8 @@ dropped — render once, in the post-run summary's Coverage report:
 "M of K sources skipped this session due to probe_budget=N (next-eligible: <list>)"
 ```
 
-Absent `probe_budget`, every promoted source proceeds — in the order
-above — and no skip line is printed.
+No skip line is printed absent `probe_budget`: every promoted source
+proceeds, in the order above.
 
 ### Re-read scoping (git-managed)
 

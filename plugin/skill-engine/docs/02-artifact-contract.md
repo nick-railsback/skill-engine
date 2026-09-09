@@ -225,11 +225,14 @@ floor runs against the fetched corpus. See
 cache-tree resolution.
 
 **`probe_budget`** — optional, document-root (not per-entry). A JSON
-integer ≥ 1 that caps how many sources REFRESH probes in a single session.
-Absent means REFRESH probes all sources every session — the field only
-narrows an unbounded default, it never widens it. The bound is enforced by
-`source-paths.schema.json`; see [`03-engine.md`](03-engine.md) § Source-paths
-additive fields for REFRESH's behavior under it.
+integer ≥ 1. Absent, every promoted source proceeds to re-read; REFRESH
+probes all sources every session either way. What the budget caps is how
+many probe-promoted sources are carried into re-read scoping — it bounds
+model-token cost, not network cost, so the Phase 1 probe itself is never
+capped. The field only narrows an unbounded default, it never widens it. The
+bound is enforced by `source-paths.schema.json`; see
+[`03-engine.md`](03-engine.md) § Source-paths additive fields for REFRESH's
+behavior under it.
 
 **`importance`** — optional, per-entry. A JSON integer from 1 to 5
 (lowest to highest priority) used to order REFRESH's probing under

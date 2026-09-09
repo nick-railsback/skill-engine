@@ -189,7 +189,7 @@ budget = data.get('probe_budget')
 k = len(sources)
 if budget is not None:
     would_skip = max(0, k - budget)
-    print(f'\nprobe_budget={budget}: would skip {would_skip} of {k} in-scope sources at the next refresh (worst case — assumes every source is promoted).')
+    print(f'\nprobe_budget={budget}: would skip the re-read of {would_skip} of {k} in-scope sources at the next refresh (worst case — assumes every source is promoted; all {k} are probed either way).')
 else:
     print(f'\nprobe_budget not set: all {k} in-scope sources are probed every refresh.')
 ```
