@@ -455,6 +455,76 @@ if [ -n "$INTAKE_PROBE_BLOCK" ]; then
       "got: $BLOCK_OUT" "stderr: $BLOCK_ERR"
   fi
 
+  # (d) Unattended-safe environment. --probe is the one recipe in this
+  # reference designed to run across many URLs with nobody watching:
+  # --sources-file can carry thirty entries, and one private HTTPS repo or
+  # one git@host: URL for a host absent from known_hosts is enough for
+  # `git ls-remote` to block on a credential or host-key prompt. The run
+  # then stalls with no table, no error, and no indication which URL is
+  # stuck (PR #15 review, finding 10).
+  #
+  # Asserted through a `git` shim that records the environment it is
+  # handed, not by grepping the block for the variable names: what matters
+  # is that the settings reach the git process, and a recipe that spelled
+  # them in a comment, or set them in a subshell that had already exited,
+  # would satisfy a grep and change nothing.
+  PROBE_ENV_DIR="$(mktemp -d "$WORK/probe-env-XXXXXX")"
+  PROBE_ENV_CAPTURE="$PROBE_ENV_DIR/captured-env.txt"
+  cat > "$PROBE_ENV_DIR/git" <<'PROBE_GIT_SHIM'
+#!/usr/bin/env bash
+env > "$PROBE_ENV_CAPTURE"
+printf '0000000000000000000000000000000000000000\tHEAD\n'
+PROBE_GIT_SHIM
+  chmod +x "$PROBE_ENV_DIR/git"
+
+  probe_env_out="$(PATH="$PROBE_ENV_DIR:$PATH" PROBE_ENV_CAPTURE="$PROBE_ENV_CAPTURE" \
+    bash "$INTAKE_PROBE_BLOCK" "https://example.invalid/private/repo" "HEAD" 2>&1)"
+
+  if [ ! -f "$PROBE_ENV_CAPTURE" ]; then
+    fail "probe_recipe_disables_credential_prompting" \
+      "the shimmed git was never invoked, so nothing about the probe's environment could be observed" \
+      "block output: ${probe_env_out:-<empty>}"
+    fail "probe_recipe_disables_ssh_prompting_and_bounds_connect" \
+      "cannot evaluate — the shimmed git was never invoked (see above)"
+  else
+    if grep -qx 'GIT_TERMINAL_PROMPT=0' "$PROBE_ENV_CAPTURE" \
+      && ! grep -qE '^(GIT_ASKPASS|SSH_ASKPASS)=' "$PROBE_ENV_CAPTURE"; then
+      pass "probe_recipe_disables_credential_prompting"
+    else
+      fail "probe_recipe_disables_credential_prompting" \
+        "expected GIT_TERMINAL_PROMPT=0 in git's environment and no GIT_ASKPASS/SSH_ASKPASS inherited from the caller" \
+        "captured: $(grep -E '^(GIT_TERMINAL_PROMPT|GIT_ASKPASS|SSH_ASKPASS)=' "$PROBE_ENV_CAPTURE" | tr '\n' ' ')"
+    fi
+
+    probe_ssh_cmd="$(grep -E '^GIT_SSH_COMMAND=' "$PROBE_ENV_CAPTURE" || true)"
+    if printf '%s' "$probe_ssh_cmd" | grep -qF 'BatchMode=yes' \
+      && printf '%s' "$probe_ssh_cmd" | grep -qF 'ConnectTimeout='; then
+      pass "probe_recipe_disables_ssh_prompting_and_bounds_connect"
+    else
+      fail "probe_recipe_disables_ssh_prompting_and_bounds_connect" \
+        "expected GIT_SSH_COMMAND carrying BatchMode=yes and a ConnectTimeout, so an SSH URL for an unknown or dead host fails instead of prompting or hanging" \
+        "captured: ${probe_ssh_cmd:-<GIT_SSH_COMMAND absent>}"
+    fi
+  fi
+
+  # Calibration for the askpass half: the assertion above requires
+  # GIT_ASKPASS to be absent from git's environment, and it is absent by
+  # default on most machines, so on its own it would pass without the
+  # recipe doing anything. Re-run with one exported by the caller — the
+  # shape of a maintainer whose shell configures a GUI credential helper,
+  # which git prefers over the terminal even with prompting disabled.
+  rm -f "$PROBE_ENV_CAPTURE"
+  GIT_ASKPASS=/usr/bin/true SSH_ASKPASS=/usr/bin/true \
+    PATH="$PROBE_ENV_DIR:$PATH" PROBE_ENV_CAPTURE="$PROBE_ENV_CAPTURE" \
+    bash "$INTAKE_PROBE_BLOCK" "https://example.invalid/private/repo" "HEAD" >/dev/null 2>&1
+  if [ -f "$PROBE_ENV_CAPTURE" ] && ! grep -qE '^(GIT_ASKPASS|SSH_ASKPASS)=' "$PROBE_ENV_CAPTURE"; then
+    pass "probe_recipe_neutralizes_an_inherited_askpass_helper"
+  else
+    fail "probe_recipe_neutralizes_an_inherited_askpass_helper" \
+      "a GIT_ASKPASS/SSH_ASKPASS exported by the caller reached git, so prompting is still possible despite GIT_TERMINAL_PROMPT=0" \
+      "captured: $(grep -E '^(GIT_ASKPASS|SSH_ASKPASS)=' "$PROBE_ENV_CAPTURE" 2>/dev/null | tr '\n' ' ')"
+  fi
+
   # Strong form: no git subcommand other than ls-remote anywhere in the
   # block, regardless of whether doctrine.sh's own known-verbs filter
   # would even recognize the token as a verb.

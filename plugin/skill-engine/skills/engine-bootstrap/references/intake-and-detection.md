@@ -315,6 +315,9 @@ if [ -z "$ref" ]; then
 fi
 err_file="$(mktemp)"
 trap 'rm -f "$err_file"' EXIT
+export GIT_TERMINAL_PROMPT=0
+unset GIT_ASKPASS SSH_ASKPASS
+export GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=10'
 out="$(git ls-remote -- "$url" "$ref" 2>"$err_file")"
 rc=$?
 err="$(head -n1 "$err_file")"
@@ -334,6 +337,23 @@ returns empty stdout — never on exit code alone. A reachable
 repository probed against a nonexistent branch exits zero with nothing
 on either stream; that row states plainly that no error text was
 returned rather than showing a blank field.
+
+The three environment settings are what make this safe to run
+unattended, which is the only way it is ever run: `--sources-file` can
+carry dozens of URLs and nobody is watching the terminal. A private
+HTTPS repository asks for a username and password; a `git@host:` URL
+for a host absent from `known_hosts` asks to confirm a host key; a host
+that no longer answers waits out the TCP default. Any one of those
+turns the whole probe into a run with no table, no error, and no
+indication which URL it is stuck on. `GIT_TERMINAL_PROMPT=0` refuses
+the terminal prompt, unsetting the askpass helpers stops git preferring
+an inherited GUI credential dialog over that refusal (a configured
+`GIT_ASKPASS` is common and defeats `GIT_TERMINAL_PROMPT` on its own),
+and `BatchMode=yes` plus a `ConnectTimeout` make SSH fail rather than
+ask or wait. Each becomes an ordinary `unreachable` row carrying git's
+own error text. What this does not bound is a host that completes a
+connection and then stalls mid-transfer; there is no portable timeout
+for that, and `--probe` does not claim one.
 
 The table is shown before the confirmation question below it. When
 any row is unreachable, ask once:
