@@ -49,7 +49,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from permalink_density import accepted_hosts, build_path_capturing_res
+from permalink_density import accepted_hosts, build_path_capturing_res, resolve_registry
 
 
 def _load_json(path: Path) -> object:
@@ -101,42 +101,27 @@ def _load_git_managed_sources(references_dir: Path) -> dict[tuple[str, str], str
     """{(host, repo): source_id} for every git-managed source registered for
     this references_dir.
 
-    A staged `.proposed` registry, when present, replaces the live one beside
-    it rather than merging with it. This walks the same candidate list as
-    accepted_hosts() but does NOT share its resolution semantics:
-    accepted_hosts() returns on a registry whose `sources` is not a list,
-    while this falls through to the next candidate. Reconciling the two into
-    a single resolver is tracked separately; the divergence is recorded here
-    rather than claimed away."""
-    root = references_dir.parent
-    registries = [root / "research" / "source-paths.json"]
-    if root.name.endswith(".proposed"):
-        live = root.with_name(root.name[: -len(".proposed")])
-        registries.append(live / "research" / "source-paths.json")
-
-    for registry_path in registries:
-        try:
-            data = _load_json(registry_path)
-        except (OSError, ValueError):
+    Resolves the registry via permalink_density.resolve_registry() — the
+    same live/staged fallback accepted_hosts() uses, so the two never
+    disagree on which registry governs."""
+    registry = resolve_registry(references_dir)
+    if not isinstance(registry, dict):
+        return {}
+    sources = registry.get("sources")
+    if not isinstance(sources, list):
+        return {}
+    by_repo: dict[tuple[str, str], str] = {}
+    for source in sources:
+        if not isinstance(source, dict) or source.get("kind") != "git-managed":
             continue
-        if not isinstance(data, dict):
+        source_id = source.get("id")
+        url = source.get("url")
+        if not isinstance(source_id, str) or not isinstance(url, str):
             continue
-        sources = data.get("sources")
-        if not isinstance(sources, list):
-            continue
-        by_repo: dict[tuple[str, str], str] = {}
-        for source in sources:
-            if not isinstance(source, dict) or source.get("kind") != "git-managed":
-                continue
-            source_id = source.get("id")
-            url = source.get("url")
-            if not isinstance(source_id, str) or not isinstance(url, str):
-                continue
-            key = _normalize_host_repo(url)
-            if key is not None:
-                by_repo[key] = source_id
-        return by_repo
-    return {}
+        key = _normalize_host_repo(url)
+        if key is not None:
+            by_repo[key] = source_id
+    return by_repo
 
 
 # Trailing characters that end a sentence or a markdown span but cannot end
@@ -154,8 +139,8 @@ def _clean_path(raw: str) -> str:
     prose or markup punctuation; and surrounding '/'. The leading slash is
     Azure DevOps's (`?path=/src/file.py` carries one, and since_last_check's
     repo-relative paths never do); the trailing slash is how a directory
-    tree URL is habitually written, and left in place it made the nesting
-    test in _matches compare against 'packages/core//'.
+    tree URL is habitually written, and left in place it made a nested-path
+    comparison compare against 'packages/core//'.
     """
     path = raw.split("#", 1)[0].split("?", 1)[0]
     return path.rstrip(_PATH_TRAILERS).strip("/")
@@ -207,13 +192,6 @@ def _scan(references_dir: Path) -> tuple[dict[str, list[str]], dict[str, dict[st
     return base_out, source_out
 
 
-def _matches(cited: str, changed: str) -> bool:
-    """Exact match, or changed is properly nested under the cited directory
-    — a '/'-bounded prefix, never a bare string prefix (cited "src" must not
-    swallow changed "srcbackup/file.py")."""
-    return changed == cited or changed.startswith(cited + "/")
-
-
 def _changed_paths_by_source(inventory: dict) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for source_id, entry in inventory.items():
@@ -232,28 +210,69 @@ def _changed_paths_by_source(inventory: dict) -> dict[str, list[str]]:
     return result
 
 
+def _index_cited_paths(
+    source_paths: dict[str, dict[str, list[str]]],
+) -> dict[str, dict[str, set[str]]]:
+    """source_id -> {cited_path: {refs citing it}}, built once from every
+    (ref, source, cited-path) triple — not re-derived per changed path. A
+    citation matches a changed path on an exact match, or on being a
+    '/'-bounded prefix of it (a cited directory containing the changed
+    path) — never a bare string prefix (cited "src" must not swallow
+    changed "srcbackup/file.py"). Every path this index is queried against
+    is therefore a literal key here: an exact hit is the changed path
+    itself, and a directory hit is one of its own "/"-truncated ancestors,
+    so a lookup never needs to scan cited entries linearly (see
+    `_ancestor_chain`)."""
+    index: dict[str, dict[str, set[str]]] = {}
+    for ref, by_source in source_paths.items():
+        for source_id, cited in by_source.items():
+            by_cited = index.setdefault(source_id, {})
+            for cite in cited:
+                by_cited.setdefault(cite, set()).add(ref)
+    return index
+
+
+def _ancestor_chain(path: str) -> list[str]:
+    """`path` itself, then each '/'-truncated ancestor up to the root —
+    every string a citation could match `path` against, since a cited
+    directory must be a '/'-bounded prefix of `path`."""
+    parts = path.split("/")
+    return ["/".join(parts[:i]) for i in range(len(parts), 0, -1)]
+
+
 def _build_candidate_set(
     source_paths: dict[str, dict[str, list[str]]],
     changed_by_source: dict[str, list[str]],
 ) -> tuple[dict[str, dict[str, list[str]]], dict[str, object]]:
-    candidates: dict[str, dict[str, list[str]]] = {}
+    index = _index_cited_paths(source_paths)
+    candidates: dict[str, dict[str, set[str]]] = {}
     covered: dict[str, set[str]] = {sid: set() for sid in changed_by_source}
 
-    for ref, by_source in source_paths.items():
-        for source_id, cited in by_source.items():
-            changed = changed_by_source.get(source_id)
-            if not changed:
-                continue
-            matched = sorted({c for c in changed if any(_matches(cite, c) for cite in cited)})
-            if matched:
-                candidates.setdefault(ref, {})[source_id] = matched
-                covered[source_id].update(matched)
+    for source_id, changed in changed_by_source.items():
+        by_cited = index.get(source_id)
+        if not by_cited:
+            continue
+        for path in changed:
+            refs: set[str] = set()
+            for ancestor in _ancestor_chain(path):
+                hit = by_cited.get(ancestor)
+                if hit:
+                    refs.update(hit)
+            if refs:
+                covered[source_id].add(path)
+                for ref in refs:
+                    candidates.setdefault(ref, {}).setdefault(source_id, set()).add(path)
+
+    candidates_out = {
+        ref: {sid: sorted(paths) for sid, paths in by_source.items()}
+        for ref, by_source in candidates.items()
+    }
 
     uncited: set[str] = set()
     for source_id, changed in changed_by_source.items():
         uncited.update(p for p in changed if p not in covered.get(source_id, set()))
 
-    return candidates, {"count": len(uncited), "paths": sorted(uncited)}
+    return candidates_out, {"count": len(uncited), "paths": sorted(uncited)}
 
 
 def main(argv: list[str]) -> int:

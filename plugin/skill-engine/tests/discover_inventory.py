@@ -192,12 +192,17 @@ def compute_since_last_check_git(root: Path, last_checked_sha: str) -> dict | No
     from its object store, or any git call fails for any reason (never
     raises — the caller treats `None` as "omit the key").
 
-    Diffs the two trees directly (`git diff <sha> HEAD`) rather than
-    walking the commit range between them (`git log <sha>..HEAD`): a
-    shallow cache advanced in place by re-cloning at a new SHA (chunk
-    02-cache-advance-in-place) holds two commits with no connecting
-    history between them, and a range walk cannot succeed against that —
-    a two-tree diff needs no shared history at all."""
+    Same two-tree diff `cache-git.sh since-last-check` runs for the
+    in-place-advance recipe (chunk 08-cache-git-helper) — kept as its own
+    git-only subprocess call here rather than shelling out to that script,
+    since this module's own oracle (tests/inventory-calibration/run.sh)
+    pins every subprocess call as a `git` invocation. Diffs the two trees
+    directly (`git diff <sha> HEAD`) rather than walking the commit range
+    between them (`git log <sha>..HEAD`): a shallow cache advanced in
+    place by re-cloning at a new SHA (chunk 02-cache-advance-in-place)
+    holds two commits with no connecting history between them, and a
+    range walk cannot succeed against that — a two-tree diff needs no
+    shared history at all."""
     if not (root / GIT_DIRNAME).exists():
         return None
     try:
@@ -250,7 +255,7 @@ def compute_since_last_check_git(root: Path, last_checked_sha: str) -> dict | No
     return {
         "from_sha": last_checked_sha,
         "to_sha": head_sha,
-        "files": [{"path": path, "changes": 1} for path in paths],
+        "files": [{"path": path} for path in paths],
     }
 
 

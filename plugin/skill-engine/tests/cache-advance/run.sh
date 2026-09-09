@@ -535,7 +535,11 @@ else
     else
       pass "the recipe issues no git clone"
     fi
-    if printf '%s\n' "$recipe_verbs" | grep -qx 'fetch'; then
+    # A raw `fetch` verb in the extracted block is the direct signal; a
+    # `cache-git.sh` mention is the same claim made once the recipe
+    # delegates its git invocations to that shared helper instead of
+    # spelling them out inline (chunk 08-cache-git-helper).
+    if printf '%s\n' "$recipe_verbs" | grep -qx 'fetch' || grep -qF 'cache-git.sh' "$RECIPE_TEMPLATE"; then
       pass "the recipe advances via git fetch, not a fresh clone"
     else
       fail "the recipe advances via git fetch, not a fresh clone" \
@@ -743,6 +747,329 @@ else
   fi
 fi
 
+section "must-replay: a failed inventory write leaves the advance repeatable, not wedged"
+
+# The directory rename is the step that changes what the NEXT session sees:
+# after it, `<id>-<old_sha>/` is gone and the recorded old SHA no longer
+# names anything on disk. Every fallible step therefore has to happen before
+# it, or a failure in between leaves the cache advanced and the recorded
+# state behind it — and the next advance fetches from a directory that no
+# longer exists, prints "advance aborted", and does so again every session
+# until someone hand-edits the registry (PR #15 review, finding 3).
+#
+# The transient failure here is an unwritable research/ directory: a
+# stand-in for the malformed existing inventory, the full disk, and the
+# interrupted run, all of which land in the same window. What is asserted is
+# not the failure but the recovery — repair the condition, run the identical
+# advance again, and it completes.
+
+if ! $HAVE_RECIPE; then
+  fail "a failed inventory write leaves the advance repeatable" "$NO_RECIPE_REASON"
+else
+  FX5="$TMPROOT/fx-replay"
+  UPSTREAM5="$FX5/upstream"
+  mkdir -p "$FX5"
+  SHA_A5="$(upstream_init_commit_a "$UPSTREAM5")"
+  HOME5="$FX5/home"
+  CACHE_GM5="$HOME5/.cache/skill-engine/git-managed"
+  SOURCE_ID5="acme-widgets"
+
+  if ! seed_cache_shallow "$UPSTREAM5" "$CACHE_GM5" "$SOURCE_ID5" "$SHA_A5"; then
+    fail "a failed inventory write leaves the advance repeatable" \
+      "fixture setup failed: could not seed a --depth=1 scratch cache from the scratch upstream"
+  else
+    SHA_B5="$(upstream_add_commit_b "$UPSTREAM5")"
+    CTX_ROOT5="$FX5/ctxroot"
+    mkdir -p "$CTX_ROOT5/research"
+    chmod 500 "$CTX_ROOT5/research"
+
+    run_recipe "$RECIPE_TEMPLATE" "$HOME5" "$SOURCE_ID5" "$SHA_A5" "$SHA_B5" "$CTX_ROOT5"
+    replay_rc1="$RUN_RC"
+    replay_out1="$RUN_OUT"
+    chmod 700 "$CTX_ROOT5/research"
+
+    inv_file5="$CTX_ROOT5/research/.discover-inventory.json"
+    # Fixture self-check: everything below is about what a FAILED write
+    # leaves behind, so a write that quietly succeeded (running as root, an
+    # exotic filesystem) would make the rest vacuous.
+    if [ ! -f "$inv_file5" ]; then
+      pass "fixture self-check: the unwritable research/ really did stop the inventory write"
+    else
+      fail "fixture self-check: the unwritable research/ really did stop the inventory write" \
+        "$inv_file5 exists — the run below no longer exercises a failed write"
+    fi
+
+    old_dir5="$CACHE_GM5/${SOURCE_ID5}-${SHA_A5}"
+    if [ -d "$old_dir5" ]; then
+      pass "the cache directory still carries the recorded old SHA after the write failed (state and disk agree)"
+    else
+      fail "the cache directory still carries the recorded old SHA after the write failed (state and disk agree)" \
+        "expected: $old_dir5" "found:" "$(sibling_dirs "$CACHE_GM5" "$SOURCE_ID5")" \
+        "first-run exit: $replay_rc1" "first-run output:" "$replay_out1"
+    fi
+
+    # The replay: same source, same two SHAs, nothing hand-repaired but the
+    # transient condition itself.
+    run_recipe "$RECIPE_TEMPLATE" "$HOME5" "$SOURCE_ID5" "$SHA_A5" "$SHA_B5" "$CTX_ROOT5"
+    if [ "$RUN_RC" -eq 0 ]; then
+      pass "re-running the identical advance after the transient failure exits 0"
+    else
+      fail "re-running the identical advance after the transient failure exits 0" \
+        "exit: $RUN_RC" "output:" "$RUN_OUT"
+    fi
+
+    if printf '%s' "$RUN_OUT" | grep -qF 'advance aborted'; then
+      fail "the replay is not refused with 'advance aborted'" \
+        "the first run moved the cache directory out from under the recorded SHA, so every later session re-reads a directory that no longer exists" \
+        "output:" "$RUN_OUT"
+    else
+      pass "the replay is not refused with 'advance aborted'"
+    fi
+
+    replay_to5=""
+    if [ -f "$inv_file5" ]; then
+      replay_to5="$(jq -r --arg sid "$SOURCE_ID5" '.[$sid].since_last_check.to_sha // empty' "$inv_file5" 2>/dev/null)"
+    fi
+    if [ "$replay_to5" = "$SHA_B5" ]; then
+      pass "the replay writes the inventory it could not write the first time"
+    else
+      fail "the replay writes the inventory it could not write the first time" \
+        "expected since_last_check.to_sha = $SHA_B5, got: ${replay_to5:-<no inventory>}"
+    fi
+
+    expected_dir5="$CACHE_GM5/${SOURCE_ID5}-${SHA_B5}"
+    siblings5="$(sibling_dirs "$CACHE_GM5" "$SOURCE_ID5")"
+    if [ "$siblings5" = "$expected_dir5" ]; then
+      pass "after the replay exactly one directory remains, named for the new SHA"
+    else
+      fail "after the replay exactly one directory remains, named for the new SHA" \
+        "expected only: $expected_dir5" "found:" "${siblings5:-<none>}"
+    fi
+  fi
+fi
+
+section "must-guard: advance validates its environment before touching the checkout, and leaks no temp file"
+
+# Driven against bin/cache-git.sh directly rather than through the recipe,
+# because the environment under test is the one the recipe needs to find the
+# helper at all: $CLAUDE_PLUGIN_ROOT. The scenario is the header's own -- a
+# maintainer running the helper by hand, or a harness that does not export
+# it. `set -u` is in force, so an unguarded dereference aborts the script;
+# what matters is WHERE it aborts. Dereferenced after the fetch and the
+# `checkout --detach`, it leaves <id>-<old_sha>/ holding new_sha's tree,
+# and DISCOVER's pre-flight explicitly trusts that directory's SHA suffix
+# (PR #15 review, finding 4).
+
+FX6="$TMPROOT/fx-guard"
+UPSTREAM6="$FX6/upstream"
+mkdir -p "$FX6"
+SHA_A6="$(upstream_init_commit_a "$UPSTREAM6")"
+HOME6="$FX6/home"
+CACHE_GM6="$HOME6/.cache/skill-engine/git-managed"
+SOURCE_ID6="acme-widgets"
+CACHE_GIT_SH="$PLUGIN_ROOT/bin/cache-git.sh"
+
+if ! seed_cache_shallow "$UPSTREAM6" "$CACHE_GM6" "$SOURCE_ID6" "$SHA_A6"; then
+  fail "advance refuses a missing CLAUDE_PLUGIN_ROOT before it fetches or checks out" \
+    "fixture setup failed: could not seed a --depth=1 scratch cache from the scratch upstream"
+else
+  SHA_B6="$(upstream_add_commit_b "$UPSTREAM6")"
+  old_dir6="$CACHE_GM6/${SOURCE_ID6}-${SHA_A6}"
+  CTX_ROOT6="$FX6/ctxroot"
+  mkdir -p "$CTX_ROOT6/research"
+
+  guard_out="$(cd "$CTX_ROOT6" && env -u CLAUDE_PLUGIN_ROOT HOME="$HOME6" \
+    bash "$CACHE_GIT_SH" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
+    "research/.discover-inventory.json" 2>&1)"
+  guard_rc=$?
+
+  if [ "$guard_rc" -ne 0 ]; then
+    pass "advance exits non-zero when CLAUDE_PLUGIN_ROOT is not set"
+  else
+    fail "advance exits non-zero when CLAUDE_PLUGIN_ROOT is not set" "exit: $guard_rc" "$guard_out"
+  fi
+
+  if printf '%s' "$guard_out" | grep -qF 'CLAUDE_PLUGIN_ROOT' \
+     && ! printf '%s' "$guard_out" | grep -qF 'unbound variable'; then
+    pass "advance names CLAUDE_PLUGIN_ROOT in a diagnostic of its own, rather than aborting on an unbound variable"
+  else
+    fail "advance names CLAUDE_PLUGIN_ROOT in a diagnostic of its own, rather than aborting on an unbound variable" \
+      "output: ${guard_out:-<empty>}"
+  fi
+
+  head6="$(git -C "$old_dir6" rev-parse HEAD 2>/dev/null || echo '<no such directory>')"
+  if [ "$head6" = "$SHA_A6" ]; then
+    pass "the cached checkout is still at the old SHA — the refusal came before the fetch and the checkout"
+  else
+    fail "the cached checkout is still at the old SHA — the refusal came before the fetch and the checkout" \
+      "expected HEAD $SHA_A6, found: $head6" \
+      "a directory named <id>-<old_sha> whose tree is at new_sha is what DISCOVER's pre-flight trusts the suffix against"
+  fi
+
+  # Temp-file hygiene, on a failure path that lands inside the window: the
+  # since-last-check scratch file is mktemp'd, filled, and read by
+  # discover_inventory.py, and any abort between the mktemp and its removal
+  # used to leave the file behind (the --probe recipe in
+  # intake-and-detection.md sets a trap; this did not). The abort used here
+  # is a CLAUDE_PLUGIN_ROOT that is set but does not point at an install --
+  # the other half of the same environment mistake as above, and the reason
+  # the guard checks only for a missing value: a wrong one is not detectable
+  # until the script it names is actually invoked. TMPDIR is an empty
+  # scratch directory, so the check is exact rather than a heuristic over
+  # whatever else is in the system temp dir.
+  LEAK_TMPDIR="$FX6/leak-tmp"
+  BOGUS_ROOT="$FX6/not-an-install"
+  mkdir -p "$LEAK_TMPDIR" "$BOGUS_ROOT"
+  leak_out="$(cd "$CTX_ROOT6" && env HOME="$HOME6" CLAUDE_PLUGIN_ROOT="$BOGUS_ROOT" \
+    TMPDIR="$LEAK_TMPDIR" bash "$CACHE_GIT_SH" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
+    "research/.discover-inventory.json" 2>&1)"
+  leak_rc=$?
+
+  if [ "$leak_rc" -ne 0 ]; then
+    pass "fixture self-check: a CLAUDE_PLUGIN_ROOT with no discover_inventory.py really did abort the advance mid-run"
+  else
+    fail "fixture self-check: a CLAUDE_PLUGIN_ROOT with no discover_inventory.py really did abort the advance mid-run" \
+      "exit: $leak_rc" "$leak_out"
+  fi
+
+  leaked6="$(find "$LEAK_TMPDIR" -mindepth 1 2>/dev/null)"
+  if [ -z "$leaked6" ]; then
+    pass "an aborted advance leaves no temp file behind"
+  else
+    fail "an aborted advance leaves no temp file behind" "found under TMPDIR:" "$leaked6"
+  fi
+
+  # Calibration. The assertion above is a preservation assertion over a
+  # scratch directory that is empty to begin with, so "nothing was left
+  # behind" is also what a run that never reached the mktemp reports, and
+  # what a run whose mktemp ignored TMPDIR reports (BSD mktemp does exactly
+  # that without an explicit template -- this assertion was silently vacuous
+  # for that reason before the helper grew one). Re-running the identical
+  # abort against a copy of the helper with only the cleanup trap removed
+  # has to leave the file behind; if it does not, the check above is not
+  # watching the right directory.
+  CALIB_TMPDIR="$FX6/calib-tmp"
+  CALIB_HELPER="$FX6/cache-git-no-trap.sh"
+  mkdir -p "$CALIB_TMPDIR"
+  sed '/trap .*since_tmpfile/d' "$CACHE_GIT_SH" > "$CALIB_HELPER"
+  if cmp -s "$CALIB_HELPER" "$CACHE_GIT_SH"; then
+    fail "calibration: an aborted advance leaves no temp file behind" \
+      "removing the cleanup trap changed nothing in bin/cache-git.sh — there is no trap to calibrate against"
+  else
+    ( cd "$CTX_ROOT6" && env HOME="$HOME6" CLAUDE_PLUGIN_ROOT="$BOGUS_ROOT" \
+      TMPDIR="$CALIB_TMPDIR" bash "$CALIB_HELPER" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
+      "research/.discover-inventory.json" >/dev/null 2>&1 ) || true
+    if [ -n "$(find "$CALIB_TMPDIR" -mindepth 1 2>/dev/null)" ]; then
+      pass "calibration: the same abort without the cleanup trap does leave a temp file, so the check above is watching the right directory"
+    else
+      fail "calibration: the same abort without the cleanup trap does leave a temp file, so the check above is watching the right directory" \
+        "nothing appeared under $CALIB_TMPDIR either way — the no-leak assertion above proves nothing"
+    fi
+  fi
+
+  # Shape, because the behavioral assertion above is platform-dependent in a
+  # way that hid a real leak: whether a function's locals are still readable
+  # from an EXIT trap during `set -e` teardown differs by bash version. Under
+  # the bash 3.2 macOS ships they are, so a trap over a `local` cleans up and
+  # this suite passed locally for as long as the defect existed; under the
+  # bash 5 CI runs they are not, the variable expands to empty, and `rm -f ""`
+  # succeeds having removed nothing. Asserting the shape catches a regression
+  # on the platform the behavior cannot.
+  trap_vars="$(grep -oE "trap '[^']*\\\$\{?[A-Za-z_][A-Za-z0-9_]*" "$CACHE_GIT_SH" \
+    | grep -oE '[A-Za-z_][A-Za-z0-9_]*$' | sort -u)"
+  local_leaks=""
+  while IFS= read -r tv; do
+    [ -n "$tv" ] || continue
+    if grep -qE "^[[:space:]]*local\b[^#]*\b${tv}\b" "$CACHE_GIT_SH"; then
+      local_leaks="${local_leaks:+$local_leaks, }$tv"
+    fi
+  done <<< "$trap_vars"
+
+  if [ -z "$trap_vars" ]; then
+    fail "no EXIT trap in cache-git.sh cleans up via a function-local" \
+      "no trap referencing a variable was found — the scan is vacuous"
+  elif [ -z "$local_leaks" ]; then
+    pass "no EXIT trap in cache-git.sh cleans up via a function-local"
+  else
+    fail "no EXIT trap in cache-git.sh cleans up via a function-local" \
+      "declared local and read from a trap: $local_leaks" \
+      "under bash 5 the frame is gone when the trap runs, so the cleanup silently no-ops"
+  fi
+fi
+
+section "must-preserve: advancing one source does not garbage-collect a sibling whose id shares its prefix"
+
+# The GC glob is `-name "<source_id>-*"`, and source_id is validated as
+# [a-z0-9-]+ -- so `api` and `api-docs` are both legal ids in the same
+# registry, and advancing `api` matched `api-docs-<sha>` and rm -rf'd it.
+# The next DISCOVER or REFRESH for api-docs then re-clones from scratch,
+# with nothing recording why. 07-monorepo-adapter.md already documents the
+# READER side as requiring a bare-hex suffix, "so a sibling id ... is not
+# mistaken for the source's own tree"; the deleter side never got the same
+# treatment (PR #15 review, finding 15).
+
+if ! $HAVE_RECIPE; then
+  fail "advancing one source leaves a prefix-sharing sibling's cache intact" "$NO_RECIPE_REASON"
+else
+  FX7="$TMPROOT/fx-prefix-gc"
+  UPSTREAM7="$FX7/upstream"
+  mkdir -p "$FX7"
+  SHA_A7="$(upstream_init_commit_a "$UPSTREAM7")"
+  HOME7="$FX7/home"
+  CACHE_GM7="$HOME7/.cache/skill-engine/git-managed"
+  SOURCE_ID7="api"
+
+  if ! seed_cache_shallow "$UPSTREAM7" "$CACHE_GM7" "$SOURCE_ID7" "$SHA_A7"; then
+    fail "advancing one source leaves a prefix-sharing sibling's cache intact" \
+      "fixture setup failed: could not seed a --depth=1 scratch cache from the scratch upstream"
+  else
+    SHA_B7="$(upstream_add_commit_b "$UPSTREAM7")"
+    # A second, independent source whose id begins with the first one's id
+    # plus the same separator the suffix uses.
+    SIBLING_DIR7="$CACHE_GM7/api-docs-abc1234def5678"
+    mkdir -p "$SIBLING_DIR7"
+    printf 'belongs to api-docs\n' > "$SIBLING_DIR7/marker.txt"
+    # And one that IS this source's own superseded directory, to keep the
+    # GC's actual job asserted alongside what it must not touch.
+    STALE_OWN7="$CACHE_GM7/api-0000000000000000000000000000000000000000"
+    mkdir -p "$STALE_OWN7"
+    printf 'superseded api checkout\n' > "$STALE_OWN7/marker.txt"
+
+    CTX_ROOT7="$FX7/ctxroot"
+    mkdir -p "$CTX_ROOT7"
+
+    run_recipe "$RECIPE_TEMPLATE" "$HOME7" "$SOURCE_ID7" "$SHA_A7" "$SHA_B7" "$CTX_ROOT7"
+
+    if [ "$RUN_RC" -eq 0 ]; then
+      pass "fixture self-check: the advance itself succeeds"
+    else
+      fail "fixture self-check: the advance itself succeeds" "exit: $RUN_RC" "output:" "$RUN_OUT"
+    fi
+
+    if [ -f "$SIBLING_DIR7/marker.txt" ]; then
+      pass "advancing 'api' leaves 'api-docs-<sha>' untouched"
+    else
+      fail "advancing 'api' leaves 'api-docs-<sha>' untouched" \
+        "$SIBLING_DIR7 was deleted — the GC glob matched another source's cache directory" \
+        "surviving directories:" "$(find "$CACHE_GM7" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)"
+    fi
+
+    if [ ! -d "$STALE_OWN7" ]; then
+      pass "the source's own superseded directory is still collected"
+    else
+      fail "the source's own superseded directory is still collected" \
+        "$STALE_OWN7 survived — narrowing the glob must not stop the GC doing its job"
+    fi
+
+    if [ -d "$CACHE_GM7/${SOURCE_ID7}-${SHA_B7}" ]; then
+      pass "the advanced directory for 'api' is present at the new SHA"
+    else
+      fail "the advanced directory for 'api' is present at the new SHA" \
+        "expected: $CACHE_GM7/${SOURCE_ID7}-${SHA_B7}"
+    fi
+  fi
+fi
+
 # ---- DISCOVER cache-hit check: SHA-aware hit/miss decision ---------------
 # DISCOVER pre-flight step 6 (cache-and-clone.md) probes for a warm
 # git-managed cache directory before offering to clone. Today's fenced
@@ -905,32 +1232,15 @@ else
   fi
 fi
 
-section "doc consistency: refresh/SKILL.md and discover/SKILL.md stay byte-identical to the baseline"
-
-# Frozen at authoring time: feature.md's byte-ceiling constraint excludes
-# both routers from this feature entirely, so any change at all — from
-# this fix or anything else — is a regression, not a legitimate edit.
-REFRESH_SKILL_SHA256="d5c3a569b61feb20a4f34df059c2dfb59d513161bb8e8380405807b63e2f4f8b"
-DISCOVER_SKILL_SHA256="18097c0f3855886eef3502426c76700cb39b97793f8ac572f463c4f9ca951e2e"
-
-refresh_skill="$PLUGIN_ROOT/skills/refresh/SKILL.md"
-discover_skill="$PLUGIN_ROOT/skills/discover/SKILL.md"
-
-if [ -f "$refresh_skill" ] && [ "$(sha256_of_file "$refresh_skill")" = "$REFRESH_SKILL_SHA256" ]; then
-  pass "refresh/SKILL.md is byte-identical to the baseline"
-else
-  fail "refresh/SKILL.md is byte-identical to the baseline" \
-    "expected sha256: $REFRESH_SKILL_SHA256" \
-    "got: $([ -f "$refresh_skill" ] && sha256_of_file "$refresh_skill" || echo "<file missing>")"
-fi
-
-if [ -f "$discover_skill" ] && [ "$(sha256_of_file "$discover_skill")" = "$DISCOVER_SKILL_SHA256" ]; then
-  pass "discover/SKILL.md is byte-identical to the baseline"
-else
-  fail "discover/SKILL.md is byte-identical to the baseline" \
-    "expected sha256: $DISCOVER_SKILL_SHA256" \
-    "got: $([ -f "$discover_skill" ] && sha256_of_file "$discover_skill" || echo "<file missing>")"
-fi
+# The "routers stay byte-identical to the baseline" check that lived here
+# (PR #14, v0.8.0) pinned an invariant scoped to that PR's own feature.md
+# ("this feature" in the removed comment meant v0.8.0's, not any future
+# one). v0.9.0's many-sources chunk 07 (Fork E: staged archive detection)
+# intentionally edits both routers' "does NOT do" sentences; each router's
+# own byte-neutral-or-smaller ceiling is enforced going forward by
+# chunk 07's own oracle (plugin/skill-engine/tests/archive-detection/) and
+# by doctrine checks 18/24, so removing this pin doesn't drop coverage —
+# it retires an invariant that no longer holds by design.
 
 echo
 echo "Passed: $pass_count"

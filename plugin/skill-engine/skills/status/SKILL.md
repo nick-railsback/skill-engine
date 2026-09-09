@@ -167,6 +167,48 @@ cache root rather than under `git-managed/` or `web-doc/`):
 (The old-layout listing exists until the user runs the REFRESH migration
 prompt or `clean-cache`.)
 
+## Priority surface
+
+Render each in-scope source's `importance` (see
+[`02-artifact-contract.md`](../../docs/02-artifact-contract.md) for
+the field) and, when the root-level `probe_budget` is set, its
+projected effect:
+
+```python
+import json
+data = json.load(open('research/source-paths.json'))
+sources = [s for s in data.get('sources', [])
+           if not s.get('archived') and s.get('status') in ('confirmed', 'proposed')
+           and s.get('lifecycle', {}).get('state') != 'removed']
+print('| id | importance |')
+print('|---|---|')
+for s in sorted(sources, key=lambda s: s['id']):
+    imp = s.get('importance')
+    print(f"| {s['id']} | {imp if imp is not None else '3 (default)'} |")
+budget = data.get('probe_budget')
+k = len(sources)
+if budget is not None:
+    would_skip = max(0, k - budget)
+    print(f'\nprobe_budget={budget}: would skip the re-read of {would_skip} of {k} in-scope sources at the next refresh (worst case — assumes every source is promoted; all {k} are probed either way).')
+else:
+    print(f'\nprobe_budget not set: all {k} in-scope sources are probed every refresh.')
+```
+
+Run with `python3` against the contextualizer root
+(`research/source-paths.json` relative to cwd), same convention as
+`decay_check.py` elsewhere in this file. **Tag this fence `python`, not
+`bash`** — `tests/status-decay/run.sh` sweeps every `` ```bash `` fence
+in this file except the one inside whichever section's heading mentions
+"probe" into its own decay-computation script; a `bash` tag here gets
+swept in and breaks that sibling oracle.
+
+`importance` defaults to `3 (default)` when the field is absent. The
+skip count above is a worst-case estimate from the registry alone —
+STATUS does not fetch upstream by default (see § Cadence), so it
+cannot know in advance which sources will actually show drift this
+session; `--probe` below can narrow that estimate for `git-managed`
+sources at the cost of a live check.
+
 ## Provenance probe (`--probe`)
 
 `/skill-engine:status <name> --probe` is an opt-in check: without

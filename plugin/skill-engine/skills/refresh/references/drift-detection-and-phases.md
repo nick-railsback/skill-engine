@@ -27,6 +27,19 @@ When `/skill-engine:refresh` is invoked:
 
    and exit cleanly.
 
+1.1. **`probe_budget` validation.** Read the root-level `probe_budget`
+   field, if present. It MUST be a JSON integer ≥ 1; a value of `0`, a
+   negative integer, or a non-integer (a string, a float with a
+   fractional part) fails REFRESH at activation — before any network
+   call — naming both the field and the offending value:
+
+   ```
+   probe_budget is invalid: <value> (must be a JSON integer ≥ 1). Fix research/source-paths.json and re-run.
+   ```
+
+   Exit non-zero. Absent `probe_budget` is valid and means: re-read all
+   promoted sources every session (no cap).
+
 1.5. **Cache layout migration (one-time).** Earlier engine versions
    stored git-managed clones flat at
    `~/.cache/skill-engine/<source_id>-<sha>/`. <!-- doctrine:legacy-cache-layout -->
@@ -188,8 +201,75 @@ does not auto-mutate references on lifecycle transition.
 
 ## Phases
 
-The four phases below give REFRESH a concrete sequential shape after
+The phases below give REFRESH a concrete sequential shape after
 pre-flight. Run them in order; each phase's outputs feed the next.
+
+### Phase 0.5 — Archive detection (git-managed, forge-dispatched)
+
+For every in-scope `git-managed` source, read the forge's archived flag
+with one read-only API call before Phase 1 runs, dispatched by URL
+host:
+
+| Host | Read | Field |
+|---|---|---|
+| `github.com` | `gh api repos/<owner>/<repo>` | `.archived` |
+| GitLab: `gitlab.com` or one of its subdomains | a read-only `GET /api/v4/projects/<url-encoded path>` via WebFetch or the available MCP fetch tool | `.archived` |
+| Any other host `gh` resolves (GitHub Enterprise) | `GH_HOST=<host> gh api repos/<owner>/<repo>` | `.archived` |
+| Anything else (Bitbucket, Azure DevOps, a `gh`-unresolvable host, …) | not called | n/a — `unknown` |
+
+Read the table top-down and take the first row whose host matches. The
+GitLab row sits above the `gh`-resolves row deliberately: that row is a
+catch-all, so a self-hosted `gitlab.company.com` would match it first
+and be dispatched to `GH_HOST=gitlab.company.com gh api repos/…`, which
+cannot succeed. Matching is on the registered URL's host, and a
+substring test for `gitlab` is wrong in both directions — it claims
+`notgitlab.example.com`, and it misses a self-hosted GitLab on a
+company domain. Any host not identified by an exact rule falls to the
+last row and is `unknown`; no call is made and no transition is staged.
+
+Owner and repo come from the registered `url`: drop a trailing `.git`,
+accept the `git@host:owner/repo` SSH form as well as
+`https://host/owner/repo`, and take the first two path segments. For
+GitLab, url-encode the whole project path instead — deeper segments are
+subgroups, not a repo name.
+
+The engine passes no token of its own to either read (it does not
+perform HTTP itself — see "Tool preference for git-managed sources"
+below). That is not the same as the call being unauthenticated: `gh
+api` uses whatever ambient credentials `gh` already has — an exported
+token in the environment, otherwise the `gh auth` login keychain — so
+do not describe this read as unauthenticated or reason about its rate
+limit as if it were. Where the call genuinely is unauthenticated,
+github.com allows 60 requests/hour, which a contextualizer carrying
+tens of sources will exhaust part-way through this phase if it
+refreshes more than once in an hour.
+
+**Any call that does not return 2xx is `unknown`** — a 403 rate limit,
+a 404 for a private or renamed repository, a timeout, a transport
+failure. A missing `.archived` field in a non-2xx body is never read as
+`false`.
+
+When the flag is `true`, stage the transition using the copy-on-write
+recipe above (**Lifecycle state**): write `archived: true` for that
+source into `$CTX_PROPOSED/research/source-paths.json`, seeding the
+proposed file first if this run hasn't staged a write yet. The manifest
+records `source-paths.json` as `modified`. The live file is untouched
+until `/skill-engine:apply` promotes the proposal — REFRESH never flips
+`archived` live.
+
+When the flag is `false`, or the outcome is `unknown`, no transition is
+staged. State the number of sources checked and the number unknown in
+the post-run summary, keeping the two kinds of unknown apart — a host
+nobody tried and a host that answered with an error are different
+facts, and collapsing them hides an outage behind a config gap:
+`<N> sources checked, <M> unknown-host, <F> check failed (neither M nor
+F counted against N)`.
+
+A source already `archived: true` in the live file was already excluded
+before Phase 0.5 runs (Pre-flight step 4, "Identify in-scope sources").
+A source archived only by a pending, unapplied proposal is still
+`archived: false` in the live read baseline and is still probed here
+and at Phase 1.
 
 ### Phase 1 — HEAD probe (kind-dispatched)
 
@@ -223,6 +303,55 @@ result, before continuing to Phase 2. REFRESH never clones on its own
 pre-flight step 6 and `engine-bootstrap` Step 3.5 as consent points), so
 when no local cache exists for the source, REFRESH's existing CLI fallback
 is unchanged.
+
+**Promotion and ordering.** After Phase 1 completes for every in-scope
+source, the `git-managed` sources whose newly-probed SHA differs from
+their previously-recorded `last_checked_sha` (see above) are
+*promoted* — they are candidates to proceed to Re-read scoping.
+Promoted sources are ordered by descending `importance` (absent ⇒ 3);
+ties are broken by oldest recorded probe timestamp first
+(`lifecycle.last_checked`, missing ⇒ treated as `1970-01-01T00:00:00Z`
+so never-probed sources sort to the front); further ties are broken by
+ascending source `id`. The ordering recipe:
+
+```jq
+.sources
+| map(select(
+    (.archived // false) == false
+    and (.lifecycle.state // "") != "removed"
+    and (.status == "confirmed" or .status == "proposed")
+    and .kind == "git-managed"))
+| sort_by([-(.importance // 3), (.lifecycle.last_checked // "1970-01-01T00:00:00Z"), .id])
+| .[].id
+```
+
+The `select` is Pre-flight step 4's in-scope filter plus `kind ==
+"git-managed"`, which is as far as the registry alone can narrow the set:
+promotion also requires this session's probed SHA to differ from the
+recorded `last_checked_sha`, and that comparison is a Phase 1 result, not a
+field of the file. So read this recipe's output as the ordered *candidate*
+list and apply the SHA comparison to it — without the `select`, the list
+would also carry archived entries, `lifecycle.state: removed` entries,
+rejected companions, and `web-doc`/`local-path` sources that have no SHA to
+be promoted on, and a budget spent from the head of that list would be spent
+on sources that were never candidates. K in the skip line below is the
+number of promoted sources, not the number registered.
+
+When `probe_budget: N` is set, the budgeted step is the re-read, never
+the Phase 1 probe: the budget bounds model-token cost, not network
+cost, so the cheap `git ls-remote`/HTTP HEAD check above always runs
+for every in-scope source. At most N promoted sources — in the order
+above — proceed to Re-read scoping; every in-scope source is still
+probed regardless of `probe_budget`.
+Sources beyond the budget are explicitly skipped, not silently
+dropped — render once, in the post-run summary's Coverage report:
+
+```
+"M of K sources skipped this session due to probe_budget=N (next-eligible: <list>)"
+```
+
+No skip line is printed absent `probe_budget`: every promoted source
+proceeds, in the order above.
 
 ### Re-read scoping (git-managed)
 

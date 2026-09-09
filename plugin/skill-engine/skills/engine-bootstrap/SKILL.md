@@ -33,37 +33,13 @@ engine workflow (`discover`, `refresh`, `status`, `self-audit`,
 slash commands from the project working directory (the parent of
 `.claude/`); the workflows locate the root themselves.
 
-## Activation guard
-
-This skill assumes no contextualizer is installed under
-`.claude/skills/*-context/` yet.
-
-1. From the project working directory, look for an existing contextualizer:
-
-   ```bash
-   find .claude/skills -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
-   ```
-
-   If any match is a non-empty directory, surface a one-line warning
-   naming the path, list the files that would be overwritten, and pause
-   for explicit confirmation before continuing. The condition is
-   files-present, NOT a parseable `research/.research-state.json`: a
-   corrupted state marker must not bypass this guard, because the
-   directory may still hold a curated `SKILL.md` and a populated
-   `research/source-paths.json` that stamping would overwrite. The
-   `using-skill-engine` router sends both new and corrupt-marker
-   directories here; either way, existing files pause for confirmation.
-
-2. Otherwise, proceed.
-
 ## Step 1 — Intake
 
 Accept one or more sources: positional arguments (straight to Step 2)
 or, with none supplied, an interactive loop reading pasted URLs/paths
-until the literal word `finish`. Intake asks exactly one content
-question and zero engine-taxonomy questions — never `kind`,
-`source_id`, scope, or topology directly. Recognition table,
-disambiguator, and edge case are in
+until the literal word `finish`. `--sources-file <path>` plus
+`--branch-default-all` batch-intake many sources at once. Recognition
+table, disambiguator, edge case, and the batch-intake flags are in
 [`references/intake-and-detection.md`](references/intake-and-detection.md).
 
 ## Step 2 — Auto-detection
@@ -88,6 +64,22 @@ name — the engine appends `-context`. A default is offered when the
 sources share a useful kebab-case prefix. Default-derivation rules and
 input validation are in [`references/intake-and-detection.md`](references/intake-and-detection.md).
 
+## Activation guard (same slug only)
+
+Once Step 2.5 has the accepted `<contextualizer-slug>`, check whether a
+contextualizer with that exact slug already exists; if its directory is
+non-empty, pause for confirmation before Step 3 stamps anything. A
+different slug's contextualizer existing alongside it is not a
+collision and needs no pause. Detection mechanics and the confirmation
+prompt are in [`references/intake-and-detection.md`](references/intake-and-detection.md).
+
+## Reachability probe (opt-in, `--probe`)
+
+Before Step 3, `--probe` runs one read-only reachability check per
+`git-managed` source and asks once if any are unreachable; absent the
+flag, none of this runs. Mechanics and the table are in
+[`references/intake-and-detection.md`](references/intake-and-detection.md).
+
 ## Step 3 — Stamping
 
 Bootstrap writes directly to the live tree — unlike DISCOVER and
@@ -107,7 +99,7 @@ After stamping, offer per-source consent-gated caching: a `git clone`
 per `git-managed` source, a robots-respecting crawl per `web-doc`
 source. Decline leaves the source registered with an empty cache;
 DISCOVER re-prompts on a later cache miss — the only network operation
-bootstrap performs. Exact prompts, the atomic-clone bash, the crawl
+bootstrap performs absent `--probe`. Exact prompts, the atomic-clone bash, the crawl
 procedure, and the manifest schema are in
 [`references/cache-seeding.md`](references/cache-seeding.md).
 
@@ -154,7 +146,7 @@ posture (goal-given delegation) is documented in
 
 ## What this skill does NOT do
 
-- It does not crawl, fetch, or probe upstream for content. The only
+- It does not crawl or fetch upstream content. Absent `--probe`, the only
   network operation bootstrap performs is the explicit user-consented
   `git clone` in Step 3.5, and it writes solely to
   `~/.cache/skill-engine/git-managed/<source_id>-<sha>/`. Lifecycle probes and
@@ -163,7 +155,7 @@ posture (goal-given delegation) is documented in
 - It does not propose additional sources or expand source coverage —
   those belong to DISCOVER.
 - It does not validate the existence or reachability of supplied sources at
-  intake. If the user pastes a broken URL or a path that doesn't exist,
+  intake unless `--probe` is given. If the user pastes a broken URL or a path that doesn't exist,
   bootstrap stamps the entry anyway and the lifecycle probe on the first
   DISCOVER run surfaces the issue. (The Step 3.5 clone offer may also
   reveal the URL is broken — but its failure mode is a one-line

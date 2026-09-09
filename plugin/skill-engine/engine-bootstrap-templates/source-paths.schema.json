@@ -16,6 +16,11 @@
       "type": "array",
       "description": "The tracked sources. May be empty (no sources registered yet).",
       "items": { "$ref": "#/$defs/source" }
+    },
+    "probe_budget": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Document-root, optional. Caps how many probe-promoted sources REFRESH carries into re-read scoping in a single session. The Phase 1 probe itself is never capped: every in-scope source is probed every session, because this budget bounds model-token cost, not network cost. Absent means every promoted source proceeds to re-read. Values 0, negative integers, and non-integer types fail loudly. verify.sh enforces the same bound, keeping the two enforcers equivalent."
     }
   },
   "$defs": {
@@ -72,6 +77,12 @@
           "minimum": 1,
           "maximum": 5000,
           "description": "Max pages to crawl. Meaningful for web-doc only, but the [1, 5000] bounds apply whenever the key is present on any kind — verify.sh enforces the same rule, keeping the two enforcers equivalent."
+        },
+        "importance": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Per-source, optional. Priority from 1 (lowest) to 5 (highest) used to order REFRESH's probing under probe_budget. Absent defaults to neutral priority 3. verify.sh enforces the same [1, 5] bound, keeping the two enforcers equivalent."
         },
         "sitemap_url": {
           "type": ["string", "null"],

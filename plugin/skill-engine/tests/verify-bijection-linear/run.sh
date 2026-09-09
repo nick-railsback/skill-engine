@@ -45,6 +45,17 @@ fail_case() {
   fail_count=$((fail_count + 1))
 }
 
+# now_ms — wall clock in integer milliseconds.
+#
+# The timing case below differences two `date +%s` readings and then
+# differences those, so all four truncate independently and a sub-second
+# contribution can report up to 2s off purely from truncation. python3
+# rather than `date +%s%N` (the BSD date macOS ships has no %N) or bash 5's
+# EPOCHREALTIME (macOS ships bash 3.2).
+now_ms() {
+  python3 -c 'import time; print(int(time.time() * 1000))'
+}
+
 # ── Fixture builders ────────────────────────────────────────────────────
 
 # Minimal valid source-paths.json (empty sources) so only the bijection
@@ -193,19 +204,19 @@ run_timing_ac() {
   build_stubbed_verify "$VERIFY_SH" "$stub_verify"
   chmod +x "$stub_verify"
 
-  t0=$(date +%s)
+  t0=$(now_ms)
   full_out="$(CTX_ROOT="$big_ctx" bash "$VERIFY_SH" 2>&1)" && full_rc=0 || full_rc=$?
-  t1=$(date +%s)
+  t1=$(now_ms)
   t_full=$((t1 - t0))
 
-  t2=$(date +%s)
+  t2=$(now_ms)
   stub_out="$(CTX_ROOT="$big_ctx" bash "$stub_verify" 2>&1)"
-  t3=$(date +%s)
+  t3=$(now_ms)
   t_stub=$((t3 - t2))
 
   diff_s=$((t_full - t_stub))
 
-  printf '  -- timing [%s-form]: full=%ss stubbed=%ss check4-contribution=%ss (N=%d)\n' \
+  printf '  -- timing [%s-form]: full=%sms stubbed=%sms check4-contribution=%sms (N=%d)\n' \
     "$form" "$t_full" "$t_stub" "$diff_s" "$REF_COUNT"
 
   if [ "$full_rc" -eq 0 ] && printf '%s' "$full_out" | grep -qF 'Failed: 0'; then
@@ -214,11 +225,11 @@ run_timing_ac() {
     fail_case "2,000-reference ${form}-form contextualizer passes all checks" "$full_out"
   fi
 
-  if [ "$diff_s" -lt 3 ]; then
-    pass_case "Check 4's own wall-clock contribution at N=2,000 ${form}-form references is under 3s (got ${diff_s}s)"
+  if [ "$diff_s" -lt 3000 ]; then
+    pass_case "Check 4's own wall-clock contribution at N=2,000 ${form}-form references is under 3s (got ${diff_s}ms)"
   else
-    fail_case "Check 4's own wall-clock contribution at N=2,000 ${form}-form references is under 3s (got ${diff_s}s)" \
-      "full run: ${t_full}s, stubbed run: ${t_stub}s, difference: ${diff_s}s"
+    fail_case "Check 4's own wall-clock contribution at N=2,000 ${form}-form references is under 3s (got ${diff_s}ms)" \
+      "full run: ${t_full}ms, stubbed run: ${t_stub}ms, difference: ${diff_s}ms"
   fi
 
   # Sanity: the stub must not have broken the script — it should still run

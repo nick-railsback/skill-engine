@@ -164,8 +164,8 @@ contextualizers (first runs are welcome).
   schema.
 - It does not do live registry calls for commodity filtering by
   default.
-- It does not auto-detect "archived" upstream state. The user sets
-  `archived: true` manually on a source entry.
+- It does not detect archival. REFRESH's Phase 0.5 stages
+  `archived: true`; DISCOVER just reads it live.
 - It does not track inner-path changes on `moved` sources. The outer
   URL is rewritten on accept; inner-path drift is flagged for manual
   review.

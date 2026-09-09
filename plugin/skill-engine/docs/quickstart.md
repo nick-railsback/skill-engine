@@ -42,6 +42,11 @@ topology from the source you named, asks once whether to pre-clone referenced
 repos into the local cache (default: no), and prints a three-line next-step
 message naming `discover` as the workflow to run next.
 
+Registering many sources at once? Pass `--sources-file <path>` (one source
+per line, an optional branch column) plus `--branch-default-all` to skip the
+per-source branch prompt — see `references/intake-and-detection.md` in the
+`engine-bootstrap` skill for the file format.
+
 ## 4. Discover the corpus
 
 In the same directory:

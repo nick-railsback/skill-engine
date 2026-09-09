@@ -1,11 +1,50 @@
 # Cache seeding
 
-The consent-gated local cache offers for git-managed and web-doc sources — the only network operations bootstrap performs — plus the manual-materialization fallback.
+The consent-gated local cache offers for git-managed and web-doc sources — the only network operations bootstrap performs absent `--probe` — plus the manual-materialization fallback.
 
 ## Step 3.5 — Offer to seed local cache
 
+Two flags govern this step for every git-managed source in one
+gesture, checked before any per-source iteration begins:
+
+- **`--clone-all`** runs the consented-clone path below for every
+  git-managed source, no prompt — except a source `--probe` flagged
+  unreachable, which this step skips even under `--clone-all`.
+- **`--clone-none`** skips the cache seed for every git-managed
+  source, no prompt, no clone attempt.
+- With neither flag, the per-source `[y/N]` prompt below fires
+  exactly as it does today — cloning remains the only network
+  operation this step performs absent `--probe`, which runs its own
+  reachability check earlier, at intake.
+
+<!-- doctrine:clone-consent-guard:start -->
+```bash
+clone_all=0
+clone_none=0
+for arg in "$@"; do
+  case "$arg" in
+    --clone-all) clone_all=1 ;;
+    --clone-none) clone_none=1 ;;
+  esac
+done
+if [ "$clone_all" -eq 1 ] && [ "$clone_none" -eq 1 ]; then
+  echo "skill-engine: --clone-all and --clone-none cannot both be set; choose one." >&2
+  exit 1
+fi
+exit 0
+```
+<!-- doctrine:clone-consent-guard:end -->
+
+If both flags are given together, the guard above halts before any
+clone or prompt runs, with an error naming both flags.
+
 After stamping completes, iterate over the intaken sources filtered to
-`kind: git-managed`. For each such source, prompt the user **once**:
+`kind: git-managed`. Under `--clone-all`, first drop any source
+`--probe` flagged unreachable from that iteration entirely — no clone
+attempt for it — before running the consented-clone path on the rest;
+this exclusion is specific to `--clone-all`'s blanket consent, and does
+not change the per-source prompt (no flags) or `--clone-none` below.
+For each remaining such source, prompt the user **once**:
 
 ```
 Pre-clone <source_id> from <url> into ~/.cache/skill-engine/git-managed/?
@@ -16,49 +55,24 @@ Accept `y` or `yes` (case-insensitive, leading/trailing whitespace
 trimmed) as consent. Treat `N`, blank input, or anything else as
 decline; do not re-prompt.
 
-On consent, clone via an atomic-rename idiom so a failed or interrupted
-clone does not leave a half-written cache directory at the canonical
-path:
+On consent, clone via `cache-git.sh` — the shipped helper that owns every
+cache-mutating git invocation, so an atomic-rename idiom (a failed or
+interrupted clone never leaves a half-written cache directory at the
+canonical path), the unsafe-`source_id` guard, and the `SKILL_ENGINE_CACHE_ROOT`
+override live in one place instead of once per recipe:
 
 ```bash
-# Guard: refuse a source_id that is not a safe path component, so a crafted
-# id (e.g. one containing '/' or '..') cannot escape the cache directory
-# when interpolated into `dest` below. source_id is kebab-case by
-# construction; assert it before building any path. On a bad id, skip THIS
-# source's cache seed — do not exit, so a multi-source intake does not lose
-# every later source to one bad id.
-case "<source_id>" in
-  ""|-*|*[!a-z0-9-]*)
-    echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping cache seed for this source" >&2 ;;
-  *)
-    # `--` terminates git option parsing, so a URL beginning with '-' cannot be
-    # interpreted as a flag (e.g. --upload-pack=...), closing an argument-
-    # injection vector on the user-supplied url.
-    sha=$(git ls-remote -- "<url>" HEAD | cut -f1)
-    if [ -z "$sha" ]; then
-      # Empty SHA (unreachable repo, flaky ls-remote): building `<source_id>-`
-      # would land a cache path no later `<source_id>-<sha>` lookup matches.
-      # Skip the seed for this source instead.
-      echo "skill-engine: couldn't resolve <source_id> HEAD (empty ls-remote) — skipping cache seed for this source" >&2
-    else
-      mkdir -p ~/.cache/skill-engine/git-managed/
-      dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
-      tmpdir="${dest}.tmp.$$"
-      if git clone --depth=1 --filter=blob:none -- "<url>" "$tmpdir"; then
-        mv "$tmpdir" "$dest"
-      else
-        rm -rf "$tmpdir"
-      fi
-    fi ;;
-esac
+"$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" clone "<source_id>" "<url>"
 ```
 
-The `$$` PID tag scopes `tmpdir` per-process; two concurrent bootstraps
-against the same source land in distinct tmpdirs and neither corrupts
-the other. The final `mv` is atomic on a single filesystem, so the
-canonical `<source_id>-<sha>/` directory either exists complete or does
-not exist at all — DISCOVER's pre-flight checks for `.git/` inside the
-directory before treating it as a warm cache (see
+On a refused `source_id` (not a safe path component — kebab-case only) or
+an empty `git ls-remote` (unreachable repo, flaky network), `cache-git.sh`
+prints a one-line diagnostic to stderr and exits non-zero; skip THIS
+source's cache seed and continue to the next one — do not abort a
+multi-source intake over one bad source. On success, the clone lands at
+`${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/<source_id>-<sha>/`
+— DISCOVER's pre-flight checks for `.git/` inside the directory before
+treating it as a warm cache (see
 [`08-discover-pipeline.md`](../../../docs/08-discover-pipeline.md)).
 
 Substitute `<url>` and `<source_id>` from the source entry. On success,
@@ -85,82 +99,39 @@ sources because of one bad clone.
 present and non-empty, substitute the recipe below for the block above —
 the clone becomes scoped to those path patterns instead of the
 unconditional shallow clone. **Every `files_of_interest` entry must stay
-double-quoted** in the `sparse-checkout set` and `for entry in` lines
-below — an unquoted glob is subject to shell expansion before git ever
-sees it (harmless in bash when nothing matches, a hard "no matches
-found" abort under zsh), and quoting is what turns the pattern into an
-inert literal string in either shell:
+double-quoted** — an unquoted glob is subject to shell expansion before
+git ever sees it (harmless in bash when nothing matches, a hard "no
+matches found" abort under zsh), and quoting is what turns the pattern
+into an inert literal string in either shell:
 
 ```bash
-case "<source_id>" in
-  ""|-*|*[!a-z0-9-]*)
-    echo "skill-engine: refusing unsafe source_id '<source_id>' — skipping cache seed for this source" >&2 ;;
-  *)
-    sha=$(git ls-remote -- "<url>" HEAD | cut -f1)
-    if [ -z "$sha" ]; then
-      echo "skill-engine: couldn't resolve <source_id> HEAD (empty ls-remote) — skipping cache seed for this source" >&2
-    else
-      mkdir -p ~/.cache/skill-engine/git-managed/
-      dest="$HOME/.cache/skill-engine/git-managed/<source_id>-$sha"
-      tmpdir="${dest}.tmp.$$"
-      if git clone --filter=blob:none --no-checkout --depth=1 --single-branch -- "<url>" "$tmpdir" \
-        && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout init --no-cone \
-        && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" sparse-checkout set <files_of_interest entries...> \
-        && git -C "$HOME/.cache/skill-engine/git-managed/<source_id>-$sha.tmp.$$" checkout ; then
-        missing=0
-        for entry in <files_of_interest entries...>; do
-          if [ -z "$(git -C "$tmpdir" ls-files -- "$entry")" ]; then
-            probe="${entry%/\*\*}"
-            probe="${probe%/\*}"
-            ancestor="$probe"
-            while [ -n "$ancestor" ] && [ ! -d "$tmpdir/$ancestor" ]; do
-              case "$ancestor" in
-                */*) ancestor="${ancestor%/*}" ;;
-                *) ancestor="" ;;
-              esac
-            done
-            siblings=$(find "$tmpdir${ancestor:+/$ancestor}" -mindepth 1 -maxdepth 2 \
-              -type d -not -path '*/.git' -not -path '*/.git/*' 2>/dev/null \
-              | sed "s#^$tmpdir/##" | sort | sed 's#$#/#' | paste -sd, - | sed 's/,/, /g')
-            # A resolved-no-files entry skips only this source's cache seed
-            # and continues to the next source; it does not abort the run.
-            echo "skill-engine: files_of_interest entry '$entry' resolved no files in checkout; nearest siblings under '${ancestor:-.}/': $siblings" >&2
-            missing=1
-          fi
-        done
-        if [ "$missing" -eq 1 ]; then
-          rm -rf "$tmpdir"
-        else
-          mv "$tmpdir" "$dest"
-        fi
-      else
-        rm -rf "$tmpdir"
-      fi
-    fi ;;
-esac
+"$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" sparse-clone "<source_id>" "<url>" HEAD -- <files_of_interest entries...>
 ```
 
 Substitute `<files_of_interest entries...>` the same way the block above
 substitutes `<url>` and `<source_id>` — one double-quoted token per array
 entry, space-separated. On success, emit the same one-line confirmation
-the block above emits (`Cloned <source_id> → ...`). A validation failure
-needs no separate summary line — the per-entry diagnostic above is the
-complete report, and `missing=1` routes to `rm -rf` exactly like every
-other per-source failure in this file (empty SHA, refused id): skip this
-source, do not abort the bootstrap.
+the block above emits (`Cloned <source_id> → ...`).
 
-The existence check uses `git -C "$tmpdir" ls-files -- "$entry"` — a
-tree-aware pathspec match against the post-checkout index — rather than
-a raw `[ -e "$tmpdir/$probe" ]` filesystem test, because a filename-glob
-entry like `docs/*.md` (the doctrine text's own "gitignore-style
-patterns" wording covers this shape, not only `X/**`) has no
-glob-stripped literal path to test for existence — an `-e` check would
-false-reject a *valid* entry of that shape. `ls-files` is unconditionally
-allowed by doctrine check 4 (unlike `sparse-checkout`/`checkout`), so it
-needs no cache-scoped `-C` literal — plain `"$tmpdir"` is fine here. The
-`probe`/ancestor walk still runs, but only to compute where to point
-`find` for the *siblings* listing on a failure — decoupled from the
-pass/fail decision itself.
+On a `files_of_interest` entry that matches nothing in the checkout,
+`cache-git.sh` prints `files_of_interest entry '<entry>' resolved no files
+in checkout`, names the nearest sibling directories under that entry's
+closest existing ancestor, and discards the clone: skip this source and
+carry on with the next one, do not abort the bootstrap. A validation
+failure needs no separate summary line — `missing=1` routes to `rm -rf`
+inside the helper exactly like every other per-source failure in this file
+(empty SHA, refused id).
+
+The existence check `cache-git.sh` runs is `git -C "$tmpdir" ls-files --
+"$entry"` — a tree-aware pathspec match against the post-checkout index —
+rather than a raw `[ -e "$tmpdir/$probe" ]` filesystem test, because a
+filename-glob entry like `docs/*.md` (the doctrine text's own
+"gitignore-style patterns" wording covers this shape, not only `X/**`)
+has no glob-stripped literal path to test for existence — an `-e` check
+would false-reject a *valid* entry of that shape. `ls-files` is
+unconditionally allowed by doctrine check 4 (unlike
+`sparse-checkout`/`checkout`), so it needs no cache-scoped `-C` literal —
+plain `"$tmpdir"` is fine there.
 
 For sources whose `kind` is `external-doc`, `local-path`, or `web-doc`,
 do not prompt in this step — `external-doc` and `local-path` need no
@@ -317,7 +288,9 @@ used by `gh`, `cargo`, and most modern CLI tooling on macOS and Linux.
 `source_id` is the entry's id from `research/source-paths.json` and
 `<sha>` is the upstream HEAD SHA at the time of clone.
 
-The engine does not clone without consent. Two consent points exist:
+The engine does not clone without consent. Two consent points exist —
+plus `--clone-all`, which consents on behalf of every source at once
+instead of one at a time:
 
 - **Step 3.5 above** prompts once per git-managed source at bootstrap
   time and clones on `y`.

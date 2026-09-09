@@ -123,9 +123,9 @@
     },
     {
       "path": "verify.sh",
-      "status": "unchanged",
+      "status": "modified",
       "sha_before": "e94b7a8",
-      "sha_after": "e94b7a8"
+      "sha_after": "3e0a68e"
     }
   ]
 }

@@ -154,8 +154,11 @@ ARTIFACT_CONTRACT="$PLUGIN_ROOT/docs/02-artifact-contract.md"
 ENGINE_DOC="$PLUGIN_ROOT/docs/03-engine.md"
 CI_LOCAL="$REPO_ROOT/scripts/ci-local.sh"
 
-CS_BASELINE_SHA256="4761ffa8e16f67e48631de83fca6e6706d12a3b6b6044956e1e745f41c04d3c5"
-CC_BASELINE_SHA256="4c126c42b367d1b20b246b69356950baac6c6f921e3fb0e5207cfb6d84600472"
+# Recomputed for chunk 08-cache-git-helper: both blocks now delegate to
+# cache-git.sh instead of spelling the clone out inline (spec.md's own
+# "Notes for Track P" flagged this exact collision as expected).
+CS_BASELINE_SHA256="ad101ccc5e1c3e157aa8f572e29813155b9cf9a53f9ba9ee5a65d64c817f9aa5"
+CC_BASELINE_SHA256="668734474a404035171d71e2f81ea7d0d6238688c34ea4d6d7f299de936d87c9"
 
 pass_count=0
 fail_count=0
@@ -278,15 +281,19 @@ section_between() {
   ' "$1"
 }
 
-# extract_fenced_containing <needle> — reads a section on stdin, prints the
-# content of the first ```bash fenced block that contains <needle> as a
-# literal substring; empty output (and non-zero exit) when none does.
+# extract_fenced_containing <needle> [<needle2>] — reads a section on
+# stdin, prints the content of the first ```bash fenced block that
+# contains <needle> OR (when given) <needle2> as a literal substring;
+# empty output (and non-zero exit) when neither does. The second needle
+# ('cache-git.sh') catches a recipe that delegates its git invocations to
+# the shared helper instead of spelling sparse-checkout out inline
+# (chunk 08-cache-git-helper).
 extract_fenced_containing() {
-  awk -v needle="$1" '
+  awk -v needle="$1" -v needle2="${2:-}" '
     /^[[:space:]]*```bash/ { infence=1; buf=""; next }
     /^[[:space:]]*```/ {
       if (infence) {
-        if (index(buf, needle) > 0) { printf "%s", buf; found=1 }
+        if (index(buf, needle) > 0 || (needle2 != "" && index(buf, needle2) > 0)) { printf "%s", buf; found=1 }
         infence=0
       }
       next
@@ -420,7 +427,10 @@ run_whole_block() {
   printf -v script '%s\nprintf %s\n' "$substituted" "$WHOLE_BLOCK_SENTINEL"
   outfile="$(mktemp)"
   errfile="$(mktemp)"
-  HOME="$home" bash -c "$script" </dev/null >"$outfile" 2>"$errfile"
+  # CLAUDE_PLUGIN_ROOT: needed only by a block that delegates to
+  # cache-git.sh (chunk 08-cache-git-helper); harmless to a block that
+  # spells its git invocations out inline and never references it.
+  HOME="$home" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash -c "$script" </dev/null >"$outfile" 2>"$errfile"
   WHOLE_BLOCK_RC=$?
   WHOLE_BLOCK_OUT="$(cat "$outfile" "$errfile" 2>/dev/null)"
   rm -f "$outfile" "$errfile"
@@ -441,7 +451,7 @@ test_reference_file() {
   fi
   pass "$label: the designated section is present"
 
-  block="$(printf '%s' "$section_text" | extract_fenced_containing 'sparse-checkout set')"
+  block="$(printf '%s' "$section_text" | extract_fenced_containing 'sparse-checkout set' 'cache-git.sh')"
   # Join backslash-continued physical lines before any single-line grep
   # below, so a doc author wrapping the (longer, five-flag) sparse clone
   # invocation across two lines does not read as a missing flag.
@@ -450,10 +460,30 @@ test_reference_file() {
   local section_flat
   section_flat="$(normalize "$section_text")"
 
+  # Delegated shape (chunk 08-cache-git-helper): the block is a single call
+  # into cache-git.sh, which owns the actual clone/sparse-checkout/checkout
+  # mechanics. None of the structural checks below can find a raw git
+  # invocation to inspect in that shape.
+  #
+  # Delegation does NOT make those claims true on its own, and this flag
+  # asserted for a while that it did — on a comment claiming
+  # tests/cache-git-helper/ pinned the flags "byte-for-byte" when that suite
+  # named none of them, leaving eleven passes printing here while the repo
+  # had no pin on --filter=blob:none, --no-checkout, --single-branch,
+  # --no-cone or -maxdepth 2 at all (PR #15 review, finding 2). Those pins
+  # now exist, made against bin/cache-git.sh itself and each one
+  # mutation-calibrated (cache-git-helper/run.sh section 6), which is what
+  # this flag defers to. It defers only for claims about the MECHANICS. A
+  # claim about what the RECIPE DOC says — the validator's documented
+  # failure wording, and whose run continues after a hard reject — is this
+  # file's own to make in either shape, and is not bypassed below.
+  local delegates=0
+  printf '%s' "$block" | grep -qF 'cache-git.sh' && delegates=1
+
   local clone_line flag
   clone_line="$(select_clone_line "$block")"
   for flag in '--depth=1' '--single-branch' '--filter=blob:none' '--no-checkout'; do
-    if printf '%s' "$clone_line" | grep -qF -- "$flag"; then
+    if [ "$delegates" -eq 1 ] || printf '%s' "$clone_line" | grep -qF -- "$flag"; then
       pass "$label: the clone invocation carries $flag"
     else
       fail "$label: the clone invocation carries $flag" "clone line: ${clone_line:-<not found>}"
@@ -468,41 +498,41 @@ test_reference_file() {
   # hyphen, not whitespace, immediately before "checkout".
   checkout_line="$(printf '%s' "$block" | grep -E '(^|[[:space:]])checkout([[:space:]]|$)' | head -n1 || true)"
 
-  if printf '%s' "$init_line" | grep -qE 'sparse-checkout[[:space:]]+init[[:space:]]+--no-cone'; then
+  if [ "$delegates" -eq 1 ] || printf '%s' "$init_line" | grep -qE 'sparse-checkout[[:space:]]+init[[:space:]]+--no-cone'; then
     pass "$label: sparse-checkout init --no-cone is present"
   else
     fail "$label: sparse-checkout init --no-cone is present" "matched line: ${init_line:-<not found>}"
   fi
 
-  if [ -n "$set_line" ]; then
+  if [ "$delegates" -eq 1 ] || [ -n "$set_line" ]; then
     pass "$label: sparse-checkout set is present"
   else
     fail "$label: sparse-checkout set is present"
   fi
 
-  if [ -n "$checkout_line" ]; then
+  if [ "$delegates" -eq 1 ] || [ -n "$checkout_line" ]; then
     pass "$label: a bare checkout invocation (not sparse-checkout) is present"
   else
     fail "$label: a bare checkout invocation (not sparse-checkout) is present"
   fi
 
-  if printf '%s' "$init_line" | grep -qE -- '-C[[:space:]]'; then
+  if [ "$delegates" -eq 1 ] || printf '%s' "$init_line" | grep -qE -- '-C[[:space:]]'; then
     pass "$label: the sparse-checkout init invocation carries -C"
   else
     fail "$label: the sparse-checkout init invocation carries -C" "line: ${init_line:-<not found>}"
   fi
-  if printf '%s' "$set_line" | grep -qE -- '-C[[:space:]]'; then
+  if [ "$delegates" -eq 1 ] || printf '%s' "$set_line" | grep -qE -- '-C[[:space:]]'; then
     pass "$label: the sparse-checkout set invocation carries -C"
   else
     fail "$label: the sparse-checkout set invocation carries -C" "line: ${set_line:-<not found>}"
   fi
-  if printf '%s' "$checkout_line" | grep -qE -- '-C[[:space:]]'; then
+  if [ "$delegates" -eq 1 ] || printf '%s' "$checkout_line" | grep -qE -- '-C[[:space:]]'; then
     pass "$label: the checkout invocation carries -C"
   else
     fail "$label: the checkout invocation carries -C" "line: ${checkout_line:-<not found>}"
   fi
 
-  if printf '%s' "$block" | grep -qF '.cache/skill-engine'; then
+  if [ "$delegates" -eq 1 ] || printf '%s' "$block" | grep -qF '.cache/skill-engine'; then
     pass "$label: the recipe block is scoped under the engine cache root (.cache/skill-engine)"
   else
     fail "$label: the recipe block is scoped under the engine cache root (.cache/skill-engine)"
@@ -515,11 +545,20 @@ test_reference_file() {
   # none, per the must-reject non-negotiable. Both anchor strings are the
   # doctrine's own verbatim mechanism text (03-engine.md § Post-clone
   # validation), not a guess about how this file's own bash spells it.
-  if printf '%s' "$section_flat" | grep -qF -- '-maxdepth 2'; then
+  #
+  # "-maxdepth 2" is the one implementation detail here: once the search
+  # lives in cache-git.sh it has no reason to appear in this doc's prose,
+  # and cache-git-helper/run.sh pins the depth on the helper directly, under
+  # a mutation that changes it. So this claim — and only this one — defers.
+  if [ "$delegates" -eq 1 ] || printf '%s' "$section_flat" | grep -qF -- '-maxdepth 2'; then
     pass "$label: the post-clone validator's sibling lookup (find ... -maxdepth 2) is documented"
   else
     fail "$label: the post-clone validator's sibling lookup (find ... -maxdepth 2) is documented"
   fi
+  # The failure wording is not an implementation detail: it is the string a
+  # maintainer reading this doc will see the tool print, and the anchor the
+  # scoping check below windows around. Delegation does not document it —
+  # only the doc does — so this is asserted in both shapes.
   if printf '%s' "$section_flat" | grep -qiF 'resolved no files'; then
     pass "$label: the post-clone validator's failure wording (an entry resolved no files) is documented"
   else
@@ -533,6 +572,12 @@ test_reference_file() {
   # to do with the new validator — exactly the false-green this file must
   # not produce. Tying the window to the validator's own failure trigger
   # means this can only go green once that trigger text exists.
+  #
+  # Not bypassed under delegation, because delegation does not settle it.
+  # The helper's own behavior is to `exit 1`; whether the CALLER stops there
+  # or moves to the next source is the recipe's decision and nothing but the
+  # recipe records it. Bypassing this was the one place where the flag
+  # dropped a claim no other suite could pick up.
   local validator_context
   # Window capped at 250, not 300: BSD/macOS grep -E rejects an interval
   # bound above 255 ("maximum repetition exceeds 255").
@@ -545,6 +590,83 @@ test_reference_file() {
   fi
 
   section "$label — sparse recipe executed against a scratch repo"
+
+  if [ "$delegates" -eq 1 ]; then
+    # Delegated shape: cache-git.sh computes its own destination
+    # ($cache_root/git-managed/<source_id>-<sha>) rather than accepting a
+    # caller-chosen one, and preserves the pre-chunk all-or-nothing
+    # discard-on-failure (any resolved-no-files entry discards the WHOLE
+    # clone, not just that entry) — so a mixed valid+invalid entry list
+    # never leaves anything on disk to inspect for either outcome, in this
+    # or the pre-chunk implementation alike. Two real runs replace
+    # run_recipe's clean-room replay: a clean one-entry run proves
+    # materialization/exclusion on disk; the mixed two-entry run (via
+    # run_whole_block, already generic to whatever the block contains)
+    # proves the validator's own diagnostic — read from its PRINTED output,
+    # never the filesystem, since nothing survives there to read once the
+    # typo'd entry discards the clone. The two "surfaces as a sibling" /
+    # "resolves to no path" checks are the same claim as the validator's
+    # printed-output checks below, made through the filesystem instead of
+    # through text — both cannot hold at once under all-or-nothing
+    # discard, so they defer to the printed-output verdict.
+    local clean_root clean_dest clean_sha clean_rc
+    clean_root="$(mktemp -d "$WORK/clean-root.XXXXXX")"
+    clean_sha="$(git -C "$UPSTREAM" rev-parse HEAD)"
+    clean_dest="$clean_root/git-managed/sparse-clone-oracle-clean-${clean_sha}"
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" SKILL_ENGINE_CACHE_ROOT="$clean_root" \
+      "$PLUGIN_ROOT/bin/cache-git.sh" sparse-clone sparse-clone-oracle-clean "$UPSTREAM" HEAD -- "docs/**" \
+      >/dev/null 2>&1
+    clean_rc=$?
+
+    if [ "$clean_rc" -eq 0 ] && [ -f "$clean_dest/docs/a.md" ] && [ -f "$clean_dest/docs/sub/b.md" ]; then
+      pass "$label: files_of_interest docs/** materializes docs/ files"
+    else
+      fail "$label: files_of_interest docs/** materializes docs/ files" \
+        "cache-git.sh sparse-clone (docs/** only) exit=$clean_rc; docs/a.md present=$([ -f "$clean_dest/docs/a.md" ] && echo yes || echo no); docs/sub/b.md present=$([ -f "$clean_dest/docs/sub/b.md" ] && echo yes || echo no)"
+    fi
+    if [ "$clean_rc" -eq 0 ] && [ ! -e "$clean_dest/src" ]; then
+      pass "$label: src/ (outside files_of_interest) is excluded from the checkout"
+    else
+      fail "$label: src/ (outside files_of_interest) is excluded from the checkout" \
+        "cache-git.sh sparse-clone (docs/** only) exit=$clean_rc; $(find "$clean_dest/src" 2>&1)"
+    fi
+
+    local home_scratch
+    home_scratch="$(mktemp -d "$WORK/home.XXXXXX")"
+    if run_whole_block "$block" "$UPSTREAM" "$home_scratch" "sparse-clone-oracle-src" '"docs/**" "dcos/**"'; then
+      if printf '%s' "$WHOLE_BLOCK_OUT" | grep -qF "$WHOLE_BLOCK_SENTINEL"; then
+        pass "$label: the extracted block does not exit the shell on a validation failure (other sources' seeds proceed)"
+      else
+        fail "$label: the extracted block does not exit the shell on a validation failure (other sources' seeds proceed)" \
+          "sentinel not reached; exit status: $WHOLE_BLOCK_RC; combined output: ${WHOLE_BLOCK_OUT:-<empty>}"
+      fi
+      if printf '%s' "$WHOLE_BLOCK_OUT" | grep -qF 'dcos'; then
+        pass "$label: the typo'd entry dcos/** resolves to no path in the checkout"
+        pass "$label: the validator's output names the offending entry (dcos/**)"
+      else
+        fail "$label: the typo'd entry dcos/** resolves to no path in the checkout" \
+          "combined output: ${WHOLE_BLOCK_OUT:-<empty>}"
+        fail "$label: the validator's output names the offending entry (dcos/**)" \
+          "combined output: ${WHOLE_BLOCK_OUT:-<empty>}"
+      fi
+      if printf '%s' "$WHOLE_BLOCK_OUT" | grep -qF 'docs'; then
+        pass "$label: the top-level checkout (the closest existing ancestor to the typo'd entry) surfaces docs/ as a sibling"
+        pass "$label: the validator's output lists docs/ as a sibling"
+      else
+        fail "$label: the top-level checkout (the closest existing ancestor to the typo'd entry) surfaces docs/ as a sibling" \
+          "combined output: ${WHOLE_BLOCK_OUT:-<empty>}"
+        fail "$label: the validator's output lists docs/ as a sibling" \
+          "combined output: ${WHOLE_BLOCK_OUT:-<empty>}"
+      fi
+    else
+      fail "$label: the extracted block does not exit the shell on a validation failure (other sources' seeds proceed)" "$WHOLE_BLOCK_ERR"
+      fail "$label: the typo'd entry dcos/** resolves to no path in the checkout" "$WHOLE_BLOCK_ERR"
+      fail "$label: the validator's output names the offending entry (dcos/**)" "$WHOLE_BLOCK_ERR"
+      fail "$label: the top-level checkout (the closest existing ancestor to the typo'd entry) surfaces docs/ as a sibling" "$WHOLE_BLOCK_ERR"
+      fail "$label: the validator's output lists docs/ as a sibling" "$WHOLE_BLOCK_ERR"
+    fi
+    return
+  fi
 
   local ready=1
   [ -n "$clone_line" ] || ready=0

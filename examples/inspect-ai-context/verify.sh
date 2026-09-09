@@ -59,6 +59,12 @@ CTX_ROOT="${CTX_ROOT:-$SCRIPT_DIR}"
 passed=0
 failed=0
 
+# A literal newline, for `case` patterns that need to test for one. $'\n'
+# is not usable in a case pattern, and an inline literal newline inside the
+# pattern list is a syntax error.
+LF='
+'
+
 pass() {
   passed=$((passed + 1))
   printf '  [PASS] %s\n' "$1"
@@ -215,7 +221,39 @@ url_origin() {
 # (e.g. 'my.pkg', 'c++'); unescaped, '.' or '+' would match arbitrarily and
 # wrongly suppress an uncited-* warning.
 ere_escape() {
-  printf '%s' "$1" | sed 's/[][(){}.*+?^$|\\]/\\&/g'
+  printf '%s\n' "$@" | sed 's/[][(){}.*+?^$|\\]/\\&/g'
+}
+
+# Single-value ERE escape, byte-identical to ere_escape's per-line output
+# but done with parameter expansion instead of a sed fork. Two reasons to
+# have it: a caller that indexes escaped values in lockstep with an array
+# built by `find -print0` cannot use a newline-delimited producer at all
+# (a member name containing a newline arrives as two entries, or as one
+# with a leading blank dropped, and every later index shifts), and doing
+# it in-shell costs no fork, so a per-member loop is cheaper here than the
+# single batched call it replaces. Backslash is escaped first, so the
+# escapes this adds are not re-escaped by a later pass. Sets
+# ERE_ESCAPE_ONE_RESULT -- no nameref, same bash 3.2 constraint as
+# read_lines.
+ere_escape_one() {
+  local s="$1" c
+  for c in '\' '[' ']' '(' ')' '{' '}' '.' '*' '+' '?' '^' '$' '|'; do
+    s="${s//"$c"/\\$c}"
+  done
+  ERE_ESCAPE_ONE_RESULT="$s"
+}
+
+# Reads newline-separated stdin into READ_LINES_RESULT, skipping
+# blank lines. No nameref/local -n (bash 3.2 has neither), so
+# callers copy the shared result immediately:
+#   read_lines < <(producer); dest=("${READ_LINES_RESULT[@]}")
+read_lines() {
+  READ_LINES_RESULT=()
+  local s
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    READ_LINES_RESULT+=("$s")
+  done
 }
 
 # ────────────────────────────────────────────────────────────────────────
@@ -461,6 +499,47 @@ else
           ]
         | join("")
       ' "$sp_file" 2>/dev/null)
+
+      # importance and probe_budget, enforced here for the same reason
+      # crawl_budget is: the schema's own description of crawl_budget
+      # promises "verify.sh enforces the same rule, keeping the two
+      # enforcers equivalent", and these two fields inherited the promise
+      # without the enforcement. The gap is reachable — CI validates the
+      # template and the bundled examples against the schema, never a live
+      # registry — so a hand-edited `"importance": 9` would otherwise pass
+      # every gate this repo runs and then pin that source to the head of
+      # every budgeted REFRESH session.
+      #
+      # One jq pass for all sources rather than a `has()` probe per entry:
+      # the per-entry shape above already costs a fork per source, and
+      # there is no reason to add a second.
+      read_lines < <(jq -r '
+        .sources | to_entries[]
+        | select(.value | type == "object")
+        | select(.value | has("importance"))
+        | select((.value.importance | type) != "number"
+                 or (.value.importance | floor) != .value.importance
+                 or .value.importance < 1
+                 or .value.importance > 5)
+        | "\(.key)\(.value.id // "")\(.value.importance | tostring)"
+      ' "$sp_file" 2>/dev/null)
+      for bad_imp in "${READ_LINES_RESULT[@]:-}"; do
+        [ -n "$bad_imp" ] || continue
+        IFS=$'\x1f' read -r imp_idx imp_id imp_raw <<< "$bad_imp"
+        fail "sources[$imp_idx] ($imp_id): importance '$imp_raw' is not an integer in [1, 5]"
+        entries_ok=0
+      done
+
+      if jq -e 'has("probe_budget")' "$sp_file" >/dev/null 2>&1; then
+        pb_raw="$(jq -r '.probe_budget | tostring' "$sp_file" 2>/dev/null)"
+        if ! printf '%s' "$pb_raw" | grep -qE '^[0-9]+$'; then
+          fail "probe_budget '$pb_raw' is not an integer"
+          entries_ok=0
+        elif [ "$pb_raw" -lt 1 ]; then
+          fail "probe_budget '$pb_raw' is not >= 1"
+          entries_ok=0
+        fi
+      fi
 
       if [ "$entries_ok" -eq 1 ]; then
         noun="entries"
@@ -719,23 +798,14 @@ else
   # call instead of a nested-loop scan (the O(n·m) cost this check used to
   # pay). Every list here traces back to a `sort -u`, so it is safe to feed
   # directly into `comm`, which requires sorted input.
-  sorted_file_form_slugs=()
-  while IFS= read -r s; do
-    [ -n "$s" ] || continue
-    sorted_file_form_slugs+=("$s")
-  done < <(printf '%s\n' "${file_form_slugs[@]:-}" | sort -u)
+  read_lines < <(printf '%s\n' "${file_form_slugs[@]:-}" | sort -u)
+  sorted_file_form_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-  sorted_dir_valid_slugs=()
-  while IFS= read -r s; do
-    [ -n "$s" ] || continue
-    sorted_dir_valid_slugs+=("$s")
-  done < <(printf '%s\n' "${dir_form_valid_slugs[@]:-}" | sort -u)
+  read_lines < <(printf '%s\n' "${dir_form_valid_slugs[@]:-}" | sort -u)
+  sorted_dir_valid_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-  sorted_dir_broken_slugs=()
-  while IFS= read -r s; do
-    [ -n "$s" ] || continue
-    sorted_dir_broken_slugs+=("$s")
-  done < <(printf '%s\n' "${dir_form_broken_slugs[@]:-}" | sort -u)
+  read_lines < <(printf '%s\n' "${dir_form_broken_slugs[@]:-}" | sort -u)
+  sorted_dir_broken_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
   # cat_targets entries are FILE:<slug> / DIR:<slug>; split into two arrays
   # by prefix. A single O(n) pass over cat_targets, not a membership test
@@ -751,17 +821,11 @@ else
     esac
   done
 
-  sorted_cat_file_slugs=()
-  while IFS= read -r s; do
-    [ -n "$s" ] || continue
-    sorted_cat_file_slugs+=("$s")
-  done < <(printf '%s\n' "${cat_file_slugs[@]:-}" | sort -u)
+  read_lines < <(printf '%s\n' "${cat_file_slugs[@]:-}" | sort -u)
+  sorted_cat_file_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-  sorted_cat_dir_slugs=()
-  while IFS= read -r s; do
-    [ -n "$s" ] || continue
-    sorted_cat_dir_slugs+=("$s")
-  done < <(printf '%s\n' "${cat_dir_slugs[@]:-}" | sort -u)
+  read_lines < <(printf '%s\n' "${cat_dir_slugs[@]:-}" | sort -u)
+  sorted_cat_dir_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
   if [ "${#file_form_slugs[@]}" -eq 0 ] \
       && [ "${#dir_form_valid_slugs[@]}" -eq 0 ] \
@@ -791,19 +855,13 @@ else
     # canonical primary status — the invariant fires on the cross-form
     # presence, not the validity of each side, so both dir-form lists feed
     # the same intersection.
-    duplicate_form_slugs=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      duplicate_form_slugs+=("$s")
-    done < <(comm -12 \
+    read_lines < <(comm -12 \
           <(printf '%s\n' "${sorted_file_form_slugs[@]:-}") \
           <(printf '%s\n' "${sorted_dir_valid_slugs[@]:-}" "${sorted_dir_broken_slugs[@]:-}" | sort -u))
+    duplicate_form_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-    canonical_fs_slugs=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      canonical_fs_slugs+=("$s")
-    done < <(printf '%s\n' "${sorted_file_form_slugs[@]:-}" "${sorted_dir_valid_slugs[@]:-}" | sort -u)
+    read_lines < <(printf '%s\n' "${sorted_file_form_slugs[@]:-}" "${sorted_dir_valid_slugs[@]:-}" | sort -u)
+    canonical_fs_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
     for dup in "${duplicate_form_slugs[@]:-}"; do
       [ -n "$dup" ] || continue
@@ -859,84 +917,65 @@ else
     # `comm`'s raw three-column output (no leading tab = file1-only, one
     # leading tab = file2-only, two leading tabs = in both) keeps the whole
     # classification in one already-sorted pass.
-    suppressed_slugs=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      suppressed_slugs+=("$s")
-    done < <(printf '%s\n' "${sorted_dir_broken_slugs[@]:-}" "${duplicate_form_slugs[@]:-}" | sort -u)
+    read_lines < <(printf '%s\n' "${sorted_dir_broken_slugs[@]:-}" "${duplicate_form_slugs[@]:-}" | sort -u)
+    suppressed_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-    eligible_cat_file_slugs=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      eligible_cat_file_slugs+=("$s")
-    done < <(grep -vFxf <(printf '%s\n' "${suppressed_slugs[@]:-}") \
+    read_lines < <(grep -vFxf <(printf '%s\n' "${suppressed_slugs[@]:-}") \
           <(printf '%s\n' "${sorted_cat_file_slugs[@]:-}"))
+    eligible_cat_file_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-    eligible_cat_dir_slugs=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      eligible_cat_dir_slugs+=("$s")
-    done < <(grep -vFxf <(printf '%s\n' "${suppressed_slugs[@]:-}") \
+    read_lines < <(grep -vFxf <(printf '%s\n' "${suppressed_slugs[@]:-}") \
           <(printf '%s\n' "${sorted_cat_dir_slugs[@]:-}"))
+    eligible_cat_dir_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
     # File-declared half: round 1 against sorted_file_form_slugs (its own
     # declared form), round 2 against sorted_dir_valid_slugs (the other
     # form) — in both = mismatch (declared file, actual dir); file1-only =
     # phantom.
-    cat_file_no_match=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      cat_file_no_match+=("$s")
-    done < <(comm -23 \
+    read_lines < <(comm -23 \
           <(printf '%s\n' "${eligible_cat_file_slugs[@]:-}") \
           <(printf '%s\n' "${sorted_file_form_slugs[@]:-}"))
+    cat_file_no_match=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-    while IFS= read -r line; do
-      case "$line" in
-        $'\t\t'*)
-          slug="${line#$'\t\t'}"
-          [ -n "$slug" ] || continue
-          fail "Catalog row references/$slug.md declares file form but the on-disk reference is directory form references/$slug/ — link will render broken"
-          bij_ok=0
-          ;;
-        $'\t'*) : ;;
-        *)
-          slug="$line"
-          [ -n "$slug" ] || continue
-          fail "Catalog row points at references/$slug.md but no matching reference exists (file or directory)"
-          bij_ok=0
-          ;;
-      esac
-    done < <(comm \
+    # Classifies each declared-form catalog slug with no exact same-form
+    # match against the *other* form, from a comm stream on stdin: two
+    # leading tabs = a form mismatch (own form vs the other), no leading
+    # tab = a phantom (no match in either form). own_suffix/own_desc
+    # describe the row's declared form; other_* describe the form it
+    # turned out to match instead.
+    report_form_mismatches() {
+      local own_suffix="$1" own_desc="$2" other_suffix="$3" other_desc="$4"
+      local line slug
+      while IFS= read -r line; do
+        case "$line" in
+          $'\t\t'*)
+            slug="${line#$'\t\t'}"
+            [ -n "$slug" ] || continue
+            fail "Catalog row references/$slug$own_suffix declares $own_desc form but the on-disk reference is $other_desc form references/$slug$other_suffix — link will render broken"
+            bij_ok=0
+            ;;
+          $'\t'*) : ;;
+          *)
+            slug="$line"
+            [ -n "$slug" ] || continue
+            fail "Catalog row points at references/$slug$own_suffix but no matching reference exists (file or directory)"
+            bij_ok=0
+            ;;
+        esac
+      done
+    }
+
+    report_form_mismatches ".md" "file" "/" "directory" < <(comm \
           <(printf '%s\n' "${cat_file_no_match[@]:-}") \
           <(printf '%s\n' "${sorted_dir_valid_slugs[@]:-}"))
 
     # Dir-declared half: mirror of the above with the two forms swapped.
-    cat_dir_no_match=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      cat_dir_no_match+=("$s")
-    done < <(comm -23 \
+    read_lines < <(comm -23 \
           <(printf '%s\n' "${eligible_cat_dir_slugs[@]:-}") \
           <(printf '%s\n' "${sorted_dir_valid_slugs[@]:-}"))
+    cat_dir_no_match=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
-    while IFS= read -r line; do
-      case "$line" in
-        $'\t\t'*)
-          slug="${line#$'\t\t'}"
-          [ -n "$slug" ] || continue
-          fail "Catalog row references/$slug/ declares directory form but the on-disk reference is file form references/$slug.md — link will render broken"
-          bij_ok=0
-          ;;
-        $'\t'*) : ;;
-        *)
-          slug="$line"
-          [ -n "$slug" ] || continue
-          fail "Catalog row points at references/$slug/ but no matching reference exists (file or directory)"
-          bij_ok=0
-          ;;
-      esac
-    done < <(comm \
+    report_form_mismatches "/" "directory" ".md" "file" < <(comm \
           <(printf '%s\n' "${cat_dir_no_match[@]:-}") \
           <(printf '%s\n' "${sorted_file_form_slugs[@]:-}"))
 
@@ -946,13 +985,10 @@ else
     # diagnostic clarity. Same two-step shape as the phantom check above but
     # only one round deep — orphan has no "wrong-form" case, a slug is
     # either cataloged (in some form) or it isn't.
-    orphan_slugs=()
-    while IFS= read -r s; do
-      [ -n "$s" ] || continue
-      orphan_slugs+=("$s")
-    done < <(comm -23 \
+    read_lines < <(comm -23 \
           <(printf '%s\n' "${canonical_fs_slugs[@]:-}") \
           <(printf '%s\n' "${sorted_cat_file_slugs[@]:-}" "${sorted_cat_dir_slugs[@]:-}" | sort -u))
+    orphan_slugs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
 
     # orphan_slugs only contains canonical fs slugs (already known to be
     # file-form OR valid-dir-form), so any orphan slug that also appears in
@@ -996,12 +1032,16 @@ run_check "Reference frontmatter (reference-frontmatter)"
 if [ ! -d "$CTX_ROOT/references" ]; then
   skip "references/ directory absent — no references to validate (see Check 4)"
 else
-  ref_count=0
-  fm_ok=1
+  ref_files=()
   while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
-    ref_count=$((ref_count + 1))
-    rel="${f#"$CTX_ROOT/"}"
+    ref_files+=("$f")
+  done < <(find -L "$CTX_ROOT/references" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null)
+  ref_count=${#ref_files[@]}
+
+  if [ "$ref_count" -eq 0 ]; then
+    skip "references/ exists but no *.md files yet"
+  else
     # Reference files are pure Markdown with no YAML frontmatter (matches
     # Anthropic's canonical Agent Skills practice — the spec scopes
     # name:/description: to SKILL.md only). Strip an optional UTF-8 BOM
@@ -1014,22 +1054,50 @@ else
     # `--- some heading` or a `----` thematic break. The opened-but-never-
     # closed / missing-name detection for SKILL.md lives in Check 3
     # (extract_frontmatter), which references intentionally do not need.
-    first_line=$(awk 'BEGIN{FS=""} /[^[:space:]]/ {
-      sub(/^\xef\xbb\xbf/, "")
-      print; exit
-    }' "$f" 2>/dev/null)
-    if printf '%s' "$first_line" | grep -qE '^---[[:space:]]*$'; then
-      fail "$rel starts with YAML frontmatter — references carry no frontmatter (02-artifact-contract.md § No YAML frontmatter on references)"
-      fm_ok=0
-    fi
-  done < <(find -L "$CTX_ROOT/references" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null)
+    #
+    # One awk pass over every reference file (as positional args) instead
+    # of one per-file fork; FNR == 1 resets the per-file "seen a non-blank
+    # line yet" state. Passing every reference file as an argv entry could
+    # approach shell ARG_MAX on a corpus of tens of thousands of files —
+    # out of scope at this chunk's 2,000-file bound.
+    #
+    # The exit status is captured rather than discarded, and that is the
+    # whole reason this is not a process substitution: `read_lines < <(awk
+    # …)` reports the status of `read_lines`, never awk's. An awk that
+    # could not run — the ARG_MAX case the comment above names, a broken
+    # PATH, an unreadable file — produced no output, which is
+    # indistinguishable from a clean corpus, and the check then asserted a
+    # property it had never evaluated. The per-file loop this replaced
+    # degraded one file at a time and could not go wrong corpus-wide.
+    fm_ok=1
+    fm_rc=0
+    fm_hits="$(awk '
+      FNR == 1 { seen_nonblank = 0 }
+      !seen_nonblank && /[^[:space:]]/ {
+        line = $0
+        sub(/^\xef\xbb\xbf/, "", line)
+        seen_nonblank = 1
+        if (line ~ /^---[[:space:]]*$/) print FILENAME
+      }
+    ' "${ref_files[@]}" 2>/dev/null)" || fm_rc=$?
 
-  if [ "$ref_count" -eq 0 ]; then
-    skip "references/ exists but no *.md files yet"
-  elif [ "$fm_ok" -eq 1 ]; then
-    noun="references"
-    [ "$ref_count" -eq 1 ] && noun="reference"
-    pass "$ref_count $noun start with a Markdown body (no YAML frontmatter)"
+    if [ "$fm_rc" -ne 0 ]; then
+      fail "reference frontmatter not evaluated — the single awk pass over $ref_count reference file(s) exited $fm_rc (a corpus large enough to exceed ARG_MAX lands here); no conclusion is drawn about the corpus"
+      fm_ok=0
+    else
+      read_lines <<< "$fm_hits"
+      for bad in "${READ_LINES_RESULT[@]:-}"; do
+        [ -n "$bad" ] || continue
+        rel="${bad#"$CTX_ROOT/"}"
+        fail "$rel starts with YAML frontmatter — references carry no frontmatter (02-artifact-contract.md § No YAML frontmatter on references)"
+        fm_ok=0
+      done
+    fi
+
+    if [ "$fm_ok" -eq 1 ]; then
+      noun="references"; [ "$ref_count" -eq 1 ] && noun="reference"
+      pass "$ref_count $noun start with a Markdown body (no YAML frontmatter)"
+    fi
   fi
 fi
 
@@ -1083,12 +1151,12 @@ else
   # `${walk_roots[@]+…}` guard sidesteps that without changing non-empty
   # semantics. The `fm_count == 0` skip path downstream still fires.
   for root in ${walk_roots[@]+"${walk_roots[@]}"}; do
+    root_canon="$(cd "$root" 2>/dev/null && pwd -P)"
     while IFS= read -r -d '' f; do
       # Realpath containment guard: skip any file whose canonical path
       # is not inside the walk root. Defends against symlinked escapes
       # under external-doc paths or web-doc cache directories.
       canon="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)/$(basename "$f")"
-      root_canon="$(cd "$root" 2>/dev/null && pwd -P)"
       case "$canon" in
         "$root_canon"/*) ;;
         *) continue ;;
@@ -1208,14 +1276,19 @@ resolve_git_managed_tree() {
   fi
 }
 
+# Default workspace-root candidates (Checks 6, 8); replaced, not augmented,
+# by a source's own workspace_roots when set. Spelled once — this array is
+# the only place the nine values appear.
+DEFAULT_WORKSPACE_ROOTS=(packages apps libs crates services modules cmd internal pkg)
+
 # ────────────────────────────────────────────────────────────────────────
 # Check 6 — Monorepo-coverage heuristic (monorepo-coverage)
 # ────────────────────────────────────────────────────────────────────────
 #
 # When a registered source's tree contains workspace members under any of
-# its effective workspace roots (default: packages apps libs crates
-# services modules cmd internal pkg; replaced, not augmented, by a
-# source's own workspace_roots when set), each top-level member SHOULD
+# its effective workspace roots (default: see `DEFAULT_WORKSPACE_ROOTS`
+# below; replaced, not augmented, by a source's own workspace_roots when
+# set), each top-level member SHOULD
 # have ≥1 reference file citing it OR an explicit skip-reason in the
 # post-run summary. Surfaces "the model missed whole packages" cases
 # without rejecting the corpus outright — the model still decides what is
@@ -1243,8 +1316,18 @@ else
     tree=""
     if [ "$src_kind" = "git-managed" ]; then
       if ! tree="$(resolve_git_managed_tree "$src_id")"; then
-        skip "monorepo-coverage: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping workspace-member coverage for this source"
-        continue
+        # Absolute only. verify.sh never cd's, so a relative `path` is a
+        # question about the caller's working directory rather than about
+        # the source -- and nothing constrains `path` on a git-managed
+        # entry, so "docs" is schema-valid there and was inert before this
+        # fallback existed. Followed relatively, it made this check
+        # enumerate the maintainer's own ./docs/ as the upstream tree.
+        if [ "${src_path#/}" != "$src_path" ] && [ -d "$src_path" ]; then
+          tree="$src_path"
+        else
+          skip "monorepo-coverage: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping workspace-member coverage for this source"
+          continue
+        fi
       fi
       monorepo_inspected=1
     elif [ -n "$src_path" ] && [ -d "$src_path" ]; then
@@ -1266,7 +1349,7 @@ else
       IFS=',' read -r -a roots <<< "$ws_roots_csv"
       ws_roots_explicit=1
     else
-      roots=(packages apps libs crates services modules cmd internal pkg)
+      roots=("${DEFAULT_WORKSPACE_ROOTS[@]}")
     fi
 
     roots_present=0
@@ -1280,19 +1363,87 @@ else
         continue
       fi
       roots_present=$((roots_present + 1))
+
+      members=()
       while IFS= read -r -d '' member; do
-        member_name=$(basename "$member")
-        cited=0
+        member="${member##*/}"
+        # A name carrying a newline cannot be expressed as a citation
+        # pattern at all: grep -E reads a newline in its pattern as a
+        # separator between alternatives, so such a name does not become a
+        # stricter or looser test -- it splits the whole alternation into
+        # two broken ones and mis-scores every OTHER member of this root.
+        # Excluded from the batch and reported, rather than silently
+        # dropped or silently poisoning its siblings.
+        case "$member" in
+          *"$LF"*)
+            skip "monorepo-coverage: $src_id has a workspace member under '$root/' whose directory name contains a newline -- not expressible as a citation pattern, so that member's coverage is not assessed"
+            continue
+            ;;
+        esac
+        members+=("$member")
+      done < <(find "$ws_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+
+      # One grep -rohE alternation per root instead of one grep -r per
+      # member (the O(members) fork cost this used to pay). cited_blob
+      # collects every hit as a newline-delimited scan string, tested by
+      # substring/case rather than comm/sort-based set membership, so the
+      # WARN emission order below (native `find` order, via the members
+      # array) is not reordered by a sort. member_escs mirrors members by
+      # index, built one member at a time through ere_escape_one -- which
+      # forks for none of them, so this is cheaper than the batched
+      # ere_escape call it replaces AND survives a member name containing a
+      # newline. The batched form could not: `members` is NUL-delimited
+      # from `find -print0`, its escaped copy was newline-delimited, and a
+      # single newline in a directory name desynchronised the two arrays
+      # for every member after it.
+      cited_blob=$'\n'
+      member_escs=()
+      if [ "${#members[@]}" -gt 0 ]; then
+        for member_name in "${members[@]}"; do
+          ere_escape_one "$member_name"
+          member_escs+=("$ERE_ESCAPE_ONE_RESULT")
+        done
         if [ -d "$CTX_ROOT/references" ]; then
-          if grep -rqE "$(ere_escape "$root")/$(ere_escape "$member_name")\b" "$CTX_ROOT/references" 2>/dev/null; then
-            cited=1
-          fi
+          alt=""
+          for esc in "${member_escs[@]}"; do
+            alt="${alt:+$alt|}$esc"
+          done
+          root_esc="$(ere_escape "$root")"
+          while IFS= read -r hit; do
+            [ -n "$hit" ] || continue
+            cited_blob="${cited_blob}${hit#"$root"/}"$'\n'
+          done < <(grep -rohE "$root_esc/($alt)\b" "$CTX_ROOT/references" 2>/dev/null | sort -u)
+        fi
+      fi
+
+      idx=0
+      for member_name in ${members[@]+"${members[@]}"}; do
+        esc="${member_escs[$idx]}"
+        idx=$((idx + 1))
+        cited=0
+        # POSIX leftmost-longest alternation matching can make a longer
+        # registered name (e.g. "foo-bar") swallow a shorter one ("foo")
+        # at the same grep -o start position, so an exact-line lookup in
+        # cited_blob alone under-counts; this test also matches "foo"
+        # occurring at the start of an emitted "foo-bar" token.
+        #
+        # The left anchor is a newline, not a generic non-word character,
+        # because the predicate being replicated was
+        # `grep -rqE "<root>/<member>\b"` -- anchored on the root prefix.
+        # Every blob entry is a grep -o match that began at the "<root>/"
+        # position and had that prefix stripped, so entry-start IS the
+        # anchor position, and a leading newline is what tests for it. A
+        # generic [^[:alnum:]_] on the left drops the anchor: "api" would
+        # match inside a cited sibling's "web-api" at the '-', scoring an
+        # uncited workspace member as cited (PR #15 review, finding 1).
+        if [[ $cited_blob =~ $'\n'${esc}[^[:alnum:]_] ]]; then
+          cited=1
         fi
         if [ "$cited" -eq 0 ]; then
           monorepo_concerns=$((monorepo_concerns + 1))
           printf '  [WARN] workspace member %s under %s is not cited in any reference (verify post-run summary for an explicit skip-reason)\n' "$member_name" "$src_id"
         fi
-      done < <(find "$ws_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+      done
     done
 
     # A scoped source whose checkout carries none of the default roots had
@@ -1338,20 +1489,46 @@ if [ ! -f "$sp_file" ] || ! jq -e '(.sources | type) == "array"' "$sp_file" >/de
 elif [ "$(jq -r '.sources | length' "$sp_file" 2>/dev/null)" = "0" ]; then
   skip "companions-coverage heuristic — no sources to inspect"
 else
-  companion_concerns=0
+  companion_ids=()
   while IFS= read -r comp_id; do
     [ -n "$comp_id" ] || continue
-    cited=0
+    companion_ids+=("$comp_id")
+  done < <(jq -r '.sources[]? | select(.status == "proposed" and (.discovered_via // null) != null) | .id // empty' "$sp_file" 2>/dev/null)
+
+  # One grep -rohE alternation total instead of one grep -r per companion;
+  # same cited_blob/boundary-fallback shape as Check 6 above (see its
+  # comment for why the fallback exists).
+  cited_blob=$'\n'
+  companion_escs=()
+  if [ "${#companion_ids[@]}" -gt 0 ]; then
+    read_lines < <(ere_escape "${companion_ids[@]}")
+    companion_escs=(${READ_LINES_RESULT[@]+"${READ_LINES_RESULT[@]}"})
     if [ -d "$CTX_ROOT/references" ]; then
-      if grep -rqE "\b$(ere_escape "$comp_id")\b" "$CTX_ROOT/references" 2>/dev/null; then
-        cited=1
-      fi
+      alt=""
+      for esc in "${companion_escs[@]}"; do
+        alt="${alt:+$alt|}$esc"
+      done
+      while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
+        cited_blob="${cited_blob}${hit}"$'\n'
+      done < <(grep -rohE "\b($alt)\b" "$CTX_ROOT/references" 2>/dev/null | sort -u)
+    fi
+  fi
+
+  companion_concerns=0
+  idx=0
+  for comp_id in ${companion_ids[@]+"${companion_ids[@]}"}; do
+    esc="${companion_escs[$idx]}"
+    idx=$((idx + 1))
+    cited=0
+    if [[ $cited_blob =~ [^[:alnum:]_]${esc}[^[:alnum:]_] ]]; then
+      cited=1
     fi
     if [ "$cited" -eq 0 ]; then
       companion_concerns=$((companion_concerns + 1))
       printf '  [WARN] proposed companion %s has no reference citing it (verify post-run summary for an explicit skip-reason)\n' "$comp_id"
     fi
-  done < <(jq -r '.sources[]? | select(.status == "proposed" and (.discovered_via // null) != null) | .id // empty' "$sp_file" 2>/dev/null)
+  done
   if [ "$companion_concerns" -eq 0 ]; then
     pass "companions-coverage heuristic clean (no proposed companions surfaced as uncited)"
   else
@@ -1392,12 +1569,20 @@ else
   density_concerns=0
   density_inspected=0
   nav_skill="$CTX_ROOT/SKILL.md"
-  while IFS=$'\x1f' read -r src_id src_kind src_path has_foi; do
+  while IFS=$'\x1f' read -r src_id src_kind src_path ws_roots_csv has_foi; do
     tree=""
     if [ "$src_kind" = "git-managed" ]; then
       if ! tree="$(resolve_git_managed_tree "$src_id")"; then
-        skip "catalog-density: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping density check for this source"
-        continue
+        # Absolute only -- same reasoning as the monorepo-coverage check
+        # above: a relative `path` resolves against the caller's working
+        # directory, and the density floor would then be computed against
+        # an unrelated file count.
+        if [ "${src_path#/}" != "$src_path" ] && [ -d "$src_path" ]; then
+          tree="$src_path"
+        else
+          skip "catalog-density: $src_id has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping density check for this source"
+          continue
+        fi
       fi
     elif [ -n "$src_path" ] && [ -d "$src_path" ]; then
       tree="$src_path"
@@ -1406,7 +1591,6 @@ else
     fi
 
     if [ "$src_kind" = "git-managed" ] && [ "$has_foi" -gt 0 ]; then
-      ws_roots_csv=$(jq -r --arg id "$src_id" '.sources[]? | select(.id == $id) | (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end)' "$sp_file" 2>/dev/null)
       # The floor is skipped only when the source DECLARED where its
       # workspace members live and the checkout does not carry one of those
       # roots -- then the count is knowably partial. Falling back to the
@@ -1430,11 +1614,10 @@ else
     fi
 
     density_inspected=1
-    if [ "$src_kind" = "git-managed" ]; then
-      file_count=$(find "$tree" -maxdepth 6 -type f -not -path '*/.git/*' -not -path '*/.git' 2>/dev/null | wc -l | tr -d ' ')
-    else
-      file_count=$(find "$tree" -maxdepth 6 -type f 2>/dev/null | wc -l | tr -d ' ')
-    fi
+    # .git/ exclusion applies unconditionally, not only on the git-managed
+    # branch: a no-op when no .git/ exists, and the actual fix for a
+    # local-path source whose own registered directory is itself a clone.
+    file_count=$(find "$tree" -maxdepth 6 -type f -not -path '*/.git/*' -not -path '*/.git' 2>/dev/null | wc -l | tr -d ' ')
     [ "$file_count" -ge 20 ] || continue
     # Per-source row count keyed off the contract invariant that every
     # reference filename is prefixed with its source id (`<src_id>-*.md`).
@@ -1451,7 +1634,7 @@ else
       density_concerns=$((density_concerns + 1))
       printf '  [WARN] source %s has %d files but the catalog carries only %d row(s) (<3); verify post-run summary for a minimal-essence justification\n' "$src_id" "$file_count" "$catalog_rows"
     fi
-  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end)] | join("\u001f")' "$sp_file" 2>/dev/null)
+  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end)] | join("\u001f")' "$sp_file" 2>/dev/null)
   if [ "$density_inspected" -eq 0 ]; then
     : # every per-source skip() already reported why; no aggregate line needed
   elif [ "$density_concerns" -eq 0 ]; then

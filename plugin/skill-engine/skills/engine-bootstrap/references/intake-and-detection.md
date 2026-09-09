@@ -85,6 +85,72 @@ fewer than 2 non-empty segments (i.e., `/<org>` or `/<org>/`) triggers
 the re-prompt. URLs with 2+ path segments fall through to the normal
 `kind: git-managed` shape.
 
+### Batch intake: `--sources-file`
+
+`--sources-file <path>` reads one source per line from a plain-text
+file — each line names a URL or a local path — as an alternative to
+positional arguments or the interactive loop. Blank lines and lines
+starting with `#` are ignored. An optional second, whitespace-separated
+column names a branch for that entry (see Step 2.4). Entries from
+`--sources-file` are combined with any positional arguments supplied in
+the same invocation — both are intaken.
+
+Each `--sources-file` entry's first column is intaken exactly as a
+positional argument would be: it runs through the same recognition
+table above, with the same kind inference and the same source_id
+derivation.
+
+An unreadable, empty, or entirely-comment sources file halts intake
+before anything is stamped, with an error naming the path and the
+reason. A line that is neither a URL nor an existing path is reported
+with its 1-indexed line number and halts intake likewise.
+
+A sources file:
+
+```
+# acme's registered sources — one per line, blank lines ignored
+https://github.com/acme/widgets
+~/work/local-repo dev
+```
+
+The following block is illustrative of the accept/reject contract
+above — it reads the sources-file path given as its first argument,
+skips blank and `#`-comment lines, splits each remaining line into a
+source and an optional branch value, and for each source either
+accepts it (URL-shaped, or a `~`-expanded path that exists) or rejects
+it with a diagnostic naming the path and, for a bad line, its line
+number:
+
+```bash
+sources_file="$1"
+if [ ! -r "$sources_file" ]; then
+  printf 'sources file unreadable or missing: %s\n' "$sources_file" >&2
+  exit 1
+fi
+entries=()
+line_no=0
+while IFS= read -r line || [ -n "$line" ]; do
+  line_no=$((line_no + 1))
+  [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+  read -r source_col branch_col _ <<<"$line"
+  expanded="${source_col/#\~/$HOME}"
+  if [[ "$source_col" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]] \
+    || [[ "$source_col" =~ ^git@ ]] \
+    || [ -e "$expanded" ]; then
+    entries+=("$source_col"$'\t'"$branch_col")
+  else
+    printf 'sources file %s line %d: neither a URL nor an existing path: %s\n' \
+      "$sources_file" "$line_no" "$source_col" >&2
+    exit 1
+  fi
+done < "$sources_file"
+if [ "${#entries[@]}" -eq 0 ]; then
+  printf 'sources file %s has no entries (empty or all comments)\n' "$sources_file" >&2
+  exit 1
+fi
+printf '%s\n' "${entries[@]}"
+```
+
 ## Step 2 — Auto-detection
 
 For each accepted source, compute the following without prompting the user:
@@ -143,6 +209,27 @@ git-CLI `HEAD` lookup, not at bootstrap. A typed non-default branch
 name is recorded as-given; its existence on the upstream is validated
 when REFRESH / DISCOVER first runs against the source.
 
+**`--branch-default-all` suppresses Step 2.4's per-source prompt:**
+every git-managed source that has no branch value yet — no
+`--sources-file` entry for it, no earlier answer — is recorded with
+`branch` omitted from its entry, the same absent-branch record pressing
+Enter produces today, without being prompted. A source that already
+carries its own branch column is recorded prompt-free whether or not
+`--branch-default-all` is given: the flag only ever suppresses the
+source left unanswered, never overrides an explicit column value.
+Without `--branch-default-all`, Step 2.4 prompts exactly as described
+above for every git-managed source lacking a branch value, regardless
+of intake method — positional, paste-loop, or `--sources-file`.
+
+| Step | Prompts with --sources-file + --branch-default-all |
+|---|---|
+| Step 1 — Intake | 0 |
+| Step 2.4 — Confirm branch | 0 |
+| Step 2.5 — Confirm contextualizer name | 1 |
+
+With both flags supplied, the only interactive prompt remaining before
+Step 3.5 is the Step 2.5 contextualizer-name prompt.
+
 **No re-confirmation later.** The branch can always be edited manually
 in `source-paths.json` after bootstrap (the engine re-reads the file on
 every invocation). A future revision may add a `/skill-engine:set-branch`
@@ -185,3 +272,97 @@ name-keyed — duplicate `<name>-context` navigators across sibling
 directories resolve non-deterministically).
 
 The accepted name becomes the **`<contextualizer-slug>`** used in Step 3.
+
+## Activation guard — same-slug collision only
+
+The guard runs after the slug is known (Step 2.5) and before anything
+is stamped: once the slug is accepted, check whether a contextualizer
+with that exact slug already exists, before Step 3 stamps anything:
+
+<!-- doctrine:activation-guard-find:start -->
+```bash
+slug="$1"
+find .claude/skills -mindepth 1 -maxdepth 1 -type d -name "${slug}-context" 2>/dev/null
+```
+<!-- doctrine:activation-guard-find:end -->
+
+If the match is a non-empty directory, surface a one-line warning
+naming the path, list the files that would be overwritten, and pause
+for explicit confirmation before continuing. The condition is
+files-present, NOT a parseable `research/.research-state.json`: a
+corrupted state marker must not bypass this guard, because the
+directory may still hold a curated `SKILL.md` and a populated
+`research/source-paths.json` that stamping would overwrite. The
+`using-skill-engine` router sends both new and corrupt-marker
+directories here; either way, existing files pause for confirmation. A
+*different* slug's contextualizer existing alongside it is not a
+collision — bootstrapping proceeds with no pause.
+
+## Reachability probe — `--probe`
+
+With `--probe`, after the activation guard and before Step 3
+(stamping), run the recipe below once per intaken `git-managed` source
+(non-`git-managed` sources get no row) and print one table: one row
+per URL, `reachable` or `unreachable`, and for unreachable rows the
+first line of git's error.
+
+<!-- doctrine:reachability-probe:start -->
+```bash
+url="$1"
+ref="${2:-}"
+if [ -z "$ref" ]; then
+  ref="HEAD"
+fi
+err_file="$(mktemp)"
+trap 'rm -f "$err_file"' EXIT
+export GIT_TERMINAL_PROMPT=0
+unset GIT_ASKPASS SSH_ASKPASS
+export GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=10'
+out="$(git ls-remote -- "$url" "$ref" 2>"$err_file")"
+rc=$?
+err="$(head -n1 "$err_file")"
+if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
+  if [ -z "$err" ]; then
+    err="no error text was returned"
+  fi
+  printf 'unreachable\t%s\t%s\n' "$url" "$err"
+else
+  printf 'reachable\t%s\t\n' "$url"
+fi
+```
+<!-- doctrine:reachability-probe:end -->
+
+Classify unreachable whenever the invocation exits non-zero **or**
+returns empty stdout — never on exit code alone. A reachable
+repository probed against a nonexistent branch exits zero with nothing
+on either stream; that row states plainly that no error text was
+returned rather than showing a blank field.
+
+The three environment settings are what make this safe to run
+unattended, which is the only way it is ever run: `--sources-file` can
+carry dozens of URLs and nobody is watching the terminal. A private
+HTTPS repository asks for a username and password; a `git@host:` URL
+for a host absent from `known_hosts` asks to confirm a host key; a host
+that no longer answers waits out the TCP default. Any one of those
+turns the whole probe into a run with no table, no error, and no
+indication which URL it is stuck on. `GIT_TERMINAL_PROMPT=0` refuses
+the terminal prompt, unsetting the askpass helpers stops git preferring
+an inherited GUI credential dialog over that refusal (a configured
+`GIT_ASKPASS` is common and defeats `GIT_TERMINAL_PROMPT` on its own),
+and `BatchMode=yes` plus a `ConnectTimeout` make SSH fail rather than
+ask or wait. Each becomes an ordinary `unreachable` row carrying git's
+own error text. What this does not bound is a host that completes a
+connection and then stalls mid-transfer; there is no portable timeout
+for that, and `--probe` does not claim one.
+
+The table is shown before the confirmation question below it. When
+any row is unreachable, ask once:
+
+> `<N>` of `<M>` sources are unreachable (see table above). Continue
+> anyway? [y/N]
+
+On decline, nothing is stamped. On consent, every source is stamped
+and unreachable sources are excluded from any `--clone-all` seed (see
+[`cache-seeding.md`](cache-seeding.md)) — the per-source `[y/N]`
+prompt and `--clone-none` are unaffected. Without `--probe`, none of
+this runs and intake makes no network call, exactly as today.
