@@ -8,24 +8,25 @@ The review is in three steps. Fill Step 1 first, save, then re-run `/skill-engin
 
 Write your predictions before scrolling. The point is to surface your model of what this contextualizer should be, then let the disagreement set in Step 2 show you where the engine's draft diverges from your intent. If you read the diff first, Step 2 has nothing to teach.
 
-- *"This skill is for me, the app owner."*
-- *"This skill should NOT misinterpret the app  "*
-- *"The reference I'd cut: none - looks good."*
+- *"This skill is for the app owver and agents gaining context of the project during feature development"*
+- *"This skill should NOT make false claims."*
+- *"The reference I'd cut: none, looks good"*
 
 <!-- Do not scroll past this line until the three blanks above are filled. -->
 
 ## Step 2 — Disagreement set
 
 Paragraph→permalink density: 99.4% (report-only; not one of the disagreements below).
-Re-emit candidates: 9 of 9 references cite changed paths (31 changed paths uncited).
+Re-emit candidates: 9 of 9 references cite changed paths (50 changed paths uncited).
 
-- [ ] accept  [ ] reject   Your "for me, the app owner" frames a single-repo audience, but this run added three source-entry field rows (`forge`, `files_of_interest`, `workspace_roots`) and a sparse-clone/nine-workspace-roots paragraph describing configuration your one registered source does not use — coverage aimed at someone pointing the engine at other people's monorepos, not at you pointing it at this one.
-- [ ] accept  [ ] reject   "Should NOT misinterpret the app" is most at risk where the pack now asserts a version: it says the engine ships at `0.8.0`, true of `main` at `e8561a9` but not of the plugin actually installed on this machine, which is `0.6.0` — so the pack describes an engine two minors newer than the one your `/skill-engine:*` commands are running.
-- [ ] accept  [ ] reject   `artifact-contract.md` still states that `.discover-cache.json` and other dot-prefixed `research/*.json` files are gitignored runtime state, which is the engine's doctrine faithfully reported but false of this install — no such ignore rule exists here, and this run's own `.discover-inventory.json` is now untracked inside a tracked contextualizer.
-- [ ] accept  [ ] reject   The run went past a pure re-pin in two places the harvest did not ask for — a § REFRESH paragraph on the re-emit candidate set and three rows in the field table — and while your "cut nothing" prediction licenses no deletions and there are none, it does not speak to additions, which is where this run exercised discretion.
-- [ ] accept  [ ] reject   The Check 6 rewrite in `monorepo.md` turned one sentence into four (cache-tree resolution, hex-suffix matching, nine roots, `[N/A]` on an absent sparse root), leaving that paragraph denser than its neighbors — accurate, but it reads like reference documentation where the rest of the file reads like orientation.
-- [ ] accept  [ ] reject   `discover-refresh.md`'s cache-lifecycle sentence now carries two `Source:` links, the only double-cited sentence in that file, because the original GC claim was mis-attributed to `09-discover-config.md`, which never documented GC at all — the alternative was splitting one sentence into two.
-- [ ] accept  [ ] reject   Zero references added or cut, matching "none — looks good" exactly, but all 9 were rewritten and 202 permalinks re-pinned, so the blast radius is the whole corpus and the evidence that nothing broke is mechanical rather than editorial: `verify.sh` 11/0, density 99.4% flat against baseline, and all 204 links validated in-bounds at `e8561a9`.
+- [X] accept  [ ] reject   Your "should NOT make false claims" bar is the one this run could not meet cleanly: v0.9.0 ships four doctrine files that contradict its own behavior (`02-artifact-contract.md:191` and `08-discover-pipeline.md:244` still say the engine never auto-detects archival; `refresh/SKILL.md:81` and `drift-detection-and-phases.md:3` still say "four-phase probe"), so the corpus can be true about the engine or agree with its own cited sources, but not both — this run chose true-about-the-engine and names the lag in the prose, which is a judgment made on your behalf rather than one you asked for.
+- [X] accept  [ ] reject   "For the app owner and agents gaining context during feature development" frames a consumer audience, but the `archived` paragraph now spends three clauses on which doctrine chapters are stale — engine-maintenance trivia that helps you and actively wastes an agent that only wanted to know whether archival is automatic.
+- [X] accept  [ ] reject   The two field rows this run added to `artifact-contract.md` (`probe_budget`, `importance`) document budgeting that exists to make a tens-of-sources registry affordable; your contextualizer registers one source, so that row pair is coverage for an install you do not have — the same single-repo-audience mismatch the last review raised about `forge` and `workspace_roots`.
+- [X] accept  [ ] reject   The harvest named seven false or stale sentences; this run fixed ten, adding `discover-refresh.md:94`, `monorepo.md:30`, and `invariants.md:42` on its own initiative — every one of them a false claim, so they serve prediction 2, but they are discretion exercised past the brief you wrote.
+- [X] accept  [ ] reject   `monorepo.md`'s Check 6 paragraph grew from one sentence to four to carry the absolute-path restriction *and* the `./docs/` failure it prevents, so an orientation file now contains a bug postmortem — the same density complaint the last review filed against this exact paragraph, one cycle later and worse.
+- [X] accept  [ ] reject   `workflows.md`'s `engine-bootstrap` section went from one paragraph to three because five new flags had to be named, making intake the longest-treated workflow in a reference read mostly by someone about to run `refresh`.
+- [X] accept  [ ] reject   Twenty-two citations had a visible line range in their link text that disagreed with the range in the URL, and this run silently re-synced all of them — nineteen were already wrong in the live corpus before this refresh, so that is a correctness fix you neither requested nor rejected, made invisible by being folded into a re-pin.
+- [X] accept  [ ] reject   Zero references added or cut, matching "none, looks good" exactly, but all nine were rewritten and 205 permalinks re-pinned, so the blast radius is the whole corpus while the evidence that nothing broke is mechanical rather than editorial: `verify.sh` 11/0, density flat at 99.4%, and 215/215 permalinks resolving in-bounds at `b075dae`.
 
 ## Step 3 — Sign-off
 
