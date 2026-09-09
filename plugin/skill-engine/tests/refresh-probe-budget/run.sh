@@ -463,6 +463,61 @@ else
     else
       pass "c1_executed_no_skip_line_when_budget_absent"
     fi
+
+    # ---- the recipe orders the eligible subset, not every source --------
+    # The prose above the recipe says "Promoted sources are ordered by
+    # descending importance". Promotion itself needs Phase 1's probe result
+    # -- a probed SHA differing from the recorded one -- which is not in the
+    # file, so the recipe cannot test for it and the doc has to say so. What
+    # the recipe CAN test for is everything that disqualifies a source
+    # before promotion is even a question, and it tested for none of it:
+    # archived entries, lifecycle.state removed, rejected companions, and
+    # web-doc/local-path sources (which have no SHA to be promoted on) all
+    # came out of the sort. A model running the recipe verbatim and taking
+    # the first N spent the budget on entries that were never candidates,
+    # and computed the skip line's K off the same wrong set (PR #15 review,
+    # finding 8).
+    INELIGIBLE_FIXTURE="$SCRIPT_DIR/fixtures/source-paths-ineligible.json"
+    ELIG_SCRATCH="$WORK/exec-ineligible"
+    mkdir -p "$ELIG_SCRATCH/research"
+    cp "$INELIGIBLE_FIXTURE" "$ELIG_SCRATCH/research/source-paths.json"
+
+    ELIG_OUT=""
+    if [ "$FENCE_LANG" = "jq" ]; then
+      ELIG_OUT="$(cd "$ELIG_SCRATCH" && jq "$FENCE_BODY" research/source-paths.json 2>&1 < research/source-paths.json)"
+    else
+      ELIG_OUT="$(cd "$ELIG_SCRATCH" && bash -c "$FENCE_BODY" 2>&1 < research/source-paths.json)"
+    fi
+
+    INELIGIBLE_IDS=(aaa-archived aab-removed aac-rejected aad-web-doc aae-local-path)
+    elig_leaked=""
+    for bad_id in "${INELIGIBLE_IDS[@]}"; do
+      if printf '%s' "$ELIG_OUT" | grep -qF -- "$bad_id"; then
+        elig_leaked="${elig_leaked}${bad_id} "
+      fi
+    done
+    if [ -z "$elig_leaked" ]; then
+      pass "c1_executed_excludes_ineligible_sources"
+    else
+      fail "c1_executed_excludes_ineligible_sources" \
+        "the ordering recipe emitted sources that are not promotion candidates: $elig_leaked" \
+        "full output: ${ELIG_OUT:-<empty>}"
+    fi
+
+    # The complement, so the filter cannot pass by emitting nothing: both
+    # eligible sources survive it, in importance order, and one of them is
+    # `status: proposed` -- rejected companions are out, proposed ones are
+    # not.
+    elig_hi="$(printf '%s' "$ELIG_OUT" | grep -bo -- 'zzz-eligible-high' | head -n1 | cut -d: -f1)"
+    elig_lo="$(printf '%s' "$ELIG_OUT" | grep -bo -- 'zzy-eligible-proposed' | head -n1 | cut -d: -f1)"
+    if [ -n "${elig_hi:-}" ] && [ -n "${elig_lo:-}" ] && [ "$elig_hi" -lt "$elig_lo" ]; then
+      pass "c1_executed_keeps_eligible_sources_in_order"
+    else
+      fail "c1_executed_keeps_eligible_sources_in_order" \
+        "expected both eligible ids, importance 5 before the default-3 proposed one" \
+        "offsets: zzz-eligible-high=${elig_hi:-<absent>} zzy-eligible-proposed=${elig_lo:-<absent>}" \
+        "full output: ${ELIG_OUT:-<empty>}"
+    fi
   fi
 fi
 

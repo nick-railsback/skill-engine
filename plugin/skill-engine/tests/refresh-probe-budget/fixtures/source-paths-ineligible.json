@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "aaa-archived",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/archived",
+      "status": "confirmed",
+      "archived": true,
+      "importance": 5,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked_sha": "aaa1111",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "aab-removed",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/removed",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 5,
+      "lifecycle": {
+        "state": "removed",
+        "last_checked_sha": "bbb2222",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "aac-rejected",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/rejected",
+      "status": "rejected",
+      "archived": false,
+      "importance": 5,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked_sha": "ccc3333",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "aad-web-doc",
+      "kind": "web-doc",
+      "url": "https://example.com/acme/docs",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 5,
+      "lifecycle": {
+        "state": "reachable",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "aae-local-path",
+      "kind": "local-path",
+      "path": "/tmp/acme-local",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 5,
+      "lifecycle": {
+        "state": "reachable",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "zzz-eligible-high",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/zzz",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 5,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-08-01T00:00:00Z",
+        "last_checked_sha": "ddd4444",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    },
+    {
+      "id": "zzy-eligible-proposed",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/zzy",
+      "status": "proposed",
+      "archived": false,
+      "lifecycle": {
+        "state": "reachable",
+        "last_checked": "2026-08-02T00:00:00Z",
+        "last_checked_sha": "eee5555",
+        "proposed_url": null
+      },
+      "discovered_via": null
+    }
+  ]
+}

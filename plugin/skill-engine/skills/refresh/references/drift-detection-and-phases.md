@@ -286,8 +286,27 @@ so never-probed sources sort to the front); further ties are broken by
 ascending source `id`. The ordering recipe:
 
 ```jq
-.sources | sort_by([-(.importance // 3), (.lifecycle.last_checked // "1970-01-01T00:00:00Z"), .id]) | .[].id
+.sources
+| map(select(
+    (.archived // false) == false
+    and (.lifecycle.state // "") != "removed"
+    and (.status == "confirmed" or .status == "proposed")
+    and .kind == "git-managed"))
+| sort_by([-(.importance // 3), (.lifecycle.last_checked // "1970-01-01T00:00:00Z"), .id])
+| .[].id
 ```
+
+The `select` is Pre-flight step 4's in-scope filter plus `kind ==
+"git-managed"`, which is as far as the registry alone can narrow the set:
+promotion also requires this session's probed SHA to differ from the
+recorded `last_checked_sha`, and that comparison is a Phase 1 result, not a
+field of the file. So read this recipe's output as the ordered *candidate*
+list and apply the SHA comparison to it — without the `select`, the list
+would also carry archived entries, `lifecycle.state: removed` entries,
+rejected companions, and `web-doc`/`local-path` sources that have no SHA to
+be promoted on, and a budget spent from the head of that list would be spent
+on sources that were never candidates. K in the skip line below is the
+number of promoted sources, not the number registered.
 
 When `probe_budget: N` is set, the budgeted step is the re-read, never
 the Phase 1 probe: the budget bounds model-token cost, not network
