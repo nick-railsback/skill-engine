@@ -8,25 +8,24 @@ The review is in three steps. Fill Step 1 first, save, then re-run `/skill-engin
 
 Write your predictions before scrolling. The point is to surface your model of what this contextualizer should be, then let the disagreement set in Step 2 show you where the engine's draft diverges from your intent. If you read the diff first, Step 2 has nothing to teach.
 
-- *"This skill is for the app owver and agents gaining context of the project during feature development"*
-- *"This skill should NOT make false claims."*
-- *"The reference I'd cut: none, looks good"*
+- *"This skill is for the app owner and agents gaining context of the project during feature development"* (carried forward from the 2026-09-09 v0.9.0 review at the maintainer's direction — no new predictions were offered for this re-pin)
+- *"This skill should NOT make false claims."* (carried forward)
+- *"The reference I'd cut: none, looks good"* (carried forward)
 
 <!-- Do not scroll past this line until the three blanks above are filled. -->
 
 ## Step 2 — Disagreement set
 
 Paragraph→permalink density: 99.4% (report-only; not one of the disagreements below).
-Re-emit candidates: 9 of 9 references cite changed paths (50 changed paths uncited).
+Re-emit candidates: 5 of 9 references cite changed paths (16 changed paths uncited).
 
-- [X] accept  [ ] reject   Your "should NOT make false claims" bar is the one this run could not meet cleanly: v0.9.0 ships four doctrine files that contradict its own behavior (`02-artifact-contract.md:191` and `08-discover-pipeline.md:244` still say the engine never auto-detects archival; `refresh/SKILL.md:81` and `drift-detection-and-phases.md:3` still say "four-phase probe"), so the corpus can be true about the engine or agree with its own cited sources, but not both — this run chose true-about-the-engine and names the lag in the prose, which is a judgment made on your behalf rather than one you asked for.
-- [X] accept  [ ] reject   "For the app owner and agents gaining context during feature development" frames a consumer audience, but the `archived` paragraph now spends three clauses on which doctrine chapters are stale — engine-maintenance trivia that helps you and actively wastes an agent that only wanted to know whether archival is automatic.
-- [X] accept  [ ] reject   The two field rows this run added to `artifact-contract.md` (`probe_budget`, `importance`) document budgeting that exists to make a tens-of-sources registry affordable; your contextualizer registers one source, so that row pair is coverage for an install you do not have — the same single-repo-audience mismatch the last review raised about `forge` and `workspace_roots`.
-- [X] accept  [ ] reject   The harvest named seven false or stale sentences; this run fixed ten, adding `discover-refresh.md:94`, `monorepo.md:30`, and `invariants.md:42` on its own initiative — every one of them a false claim, so they serve prediction 2, but they are discretion exercised past the brief you wrote.
-- [X] accept  [ ] reject   `monorepo.md`'s Check 6 paragraph grew from one sentence to four to carry the absolute-path restriction *and* the `./docs/` failure it prevents, so an orientation file now contains a bug postmortem — the same density complaint the last review filed against this exact paragraph, one cycle later and worse.
-- [X] accept  [ ] reject   `workflows.md`'s `engine-bootstrap` section went from one paragraph to three because five new flags had to be named, making intake the longest-treated workflow in a reference read mostly by someone about to run `refresh`.
-- [X] accept  [ ] reject   Twenty-two citations had a visible line range in their link text that disagreed with the range in the URL, and this run silently re-synced all of them — nineteen were already wrong in the live corpus before this refresh, so that is a correctness fix you neither requested nor rejected, made invisible by being folded into a re-pin.
-- [X] accept  [ ] reject   Zero references added or cut, matching "none, looks good" exactly, but all nine were rewritten and 205 permalinks re-pinned, so the blast radius is the whole corpus while the evidence that nothing broke is mechanical rather than editorial: `verify.sh` 11/0, density flat at 99.4%, and 215/215 permalinks resolving in-bounds at `b075dae`.
+- [X] accept  [ ] reject   Your "for the app owner and agents gaining context during feature development" names a consumer audience, and this proposal changes nothing that audience reads — zero references added or cut, no coverage moved — while rewriting all nine files, so its whole blast radius (215 permalinks, ten files `modified`) is maintenance a reader only notices when a permalink is followed.
+- [X] accept  [ ] reject   Your "should NOT make false claims" is why two sentences were deleted rather than rewritten: they said the doctrine chapters "still" described archival as user-set and "still" called this "the four-phase probe", true at the previous pin and false at this one, and the fix is silence plus four citations — a call made on your behalf that the corpus should not narrate the engine's own doc corrections.
+- [X] accept  [ ] reject   The `archived` paragraph in `artifact-contract.md` now ends in a four-citation Source list (two skill files, two doctrine chapters) for one behavior, one cycle after you accepted a disagreement that this exact paragraph carried too much engine-maintenance trivia — the trivia is gone, but the citation count went up.
+- [X] accept  [ ] reject   `discover-refresh.md` keeps "the half-numbered first phase is the seam where v0.9.0 added archival detection ahead of a probe order that was already fixed" — engine history of the same kind this run removed two sentences later, left in because it explains the 0.5 numbering rather than describing drift, a line you may not draw where I did.
+- [X] accept  [ ] reject   The pin advanced to `f772c0d`, an ordinary CI-script commit, rather than to a release commit as the previous refresh deliberately chose; the corpus is true at HEAD today and is re-staled by the next commit to any of its 50 cited paths, and nothing in the references says which commit they describe beyond the SHA inside every URL.
+- [X] accept  [ ] reject   46 line ranges shifted and 9 overlapped the doc-correction hunks; the shifted ranges were checked by byte comparison of the cited text and the 9 overlaps by reading old against new, but the visible `L<a>-L<b>` in link text was machine-synced, so the evidence that every citation still points where its sentence claims is structural (215/215 resolve, one SHA) rather than editorial.
+- [X] accept  [ ] reject   Zero references added or cut matches "none, looks good" exactly, and the 16 uncited changed paths — the contextualizer's own files, the `/release` command, `ci-local.sh`, one test — stay uncited on the judgment that this corpus should not describe the repo's own CI loop, even though `versioning.md` already describes the doctrine checks CI runs.
 
 ## Step 3 — Sign-off
 
