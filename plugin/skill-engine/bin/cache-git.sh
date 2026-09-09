@@ -6,7 +6,7 @@
 # Usage:
 #   cache-git.sh clone <source_id> <url> [<ref>]
 #   cache-git.sh sparse-clone <source_id> <url> <ref> -- <pattern>...
-#   cache-git.sh advance <source_id> <old_sha> <new_sha>
+#   cache-git.sh advance <source_id> <old_sha> <new_sha> <inventory_file>
 #   cache-git.sh since-last-check <cache_dir> <old_sha> <new_sha>
 #
 # Every recipe writes under
@@ -163,7 +163,11 @@ cmd_since_last_check() {
 }
 
 cmd_advance() {
-  local source_id="$1" old_sha="$2" new_sha="$3"
+  if [ "$#" -ne 4 ]; then
+    echo "Usage: cache-git.sh advance <source_id> <old_sha> <new_sha> <inventory_file>" >&2
+    exit 1
+  fi
+  local source_id="$1" old_sha="$2" new_sha="$3" inv_file="$4"
 
   if [ "$old_sha" = "$new_sha" ]; then
     exit 0
@@ -184,6 +188,25 @@ cmd_advance() {
   cmd_since_last_check "$cache_dir" "$old_sha" "$new_sha" > "$since_tmpfile"
   inventory_json="$(python3 "$CLAUDE_PLUGIN_ROOT/tests/discover_inventory.py" "$cache_dir" --since-json "$since_tmpfile")"
   rm -f "$since_tmpfile"
+
+  # The inventory merge happens HERE, before the rename, because the rename
+  # is the only step that changes what the next session sees: once
+  # <id>-<old_sha>/ is gone, the SHA the registry still records names
+  # nothing on disk, and the next advance fetches from a directory that no
+  # longer exists -- "advance aborted", every session, until someone
+  # hand-edits the registry. Ordering the fallible work first makes the
+  # whole subcommand replayable instead: any failure up to this point
+  # leaves the cache exactly where the recorded SHA says it is, so running
+  # the identical advance again just works. The caller used to own this
+  # write and ran it after the helper had already renamed, which is what
+  # opened that window.
+  mkdir -p "$(dirname "$inv_file")"
+  local existing="{}"
+  [ -f "$inv_file" ] && existing="$(cat "$inv_file")"
+  printf '%s' "$existing" \
+    | jq --arg sid "$source_id" --argjson entry "$inventory_json" '.[$sid] = $entry' \
+    > "${inv_file}.tmp"
+  mv "${inv_file}.tmp" "$inv_file"
 
   mv "$cache_dir" "$cache_root/git-managed/${source_id}-${new_sha}"
 

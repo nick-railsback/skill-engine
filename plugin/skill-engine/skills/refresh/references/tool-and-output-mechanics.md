@@ -76,10 +76,21 @@ already exists for that source, run the advance recipe below with
 `<old_sha>` = the prior recorded SHA and `<new_sha>` = the newly-probed
 SHA. It fetches the new commit into the existing directory (never a fresh
 `git clone`), keeps both the old and new commit reachable in the same
-directory, computes the set of paths that changed between them, and only
-then renames the directory and removes any now-superseded sibling. A
-source with no local cache directory is unaffected — REFRESH never clones
-on its own; there is nothing here to advance.
+directory, computes the set of paths that changed between them, merges that
+into the inventory file named as its fourth argument, and only then renames
+the directory and removes any now-superseded sibling. A source with no local
+cache directory is unaffected — REFRESH never clones on its own; there is
+nothing here to advance.
+
+The rename is deliberately last, and the inventory write is deliberately
+inside the helper rather than after it. The rename is the one step that
+changes what the next session sees: after it, `<id>-<old_sha>/` is gone
+while the registry still records `<old_sha>`, so an advance that dies in
+between leaves the next session fetching from a directory that does not
+exist — "advance aborted", repeated every run until the registry is
+hand-edited. With every fallible step ordered before the rename, a failed
+run leaves the cache exactly where the recorded SHA says it is and the
+identical advance can simply be run again.
 
 <!-- doctrine:cache-advance-recipe:start -->
 ```bash
@@ -87,18 +98,8 @@ if [ "<old_sha>" = "<new_sha>" ]; then
   exit 0
 fi
 
-source_id="<source_id>"
-
-inventory_json="$("$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" advance "$source_id" "<old_sha>" "<new_sha>")" || exit $?
-
-mkdir -p research
-inv_file="research/.discover-inventory.json"
-existing="{}"
-[ -f "$inv_file" ] && existing="$(cat "$inv_file")"
-printf '%s' "$existing" \
-  | jq --arg sid "$source_id" --argjson entry "$inventory_json" '.[$sid] = $entry' \
-  > "${inv_file}.tmp"
-mv "${inv_file}.tmp" "$inv_file"
+"$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" advance \
+  "<source_id>" "<old_sha>" "<new_sha>" "research/.discover-inventory.json" || exit $?
 ```
 <!-- doctrine:cache-advance-recipe:end -->
 

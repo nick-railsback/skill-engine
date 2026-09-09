@@ -747,6 +747,107 @@ else
   fi
 fi
 
+section "must-replay: a failed inventory write leaves the advance repeatable, not wedged"
+
+# The directory rename is the step that changes what the NEXT session sees:
+# after it, `<id>-<old_sha>/` is gone and the recorded old SHA no longer
+# names anything on disk. Every fallible step therefore has to happen before
+# it, or a failure in between leaves the cache advanced and the recorded
+# state behind it — and the next advance fetches from a directory that no
+# longer exists, prints "advance aborted", and does so again every session
+# until someone hand-edits the registry (PR #15 review, finding 3).
+#
+# The transient failure here is an unwritable research/ directory: a
+# stand-in for the malformed existing inventory, the full disk, and the
+# interrupted run, all of which land in the same window. What is asserted is
+# not the failure but the recovery — repair the condition, run the identical
+# advance again, and it completes.
+
+if ! $HAVE_RECIPE; then
+  fail "a failed inventory write leaves the advance repeatable" "$NO_RECIPE_REASON"
+else
+  FX5="$TMPROOT/fx-replay"
+  UPSTREAM5="$FX5/upstream"
+  mkdir -p "$FX5"
+  SHA_A5="$(upstream_init_commit_a "$UPSTREAM5")"
+  HOME5="$FX5/home"
+  CACHE_GM5="$HOME5/.cache/skill-engine/git-managed"
+  SOURCE_ID5="acme-widgets"
+
+  if ! seed_cache_shallow "$UPSTREAM5" "$CACHE_GM5" "$SOURCE_ID5" "$SHA_A5"; then
+    fail "a failed inventory write leaves the advance repeatable" \
+      "fixture setup failed: could not seed a --depth=1 scratch cache from the scratch upstream"
+  else
+    SHA_B5="$(upstream_add_commit_b "$UPSTREAM5")"
+    CTX_ROOT5="$FX5/ctxroot"
+    mkdir -p "$CTX_ROOT5/research"
+    chmod 500 "$CTX_ROOT5/research"
+
+    run_recipe "$RECIPE_TEMPLATE" "$HOME5" "$SOURCE_ID5" "$SHA_A5" "$SHA_B5" "$CTX_ROOT5"
+    replay_rc1="$RUN_RC"
+    replay_out1="$RUN_OUT"
+    chmod 700 "$CTX_ROOT5/research"
+
+    inv_file5="$CTX_ROOT5/research/.discover-inventory.json"
+    # Fixture self-check: everything below is about what a FAILED write
+    # leaves behind, so a write that quietly succeeded (running as root, an
+    # exotic filesystem) would make the rest vacuous.
+    if [ ! -f "$inv_file5" ]; then
+      pass "fixture self-check: the unwritable research/ really did stop the inventory write"
+    else
+      fail "fixture self-check: the unwritable research/ really did stop the inventory write" \
+        "$inv_file5 exists — the run below no longer exercises a failed write"
+    fi
+
+    old_dir5="$CACHE_GM5/${SOURCE_ID5}-${SHA_A5}"
+    if [ -d "$old_dir5" ]; then
+      pass "the cache directory still carries the recorded old SHA after the write failed (state and disk agree)"
+    else
+      fail "the cache directory still carries the recorded old SHA after the write failed (state and disk agree)" \
+        "expected: $old_dir5" "found:" "$(sibling_dirs "$CACHE_GM5" "$SOURCE_ID5")" \
+        "first-run exit: $replay_rc1" "first-run output:" "$replay_out1"
+    fi
+
+    # The replay: same source, same two SHAs, nothing hand-repaired but the
+    # transient condition itself.
+    run_recipe "$RECIPE_TEMPLATE" "$HOME5" "$SOURCE_ID5" "$SHA_A5" "$SHA_B5" "$CTX_ROOT5"
+    if [ "$RUN_RC" -eq 0 ]; then
+      pass "re-running the identical advance after the transient failure exits 0"
+    else
+      fail "re-running the identical advance after the transient failure exits 0" \
+        "exit: $RUN_RC" "output:" "$RUN_OUT"
+    fi
+
+    if printf '%s' "$RUN_OUT" | grep -qF 'advance aborted'; then
+      fail "the replay is not refused with 'advance aborted'" \
+        "the first run moved the cache directory out from under the recorded SHA, so every later session re-reads a directory that no longer exists" \
+        "output:" "$RUN_OUT"
+    else
+      pass "the replay is not refused with 'advance aborted'"
+    fi
+
+    replay_to5=""
+    if [ -f "$inv_file5" ]; then
+      replay_to5="$(jq -r --arg sid "$SOURCE_ID5" '.[$sid].since_last_check.to_sha // empty' "$inv_file5" 2>/dev/null)"
+    fi
+    if [ "$replay_to5" = "$SHA_B5" ]; then
+      pass "the replay writes the inventory it could not write the first time"
+    else
+      fail "the replay writes the inventory it could not write the first time" \
+        "expected since_last_check.to_sha = $SHA_B5, got: ${replay_to5:-<no inventory>}"
+    fi
+
+    expected_dir5="$CACHE_GM5/${SOURCE_ID5}-${SHA_B5}"
+    siblings5="$(sibling_dirs "$CACHE_GM5" "$SOURCE_ID5")"
+    if [ "$siblings5" = "$expected_dir5" ]; then
+      pass "after the replay exactly one directory remains, named for the new SHA"
+    else
+      fail "after the replay exactly one directory remains, named for the new SHA" \
+        "expected only: $expected_dir5" "found:" "${siblings5:-<none>}"
+    fi
+  fi
+fi
+
 # ---- DISCOVER cache-hit check: SHA-aware hit/miss decision ---------------
 # DISCOVER pre-flight step 6 (cache-and-clone.md) probes for a warm
 # git-managed cache directory before offering to clone. Today's fenced
