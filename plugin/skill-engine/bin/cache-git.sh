@@ -225,7 +225,17 @@ cmd_advance() {
   # what makes every abort between here and the removal -- a
   # CLAUDE_PLUGIN_ROOT pointing at no install, a failed diff, an interrupt --
   # clean up after itself instead of leaving the scratch file behind.
-  local since_tmpfile="" inventory_json
+  # since_tmpfile is deliberately NOT `local`. The EXIT trap reads it after
+  # `set -e` has already begun tearing the shell down, and whether a
+  # function's frame is still standing at that point is version-dependent:
+  # under the bash 3.2 macOS ships the local is still visible, under the
+  # bash 5 CI runs it is not. As a local it therefore expanded to empty
+  # inside the trap and `rm -f ""` removed nothing while reporting success
+  # -- the leak this trap exists to prevent, on the only platform that was
+  # not being watched. A global reads correctly under both.
+  # inventory_json stays local; nothing outside this function reads it.
+  since_tmpfile=""
+  local inventory_json
   trap 'rm -f "${since_tmpfile:-}" 2>/dev/null || :' EXIT
   since_tmpfile="$(mktemp "${TMPDIR:-/tmp}/skill-engine-advance.XXXXXX")"
   cmd_since_last_check "$cache_dir" "$old_sha" "$new_sha" > "$since_tmpfile"

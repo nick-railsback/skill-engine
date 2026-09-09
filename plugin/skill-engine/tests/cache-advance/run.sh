@@ -966,6 +966,35 @@ else
         "nothing appeared under $CALIB_TMPDIR either way — the no-leak assertion above proves nothing"
     fi
   fi
+
+  # Shape, because the behavioral assertion above is platform-dependent in a
+  # way that hid a real leak: whether a function's locals are still readable
+  # from an EXIT trap during `set -e` teardown differs by bash version. Under
+  # the bash 3.2 macOS ships they are, so a trap over a `local` cleans up and
+  # this suite passed locally for as long as the defect existed; under the
+  # bash 5 CI runs they are not, the variable expands to empty, and `rm -f ""`
+  # succeeds having removed nothing. Asserting the shape catches a regression
+  # on the platform the behavior cannot.
+  trap_vars="$(grep -oE "trap '[^']*\\\$\{?[A-Za-z_][A-Za-z0-9_]*" "$CACHE_GIT_SH" \
+    | grep -oE '[A-Za-z_][A-Za-z0-9_]*$' | sort -u)"
+  local_leaks=""
+  while IFS= read -r tv; do
+    [ -n "$tv" ] || continue
+    if grep -qE "^[[:space:]]*local\b[^#]*\b${tv}\b" "$CACHE_GIT_SH"; then
+      local_leaks="${local_leaks:+$local_leaks, }$tv"
+    fi
+  done <<< "$trap_vars"
+
+  if [ -z "$trap_vars" ]; then
+    fail "no EXIT trap in cache-git.sh cleans up via a function-local" \
+      "no trap referencing a variable was found — the scan is vacuous"
+  elif [ -z "$local_leaks" ]; then
+    pass "no EXIT trap in cache-git.sh cleans up via a function-local"
+  else
+    fail "no EXIT trap in cache-git.sh cleans up via a function-local" \
+      "declared local and read from a trap: $local_leaks" \
+      "under bash 5 the frame is gone when the trap runs, so the cleanup silently no-ops"
+  fi
 fi
 
 section "must-preserve: advancing one source does not garbage-collect a sibling whose id shares its prefix"
