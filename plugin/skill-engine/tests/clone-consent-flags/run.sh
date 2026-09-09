@@ -155,9 +155,16 @@ norm_str() { printf '%s' "$1" | norm; }
 # bound above 255, and the window applies on both sides of the anchor.
 near() {
   local text="$1" anchor="$2" needle="$3" window="$4"
+  # `grep -c ... > /dev/null`, not `grep -q`: -q exits at its first match,
+  # SIGPIPE-ing the upstream -o while that is still writing its remaining
+  # windows. Under `set -o pipefail` the pipeline then reports 141 and a
+  # needle that WAS found reads as a miss -- the more occurrences of the
+  # anchor, the likelier it fires. -c carries the same 0/1 match semantics
+  # but drains its input to EOF, so the verdict no longer depends on the
+  # anchor's frequency or on the pipe buffer size.
   printf '%s' "$text" \
     | grep -oiE ".{0,${window}}${anchor}.{0,${window}}" \
-    | grep -qiE -- "$needle"
+    | grep -ciE -- "$needle" > /dev/null
 }
 
 # near_all <text> <anchor-ere> <window> <needle-ere>... — true when EVERY

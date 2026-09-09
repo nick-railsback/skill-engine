@@ -211,7 +211,12 @@ assert_absent() {
 
 line_of() {
   local file="$1" pat="$2"
-  grep -n -E -- "$pat" "$file" | head -n1 | cut -d: -f1
+  # -m1 rather than `| head -n1`: head closes the pipe at the first line
+  # and the still-writing grep dies of SIGPIPE, which prints a "write
+  # error: Broken pipe" to stderr on every call. The status is discarded
+  # here so the value stayed correct, but the noise landed in CI logs
+  # next to real failures. -m1 stops grep itself, so nothing is truncated.
+  grep -n -m1 -E -- "$pat" "$file" | cut -d: -f1
 }
 
 # section_lines <file> <start-ere> [<end-ere>] — lines from the first line
@@ -225,7 +230,9 @@ section_lines() {
   [ -n "${start_line:-}" ] || return 1
   end_line=""
   if [ -n "$end_pat" ]; then
-    end_line="$(grep -n -E -- "$end_pat" "$file" | awk -F: -v s="$start_line" '$1 > s {print $1; exit}')"
+    # awk drains to EOF (no `exit`) and latches the first hit instead, for
+    # the same reason -m1 replaced `head -n1` in line_of above.
+    end_line="$(grep -n -E -- "$end_pat" "$file" | awk -F: -v s="$start_line" '$1 > s && !seen {print $1; seen=1}')"
   fi
   if [ -n "${end_line:-}" ]; then
     sed -n "${start_line},$((end_line - 1))p" "$file"
@@ -239,9 +246,16 @@ section_lines() {
 # Never above 250 (see WINDOW-SIZE NOTE above).
 near() {
   local text="$1" anchor="$2" needle="$3" window="$4"
+  # `grep -c ... > /dev/null`, not `grep -q`: -q exits at its first match,
+  # SIGPIPE-ing the upstream -o while that is still writing its remaining
+  # windows. Under `set -o pipefail` the pipeline then reports 141 and a
+  # needle that WAS found reads as a miss -- the more occurrences of the
+  # anchor, the likelier it fires. -c carries the same 0/1 match semantics
+  # but drains its input to EOF, so the verdict no longer depends on the
+  # anchor's frequency or on the pipe buffer size.
   printf '%s' "$text" \
     | grep -oiE ".{0,${window}}${anchor}.{0,${window}}" \
-    | grep -qiE -- "$needle"
+    | grep -ciE -- "$needle" > /dev/null
 }
 
 # near_all <text> <anchor-ere> <window> <needle-ere>... — every given needle
@@ -432,8 +446,8 @@ banner "Phase 0.5 dispatch order, auth claim, and failed-call rule"
 # Asserted on the raw section, not the wrap-normalized copy, because row
 # order is the property and normalization destroys it.
 PHASE05_RAW="$(awk '/^### Phase 0\.5/,/^### Phase 1/' "$DRIFT_MD")"
-gl_row="$(printf '%s\n' "$PHASE05_RAW" | grep -niE '^\|[^|]*gitlab' | head -n1 | cut -d: -f1)"
-ghe_row="$(printf '%s\n' "$PHASE05_RAW" | grep -niE '^\|[^|]*any other host' | head -n1 | cut -d: -f1)"
+gl_row="$(printf '%s\n' "$PHASE05_RAW" | grep -niE -m1 '^\|[^|]*gitlab' | cut -d: -f1)"
+ghe_row="$(printf '%s\n' "$PHASE05_RAW" | grep -niE -m1 '^\|[^|]*any other host' | cut -d: -f1)"
 if [ -z "${gl_row:-}" ] || [ -z "${ghe_row:-}" ]; then
   fail "phase05_gitlab_row_precedes_gh_catchall" \
     "could not locate both rows in the Phase 0.5 table (gitlab row: ${gl_row:-<none>}, catch-all row: ${ghe_row:-<none>})"
