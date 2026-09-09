@@ -357,14 +357,21 @@ else
     "expected 'never-probed'/'never probed' documented near 'first'/'front' in the Phase 1 section"
 fi
 
-# Judgment call B: accept either "id" or "path" — spec.md's own criterion
-# text says "ascending source id"; the doctrine text it quotes says
-# "lexicographic ascending path". Flagged in Track V's report.
-if near "$PHASE1_N" 'ascending' '(source ?id|\bid\b|path)' 150; then
-  pass "c1_further_tiebreak_ascending_id_or_path"
+# Judgment call B, resolved. This accepted either "id" or "path" because
+# the two texts disagreed: spec.md's criterion said "ascending source id"
+# and the doctrine text it quoted said "lexicographic ascending path".
+# 03-engine.md was the one saying "path", and it also named `probed_at` as
+# the first tie-breaker -- a field of .engine-stats.json's sources_probed
+# telemetry, which the sort over source-paths.json cannot reach at all. It
+# now names `lifecycle.last_checked` and `id`, matching the recipe, so the
+# slack this alternation carried has nothing left to cover: accepting
+# "path" here would only make it possible to reintroduce the disagreement
+# without failing (PR #15 review, finding 7).
+if near "$PHASE1_N" 'ascending' '(source ?id|\bid\b)' 150; then
+  pass "c1_further_tiebreak_ascending_id"
 else
-  fail "c1_further_tiebreak_ascending_id_or_path" \
-    "expected a further tie-break documented near 'ascending' and 'id' or 'path' in the Phase 1 section"
+  fail "c1_further_tiebreak_ascending_id" \
+    "expected a further tie-break documented near 'ascending' and 'id' in the Phase 1 section"
 fi
 
 banner "criterion 1 — executable ordering snippet (extracted from the doc, not reimplemented)"
