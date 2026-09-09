@@ -79,22 +79,22 @@ Compute `NEW_VERSION` per the argument-parsing rules above. Show:
 
 On any reply that is not the literal word `yes`, abort cleanly.
 
-**Also confirm the five other surfaces** currently show `$CURRENT` (drift catches a botched prior release). A surface whose file is absent — e.g. the REFRESH-regenerated `skill-engine-overview.md` is git-ignored and only exists after the engine has contextualized itself — is reported and skipped, not a halt:
+**Also confirm the four other surfaces** currently show `$CURRENT` (drift catches a botched prior release):
 
 ```bash
 jq -r '.plugins[0].version' .claude-plugin/marketplace.json
 grep -oE 'This is v[0-9]+\.[0-9]+\.[0-9]+' README.md
 grep -oE 'version-v[0-9]+\.[0-9]+\.[0-9]+-blue' README.md   # shields.io badge — doctrine.sh checks this
-ov=.claude/skills/skill-engine-context/references/skill-engine-overview.md
-[ -f "$ov" ] && grep -E 'currently ships at version' "$ov" || echo "(skill-engine-overview.md absent — skip this surface)"
 grep -E '0\.[0-9]+\.x' SECURITY.md | head -3
 ```
 
-If any surface that EXISTS does NOT match `$CURRENT`, halt: the prior release was inconsistent and the maintainer should investigate before stacking another bump on top. An absent surface is not a halt — note it and continue.
+If any does NOT match `$CURRENT`, halt: the prior release was inconsistent and the maintainer should investigate before stacking another bump on top.
 
-## Phase 3 — Bump the six version surfaces (across five files)
+**The contextualizer's own version line is not a release surface.** `.claude/skills/skill-engine-context/references/nick-railsback-skill-engine-overview.md` states the shipped version, but it is engine-owned corpus, not a hand-maintained file: `.review/manifest.json` records its content hash, and `dogfood-review-manifest` asserts both that every entry's `sha_after` is the live file's own hash and that `hand_edit_check.py` reports no hand-edited path. A `/release` edit there turns that suite red at the tagged commit. The line heals on the post-release refresh, which re-pins the corpus at the release commit and re-stamps the manifest in the same commit — the documented sequence. Do not read it, bump it, or halt on it.
 
-Edit each in turn. Show a one-line diff summary after each. `README.md` carries two surfaces (prose + shields.io badge), so five files hold six surfaces.
+## Phase 3 — Bump five of the six version surfaces (across four files)
+
+Edit each in turn. Show a one-line diff summary after each. `README.md` carries two surfaces (prose + shields.io badge), so four files hold five surfaces. The sixth surface doctrine check 8 gates — the CHANGELOG's top `## [X.Y.Z]` heading — is Phase 4's job, not this phase's.
 
 1. **`plugin/skill-engine/.claude-plugin/plugin.json`** (canonical) — `.version` field:
    ```bash
@@ -118,9 +118,7 @@ Edit each in turn. Show a one-line diff summary after each. `README.md` carries 
 
    Use the Edit tool with the exact literal current strings, not sed-in-place, to avoid macOS/Linux sed-flag drift.
 
-4. **`.claude/skills/skill-engine-context/references/skill-engine-overview.md`** — **only if the file exists.** It is a REFRESH-regenerated snapshot and is git-ignored (`.git/info/exclude`), so a fresh checkout will not have it. If present, change `currently ships at version $CURRENT.` to `currently ships at version $NEW_VERSION.` (Edit tool); the line update keeps it honest until the next REFRESH heals it from canonical sources. If absent, report "(skill-engine-overview.md absent — skipped)" and move on — there is nothing to bump and it would not be committed.
-
-5. **`SECURITY.md`** — only on MINOR or MAJOR bumps (not on PATCH; the supported version line `0.<minor>.x` does not move on patch). Update the table row and the prose:
+4. **`SECURITY.md`** — only on MINOR or MAJOR bumps (not on PATCH; the supported version line `0.<minor>.x` does not move on patch). Update the table row and the prose:
    - Table row: `| 0.<old-minor>.x   | :white_check_mark: |` → `| 0.<new-minor>.x   | :white_check_mark: |`
    - Prose: replace the parenthetical `(currently \`0.<old-minor>.x\`)` with `(currently \`0.<new-minor>.x\`)`.
 
