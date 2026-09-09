@@ -216,9 +216,11 @@ When `/skill-engine:discover` is invoked:
    rest of this DISCOVER run, exactly as the block above. On a refused
    `source_id` or an empty `ls-remote`, `cache-git.sh` emits the same
    one-line fallback diagnostic the block above emits. On a
-   `files_of_interest` entry that resolves no files in the checkout,
-   `cache-git.sh` reports it (naming the entry and the nearest sibling
-   directories) and discards the clone — the per-entry diagnostic is the
+   `files_of_interest` entry that matches nothing in the checkout,
+   `cache-git.sh` prints `files_of_interest entry '<entry>' resolved no
+   files in checkout`, names the nearest sibling directories, and discards
+   the clone: skip this source and continue the DISCOVER run, exactly as
+   the clone-failure branch above does. The per-entry diagnostic is the
    complete report, no extra summary line, same reasoning as Step 2. Same
    `ls-files`-vs-`-e` rationale as Step 2 applies here too — not repeated
    in full.

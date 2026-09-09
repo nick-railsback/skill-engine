@@ -462,10 +462,21 @@ test_reference_file() {
 
   # Delegated shape (chunk 08-cache-git-helper): the block is a single call
   # into cache-git.sh, which owns the actual clone/sparse-checkout/checkout
-  # mechanics and the post-clone validator — verified end to end by that
-  # script's own oracle (tests/cache-git-helper/). None of the structural
-  # checks below can find a raw git invocation to inspect in that shape, so
-  # delegation itself satisfies the same claim each of them makes.
+  # mechanics. None of the structural checks below can find a raw git
+  # invocation to inspect in that shape.
+  #
+  # Delegation does NOT make those claims true on its own, and this flag
+  # asserted for a while that it did — on a comment claiming
+  # tests/cache-git-helper/ pinned the flags "byte-for-byte" when that suite
+  # named none of them, leaving eleven passes printing here while the repo
+  # had no pin on --filter=blob:none, --no-checkout, --single-branch,
+  # --no-cone or -maxdepth 2 at all (PR #15 review, finding 2). Those pins
+  # now exist, made against bin/cache-git.sh itself and each one
+  # mutation-calibrated (cache-git-helper/run.sh section 6), which is what
+  # this flag defers to. It defers only for claims about the MECHANICS. A
+  # claim about what the RECIPE DOC says — the validator's documented
+  # failure wording, and whose run continues after a hard reject — is this
+  # file's own to make in either shape, and is not bypassed below.
   local delegates=0
   printf '%s' "$block" | grep -qF 'cache-git.sh' && delegates=1
 
@@ -533,17 +544,22 @@ test_reference_file() {
   # this is the discriminator: a validator this permissive is worse than
   # none, per the must-reject non-negotiable. Both anchor strings are the
   # doctrine's own verbatim mechanism text (03-engine.md § Post-clone
-  # validation), not a guess about how this file's own bash spells it. A
-  # delegated block moves the mechanism's own text into cache-git.sh (whose
-  # own oracle pins it byte-for-byte); "-maxdepth 2" is an implementation
-  # detail with no reason to appear in this doc's prose once delegated, so
-  # delegation satisfies this claim the same way it does the checks above.
+  # validation), not a guess about how this file's own bash spells it.
+  #
+  # "-maxdepth 2" is the one implementation detail here: once the search
+  # lives in cache-git.sh it has no reason to appear in this doc's prose,
+  # and cache-git-helper/run.sh pins the depth on the helper directly, under
+  # a mutation that changes it. So this claim — and only this one — defers.
   if [ "$delegates" -eq 1 ] || printf '%s' "$section_flat" | grep -qF -- '-maxdepth 2'; then
     pass "$label: the post-clone validator's sibling lookup (find ... -maxdepth 2) is documented"
   else
     fail "$label: the post-clone validator's sibling lookup (find ... -maxdepth 2) is documented"
   fi
-  if [ "$delegates" -eq 1 ] || printf '%s' "$section_flat" | grep -qiF 'resolved no files'; then
+  # The failure wording is not an implementation detail: it is the string a
+  # maintainer reading this doc will see the tool print, and the anchor the
+  # scoping check below windows around. Delegation does not document it —
+  # only the doc does — so this is asserted in both shapes.
+  if printf '%s' "$section_flat" | grep -qiF 'resolved no files'; then
     pass "$label: the post-clone validator's failure wording (an entry resolved no files) is documented"
   else
     fail "$label: the post-clone validator's failure wording (an entry resolved no files) is documented"
@@ -555,21 +571,22 @@ test_reference_file() {
   # over the whole section would pass today for a reason that has nothing
   # to do with the new validator — exactly the false-green this file must
   # not produce. Tying the window to the validator's own failure trigger
-  # means this can only go green once that trigger text exists. Bypassed
-  # under delegation for the same reason as the two checks above.
-  if [ "$delegates" -eq 1 ]; then
+  # means this can only go green once that trigger text exists.
+  #
+  # Not bypassed under delegation, because delegation does not settle it.
+  # The helper's own behavior is to `exit 1`; whether the CALLER stops there
+  # or moves to the next source is the recipe's decision and nothing but the
+  # recipe records it. Bypassing this was the one place where the flag
+  # dropped a claim no other suite could pick up.
+  local validator_context
+  # Window capped at 250, not 300: BSD/macOS grep -E rejects an interval
+  # bound above 255 ("maximum repetition exceeds 255").
+  validator_context="$(printf '%s' "$section_flat" | grep -ioE '.{0,250}resolved no files.{0,250}' | head -n1 || true)"
+  if printf '%s' "$validator_context" | grep -qiE 'this source.{0,150}(skip|continue|do not exit|proceed)|(skip|continue|do not exit|proceed).{0,150}this source'; then
     pass "$label: a hard-reject entry is scoped to skip only this source's seed (other sources proceed)"
   else
-    local validator_context
-    # Window capped at 250, not 300: BSD/macOS grep -E rejects an interval
-    # bound above 255 ("maximum repetition exceeds 255").
-    validator_context="$(printf '%s' "$section_flat" | grep -ioE '.{0,250}resolved no files.{0,250}' | head -n1 || true)"
-    if printf '%s' "$validator_context" | grep -qiE 'this source.{0,150}(skip|continue|do not exit|proceed)|(skip|continue|do not exit|proceed).{0,150}this source'; then
-      pass "$label: a hard-reject entry is scoped to skip only this source's seed (other sources proceed)"
-    else
-      fail "$label: a hard-reject entry is scoped to skip only this source's seed (other sources proceed)" \
-        "context around 'resolved no files': ${validator_context:-<'resolved no files' not found>}"
-    fi
+    fail "$label: a hard-reject entry is scoped to skip only this source's seed (other sources proceed)" \
+      "context around 'resolved no files': ${validator_context:-<'resolved no files' not found>}"
   fi
 
   section "$label — sparse recipe executed against a scratch repo"

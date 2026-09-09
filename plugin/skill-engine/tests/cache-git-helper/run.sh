@@ -14,9 +14,14 @@
 #      is present but its `sources` field is not a list;
 #   4. every shipped since-last-check code path reports a genuine deletion
 #      between two commits, and none emits a constant "changes": 1
-#      placeholder; and
+#      placeholder;
 #   5. cited_paths.py's candidate-set computation stays fast at a fixture
-#      scale where a naive O(refs x changed-paths x cites) shape is slow.
+#      scale where a naive O(refs x changed-paths x cites) shape is slow;
+#      and
+#   6. bin/cache-git.sh's own sparse-clone mechanics -- the four clone
+#      flags, the three cache-scoped post-clone invocations, and the
+#      post-clone validator -- are pinned on the shipped helper, with every
+#      pin mutation-calibrated.
 #
 # ---------------------------------------------------------------------------
 # Section 1 (recipes). This repo's reference docs narrate a workflow an
@@ -816,6 +821,155 @@ else
     fail "cited_paths.py --changed completes in under 3 seconds at this fixture size" \
       "measured: ${changed_seconds}s"
   fi
+fi
+
+# ===========================================================================
+# Section 6 — bin/cache-git.sh's sparse-clone mechanics, pinned on the
+# shipped helper and calibrated by mutation
+# ===========================================================================
+#
+# These properties used to be pinned by tests/sparse-clone/run.sh, by
+# grepping the two reference docs for the raw git invocation they spelled
+# out. Chunk 08 moved that invocation into this helper, and the doc-level
+# checks -- with no raw git line left to inspect -- were bypassed under a
+# `delegates=1` flag whose comment said the helper's own oracle pinned them
+# instead. It did not: nothing in this suite mentioned --filter=blob:none,
+# --no-checkout, --single-branch, --no-cone or -maxdepth 2, and
+# sparse-clone/run.sh was the repo's only pin on that flag set. Eleven
+# assertions printed as passes while asserting nothing (PR #15 review,
+# finding 2). This section is where those claims become true again, made
+# against real code rather than against prose describing it.
+#
+# Every pin here is a PRESERVATION assertion: it says a property the helper
+# already has must keep holding. No red->green step calibrates one -- the
+# property is present before and after any change that does not target it,
+# so an assertion that never fires is indistinguishable from one that
+# cannot. Each pin is therefore run twice: once against the real helper,
+# and once against a copy with exactly that property removed, where it must
+# report failure. A pin that passes its own mutant is the vacuous green
+# this section exists to prevent.
+
+section "bin/cache-git.sh's sparse-clone mechanics are pinned on the shipped helper"
+
+CACHE_GIT_SH="$PLUGIN_ROOT/bin/cache-git.sh"
+
+# extract_fn <file> <fn-name> — one shell function's body, from its opening
+# line through the first bare closing brace.
+extract_fn() {
+  awk -v fn="$2" '
+    index($0, fn "() {") == 1 { inside = 1 }
+    inside { print }
+    inside && $0 == "}" { exit }
+  ' "$1"
+}
+
+# every_clone_carries <body> <flag> — every `git clone` line in <body>
+# carries <flag>. A body with no clone line at all fails: a predicate that
+# has lost its subject must report absence, not vacuous truth.
+every_clone_carries() {
+  local body="$1" flag="$2" line seen=0
+  while IFS= read -r line; do
+    case "$line" in
+      *"git clone"*)
+        seen=$((seen + 1))
+        printf '%s' "$line" | grep -qF -- "$flag" || return 1
+        ;;
+    esac
+  done <<< "$body"
+  [ "$seen" -ge 1 ]
+}
+
+# scoped_verb <body> <verb-ere> — <body> invokes <verb> with a -C target
+# spelled through the ${SKILL_ENGINE_CACHE_ROOT:-...} override under
+# git-managed/. One predicate for the three claims the doc-level oracle made
+# separately (the verb is present, it carries -C, the recipe is cache-
+# scoped): in real code they are one line to inspect.
+scoped_verb() {
+  printf '%s\n' "$1" \
+    | grep -E "$2" \
+    | grep -F -- '-C "${SKILL_ENGINE_CACHE_ROOT:-' \
+    | grep -qF '/git-managed/'
+}
+
+pin_label() {
+  case "$1" in
+    depth)          printf '%s' 'every sparse clone carries --depth=1' ;;
+    single-branch)  printf '%s' 'every sparse clone carries --single-branch' ;;
+    blob-filter)    printf '%s' 'every sparse clone carries --filter=blob:none' ;;
+    no-checkout)    printf '%s' 'every sparse clone carries --no-checkout' ;;
+    sparse-init)    printf '%s' 'sparse-checkout init --no-cone runs against a cache-scoped -C target' ;;
+    sparse-set)     printf '%s' 'sparse-checkout set runs against a cache-scoped -C target' ;;
+    bare-checkout)  printf '%s' 'a bare checkout (not sparse-checkout) runs against a cache-scoped -C target' ;;
+    sibling-depth)  printf '%s' "the post-clone validator's sibling lookup searches to -maxdepth 2" ;;
+    reject-wording) printf '%s' "the post-clone validator's diagnostic says an entry resolved no files" ;;
+  esac
+}
+
+check_pin() {
+  local body="$1" key="$2"
+  case "$key" in
+    depth)          every_clone_carries "$body" '--depth=1' ;;
+    single-branch)  every_clone_carries "$body" '--single-branch' ;;
+    blob-filter)    every_clone_carries "$body" '--filter=blob:none' ;;
+    no-checkout)    every_clone_carries "$body" '--no-checkout' ;;
+    sparse-init)    scoped_verb "$body" 'sparse-checkout[[:space:]]+init[[:space:]]+--no-cone' ;;
+    sparse-set)     scoped_verb "$body" 'sparse-checkout[[:space:]]+set' ;;
+    bare-checkout)  scoped_verb "$body" '(^|[[:space:]])checkout([[:space:]]|$)' ;;
+    sibling-depth)  printf '%s\n' "$body" | grep -qF -- '-maxdepth 2' ;;
+    reject-wording) printf '%s\n' "$body" | grep -qF 'resolved no files' ;;
+    *)              return 2 ;;
+  esac
+}
+
+# mutation_sed <key> — a sed program that removes exactly the property
+# <key> pins, and nothing else it is asked to assert about.
+mutation_sed() {
+  case "$1" in
+    depth)          printf '%s' 's/ --depth=1//g' ;;
+    single-branch)  printf '%s' 's/ --single-branch//g' ;;
+    blob-filter)    printf '%s' 's/ --filter=blob:none//g' ;;
+    no-checkout)    printf '%s' 's/ --no-checkout//g' ;;
+    sparse-init)    printf '%s' 's/ --no-cone//g' ;;
+    sparse-set)     printf '%s' '/sparse-checkout set/d' ;;
+    bare-checkout)  printf '%s' 's/" checkout ;/" ;/' ;;
+    sibling-depth)  printf '%s' 's/-maxdepth 2/-maxdepth 9/' ;;
+    reject-wording) printf '%s' 's/resolved no files/found nothing/' ;;
+  esac
+}
+
+CACHE_GIT_PINS=(depth single-branch blob-filter no-checkout sparse-init
+  sparse-set bare-checkout sibling-depth reject-wording)
+
+helper_body="$(extract_fn "$CACHE_GIT_SH" cmd_sparse_clone)"
+if [ -z "$helper_body" ]; then
+  fail "bin/cache-git.sh: cmd_sparse_clone is extractable" \
+    "found no cmd_sparse_clone() { ... } block — every pin below would be vacuous"
+else
+  pass "bin/cache-git.sh: cmd_sparse_clone is extractable"
+
+  for pin_key in "${CACHE_GIT_PINS[@]}"; do
+    if check_pin "$helper_body" "$pin_key"; then
+      pass "bin/cache-git.sh: $(pin_label "$pin_key")"
+    else
+      fail "bin/cache-git.sh: $(pin_label "$pin_key")"
+    fi
+  done
+
+  section "each pin above is mutation-calibrated: remove the property, the pin must report it"
+
+  for pin_key in "${CACHE_GIT_PINS[@]}"; do
+    mutant="$TMPROOT/mutant-$pin_key.sh"
+    sed "$(mutation_sed "$pin_key")" "$CACHE_GIT_SH" > "$mutant"
+    if cmp -s "$mutant" "$CACHE_GIT_SH"; then
+      fail "calibration: $(pin_label "$pin_key")" \
+        "the mutation left bin/cache-git.sh unchanged — it no longer removes the property it is calibrating, so this pin is uncalibrated"
+    elif check_pin "$(extract_fn "$mutant" cmd_sparse_clone)" "$pin_key"; then
+      fail "calibration: $(pin_label "$pin_key")" \
+        "the pin passed a helper with that property removed — it asserts nothing"
+    else
+      pass "calibration: $(pin_label "$pin_key") fails on a helper with that property removed"
+    fi
+  done
 fi
 
 echo

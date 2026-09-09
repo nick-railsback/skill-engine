@@ -113,13 +113,14 @@ substitutes `<url>` and `<source_id>` — one double-quoted token per array
 entry, space-separated. On success, emit the same one-line confirmation
 the block above emits (`Cloned <source_id> → ...`).
 
-On a `files_of_interest` entry that resolves no files in the checkout,
-`cache-git.sh` prints a diagnostic naming the entry and the nearest
-sibling directories under its closest existing ancestor, then discards
-the clone — a validation failure needs no separate summary line, and
-`missing=1` routes to `rm -rf` inside the helper exactly like every other
-per-source failure in this file (empty SHA, refused id): skip this
-source, do not abort the bootstrap.
+On a `files_of_interest` entry that matches nothing in the checkout,
+`cache-git.sh` prints `files_of_interest entry '<entry>' resolved no files
+in checkout`, names the nearest sibling directories under that entry's
+closest existing ancestor, and discards the clone: skip this source and
+carry on with the next one, do not abort the bootstrap. A validation
+failure needs no separate summary line — `missing=1` routes to `rm -rf`
+inside the helper exactly like every other per-source failure in this file
+(empty SHA, refused id).
 
 The existence check `cache-git.sh` runs is `git -C "$tmpdir" ls-files --
 "$entry"` — a tree-aware pathspec match against the post-checkout index —
