@@ -226,6 +226,25 @@ floor runs against the fetched corpus. See
 [`07-monorepo-adapter.md`](07-monorepo-adapter.md) for the heuristics'
 cache-tree resolution.
 
+**`slice_of`** — optional. Marks this source as a slice of the monorepo
+source whose `url` equals this value. Pairs with `slice_id` and
+`slice_paths` — `verify.sh`'s `source-entries` check enforces all three
+present together or none of them; the schema does not, since that is a
+cross-entry rule a single-document JSON Schema validator cannot express
+against sibling array elements. See
+[`07-monorepo-adapter.md`](07-monorepo-adapter.md).
+
+**`slice_id`** — optional. Short stable identifier for the slice within
+its parent monorepo, matching `^[a-z][a-z0-9_-]{0,30}$` — the same
+constraint as reference filenames. Pairs with `slice_of` and
+`slice_paths`.
+
+**`slice_paths`** — optional. A non-empty list of git path patterns
+(`git sparse-checkout` glob syntax) this slice covers. Feeds `verify.sh`'s
+`monorepo-coverage` (Check 6) heuristic the same way `workspace_roots`
+does for a non-sliced source, resolved against the slice's parent's cache
+tree rather than a tree of its own. Pairs with `slice_of` and `slice_id`.
+
 **`probe_budget`** — optional, document-root (not per-entry). A JSON
 integer ≥ 1. Absent, every promoted source proceeds to re-read; REFRESH
 probes all sources every session either way. What the budget caps is how

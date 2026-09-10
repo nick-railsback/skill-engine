@@ -278,6 +278,97 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────────────
+# Monorepo-config validation (monorepo-config)
+# ────────────────────────────────────────────────────────────────────────
+#
+# Validates monorepo-config.json against the five rules in
+# 07-monorepo-adapter.md §7.3. Two documented locations are inspected,
+# $CTX_ROOT/research/monorepo-config.json taking silent precedence over
+# $CTX_ROOT/monorepo-config.json when both are present (undocumented edge
+# case; research/ is the canonical contextualizer location, the other is
+# the engine-self-contextualizer special case). Absent at both locations
+# is the common case (most contextualizers are not monorepos) and is not
+# a failure.
+#
+run_check "Monorepo-config validation (monorepo-config)"
+
+mc_file=""
+if [ -f "$CTX_ROOT/research/monorepo-config.json" ]; then
+  mc_file="$CTX_ROOT/research/monorepo-config.json"
+elif [ -f "$CTX_ROOT/monorepo-config.json" ]; then
+  mc_file="$CTX_ROOT/monorepo-config.json"
+fi
+
+if [ -z "$mc_file" ]; then
+  skip "monorepo-config.json absent — most contextualizers are not monorepos (see 07-monorepo-adapter.md §7.3)"
+elif ! jq empty "$mc_file" >/dev/null 2>&1; then
+  fail "$mc_file is not valid JSON"
+else
+  mc_lines=()
+
+  mc_type="$(jq -r '.monorepos | type' "$mc_file" 2>/dev/null)"
+  if [ "$mc_type" != "array" ]; then
+    mc_lines+=("monorepos must be an array — got type: $mc_type")
+  fi
+
+  # Rule: each monorepos[].url unique across the whole file.
+  while IFS= read -r dup_url; do
+    [ -n "$dup_url" ] || continue
+    mc_lines+=("monorepos[].url must be unique — duplicate: $dup_url")
+  done < <(jq -r '
+    [.monorepos[]? | .url // "" | select(. != "")]
+    | group_by(.) | map(select(length > 1) | .[0]) | unique[]
+  ' "$mc_file" 2>/dev/null)
+
+  # Rule: each slice id unique within its own monorepo's slices[] (the
+  # same id in two DIFFERENT monorepos is not a violation).
+  while IFS= read -r dup_id; do
+    [ -n "$dup_id" ] || continue
+    mc_lines+=("slice id must be unique within its monorepo — duplicate: $dup_id")
+  done < <(jq -r '
+    [.monorepos[]? | (.slices // []) | map(.id // "") | select(. != "")
+     | group_by(.) | map(select(length > 1) | .[0])]
+    | flatten | unique[]
+  ' "$mc_file" 2>/dev/null)
+
+  # Rule: every slice has at least one path, and every path is a
+  # non-empty string.
+  while IFS= read -r bad_id; do
+    [ -n "$bad_id" ] || continue
+    mc_lines+=("slice \"$bad_id\": every slice needs at least one path, and every path must be a non-empty string")
+  done < <(jq -r '
+    [.monorepos[]? | (.slices // [])[]?
+      | select(((.paths // []) | length) == 0
+               or ((.paths // []) | any(type != "string" or . == "")))
+      | (.id // "<no id>")
+    ] | unique[]
+  ' "$mc_file" 2>/dev/null)
+
+  # Rule: slice id matches ^[a-z][a-z0-9_-]{0,30}$.
+  while IFS= read -r bad_id; do
+    [ -n "$bad_id" ] || continue
+    mc_lines+=("slice id \"$bad_id\" does not match ^[a-z][a-z0-9_-]{0,30}\$")
+  done < <(jq -r '
+    [.monorepos[]? | (.slices // [])[]? | (.id // "")
+      | select(. != "" and (test("^[a-z][a-z0-9_-]{0,30}$") | not))
+    ] | unique[]
+  ' "$mc_file" 2>/dev/null)
+
+  if [ "${#mc_lines[@]}" -eq 0 ]; then
+    mc_count="$(jq -r '
+      "\(.monorepos // [] | length) \([.monorepos[]? | (.slices // [])[]?] | length)"
+    ' "$mc_file" 2>/dev/null)"
+    mc_n="${mc_count%% *}"
+    mc_m="${mc_count##* }"
+    pass "monorepo-config.json valid — ${mc_n:-0} monorepo(s), ${mc_m:-0} slice(s)"
+  else
+    for mc_msg in "${mc_lines[@]}"; do
+      fail "$mc_msg"
+    done
+  fi
+fi
+
+# ────────────────────────────────────────────────────────────────────────
 # Check 2 — Source entries: thin per-source schema (source-entries)
 # ────────────────────────────────────────────────────────────────────────
 #
@@ -342,7 +433,7 @@ else
       # Line-separated records via 0x1f field separator. Field values
       # (id, kind, status, lifecycle.state) are short kebab-case / URL /
       # path strings without embedded newlines.
-      while IFS=$'\x1f' read -r idx id kind src_status state url src_path branch crawl_mode; do
+      while IFS=$'\x1f' read -r idx id kind src_status state url src_path branch crawl_mode slice_of slice_id; do
         [ -n "${idx:-}" ] || continue
         if [ -z "$id" ]; then
           fail "sources[$idx] missing required field: id"
@@ -483,6 +574,29 @@ else
             entries_ok=0
           fi
         fi
+        # slice_of / slice_id / slice_paths — all-or-nothing trio (Check 2).
+        # slice_paths is an array, so its presence is probed separately
+        # rather than flattened into the 0x1f record (same convention as
+        # crawl_mode's page_list length above).
+        has_slice_paths="$(jq -r ".sources[$idx] | (has(\"slice_paths\") and (.slice_paths != null))" "$sp_file" 2>/dev/null)"
+        if [ -n "$slice_of" ] || [ -n "$slice_id" ] || [ "$has_slice_paths" = "true" ]; then
+          slice_fields_set=""
+          [ -n "$slice_of" ] && slice_fields_set="${slice_fields_set}slice_of "
+          [ -n "$slice_id" ] && slice_fields_set="${slice_fields_set}slice_id "
+          [ "$has_slice_paths" = "true" ] && slice_fields_set="${slice_fields_set}slice_paths "
+          if [ -z "$slice_of" ] || [ -z "$slice_id" ] || [ "$has_slice_paths" != "true" ]; then
+            fail "sources[$idx] ($id): slice_of/slice_id/slice_paths must all be present together (got only: ${slice_fields_set% })"
+            entries_ok=0
+          else
+            slice_of_matches_other="$(jq -r --argjson idx "$idx" --arg of "$slice_of" '
+              [.sources | to_entries[] | select(.key != $idx) | (.value.url // "")] | any(. == $of)
+            ' "$sp_file" 2>/dev/null)"
+            if [ "$slice_of_matches_other" != "true" ]; then
+              fail "sources[$idx] ($id): slice_of '$slice_of' does not match any other registered source's url"
+              entries_ok=0
+            fi
+          fi
+        fi
       done < <(jq -r '
         .sources
         | to_entries[]
@@ -495,7 +609,9 @@ else
             (.value.url // ""),
             (.value.path // ""),
             (.value.branch // ""),
-            (.value.crawl_mode // "")
+            (.value.crawl_mode // ""),
+            (.value.slice_of // ""),
+            (.value.slice_id // "")
           ]
         | join("")
       ' "$sp_file" 2>/dev/null)
@@ -597,6 +713,41 @@ else
       fail "$nav_rel description is $desc_bytes bytes, over the ${NAV_DESCRIPTION_MAX_BYTES}-byte cap"
     else
       pass "$nav_rel exists with valid frontmatter (name + description, ${desc_bytes}/${NAV_DESCRIPTION_MAX_BYTES} bytes)"
+    fi
+
+    # Admitted top-level keys are name, description and the optional
+    # paths: — any other top-level key fails, alongside (not instead of)
+    # the description-cap gate above.
+    while IFS= read -r fm_key; do
+      [ -n "$fm_key" ] || continue
+      case "$fm_key" in
+        name|description|paths) ;;
+        *) fail "$nav_rel frontmatter carries a non-admitted key: $fm_key" ;;
+      esac
+    done < <(printf '%s\n' "$fm" | grep -oE '^[A-Za-z0-9_.-]+:' | sed 's/:$//')
+
+    # paths:, when present, must be a non-empty YAML block list — a
+    # scalar value or an empty list both fail, naming the shape defect.
+    if printf '%s\n' "$fm" | grep -qE '^paths:'; then
+      fm_paths_line="$(printf '%s\n' "$fm" | grep -E '^paths:' | head -1)"
+      fm_paths_value="$(printf '%s' "${fm_paths_line#paths:}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+      if [ -n "$fm_paths_value" ]; then
+        if [ "$fm_paths_value" = "[]" ]; then
+          fail "$nav_rel frontmatter: paths: is an empty list — must contain at least one glob"
+        else
+          fail "$nav_rel frontmatter: paths: must be a YAML list, not a scalar value ('$fm_paths_value')"
+        fi
+      else
+        fm_paths_items=$(printf '%s\n' "$fm" | awk '
+          /^paths:[[:space:]]*$/ { inpaths=1; next }
+          inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths=0 }
+          inpaths && /^[[:space:]]*-/ { c++ }
+          END { print c+0 }
+        ')
+        if [ "$fm_paths_items" -eq 0 ]; then
+          fail "$nav_rel frontmatter: paths: has no list entries — must contain at least one glob"
+        fi
+      fi
     fi
   fi
 fi
@@ -1312,8 +1463,47 @@ elif [ "$(jq -r '.sources | length' "$sp_file" 2>/dev/null)" = "0" ]; then
 else
   monorepo_concerns=0
   monorepo_inspected=0
-  while IFS=$'\x1f' read -r src_id src_kind src_path ws_roots_csv has_foi; do
+  while IFS=$'\x1f' read -r src_id src_kind src_path ws_roots_csv has_foi slice_of slice_id; do
     tree=""
+    if [ -n "$slice_of" ]; then
+      # A slice entry has no clone of its own (chunk 04, "slice-sparse-crawl,"
+      # is what will ever give it one) -- resolve the PARENT's cache tree,
+      # never the slice's own id.
+      slice_parent_id="$(jq -r --arg of "$slice_of" '
+        [.sources[]? | select((.url // "") == $of) | (.id // "")] | first // ""
+      ' "$sp_file" 2>/dev/null)"
+      if [ -z "$slice_parent_id" ] || ! tree="$(resolve_git_managed_tree "$slice_parent_id")"; then
+        skip "monorepo-coverage: $src_id is a slice of '$slice_of', which has no resolvable local cache tree -- skipping coverage for this slice"
+        continue
+      fi
+      monorepo_inspected=1
+
+      # The slice itself is the citable unit, not a root under which further
+      # members get enumerated -- derive its directory from the first
+      # slice_paths entry by stripping a trailing glob segment
+      # ("domains/billing/**" -> "domains/billing").
+      slice_path_first="$(jq -r --arg id "$src_id" '
+        [.sources[]? | select((.id // "") == $id) | ((.slice_paths // [])[0] // "")] | first // ""
+      ' "$sp_file" 2>/dev/null)"
+      slice_dir="${slice_path_first%%\**}"
+      slice_dir="${slice_dir%/}"
+      if [ -z "$slice_dir" ] || [ ! -d "$tree/$slice_dir" ]; then
+        skip "monorepo-coverage: $src_id's slice_paths entry '$slice_path_first' does not resolve under the parent's tree -- skipping coverage for this slice"
+        continue
+      fi
+
+      ere_escape_one "$slice_id"
+      slice_esc="$ERE_ESCAPE_ONE_RESULT"
+      slice_cited=0
+      if [ -d "$CTX_ROOT/references" ] && grep -rqE "\b${slice_esc}\b" "$CTX_ROOT/references" 2>/dev/null; then
+        slice_cited=1
+      fi
+      if [ "$slice_cited" -eq 0 ]; then
+        monorepo_concerns=$((monorepo_concerns + 1))
+        printf '  [WARN] workspace member %s under %s is not cited in any reference (verify post-run summary for an explicit skip-reason)\n' "$slice_id" "$src_id"
+      fi
+      continue
+    fi
     if [ "$src_kind" = "git-managed" ]; then
       if ! tree="$(resolve_git_managed_tree "$src_id")"; then
         # Absolute only. verify.sh never cd's, so a relative `path` is a
@@ -1461,7 +1651,7 @@ else
   # count, so a wrong-typed files_of_interest was silently read as scoped.
   # Check 2 is what reports the malformed entry; this guard only keeps it
   # from silencing its neighbours.
-  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end)] | join("\u001f")' "$sp_file" 2>/dev/null)
+  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end), (.slice_of // ""), (.slice_id // "")] | join("\u001f")' "$sp_file" 2>/dev/null)
   if [ "$monorepo_inspected" -eq 0 ]; then
     : # every per-source skip() already reported why; no aggregate line needed
   elif [ "$monorepo_concerns" -eq 0 ]; then
