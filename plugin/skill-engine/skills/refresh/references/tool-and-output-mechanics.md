@@ -163,7 +163,12 @@ four components (no multi-column tables, no interactive menus):
    path+content-hash. When a git-managed source advanced this run, also
    list the re-emit candidate set (N of M references cite changed paths),
    grouped by source, and the uncited-change count (K changed paths no
-   reference cites). When `probe_budget` capped this session, include the
+   reference cites), and one re-pin line per advanced source from
+   `repin_citations.py`'s report (`drift-detection-and-phases.md`
+   § Re-read scoping): `Re-pinned: <repinned> of <citations> citations
+   moved mechanically (<unchanged_file> into unchanged files,
+   <remapped_range> by line-range remap); <needs_review> read by hand.`
+   When `probe_budget` capped this session, include the
    skip line documented in Phase 1 ("Promotion and ordering") as part of
    this report.
 2. **Skip-reasoning.** For both sources and references the model

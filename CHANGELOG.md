@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [Unreleased]
+
+- add: `tests/repin_citations.py` moves a corpus's permalinks from one commit to the next mechanically when a git-managed source advances — the SHA is swapped for citations into files the advance did not touch, line ranges in changed files are remapped through `git diff -U0` hunks and accepted only when the cited text is byte-equal at both commits, and everything else is left as it was and listed with a reason as the reader's worklist. REFRESH's re-read scoping runs it first and writes into the proposed tree; the post-run summary and review's Step 2 carry the counts (`plugin/skill-engine/tests/repin_citations.py`, `plugin/skill-engine/skills/{refresh,review}/`).
+- change: this repo's own `dogfood-corpus-refresh` suite diffs the contextualizer's pin against the latest release tag instead of HEAD, since the corpus promises to be true as of the last release, not of every commit; HEAD-relative drift is still printed, as a note. Measured against HEAD it was red on `main` for nine consecutive pushes across two releases (`plugin/skill-engine/tests/dogfood-corpus-refresh/`, `plugin/skill-engine/tests/dogfood-pin-state/`).
+- fix: the Lint workflow's `tests` job installs `check-jsonschema`, which the `sparse-clone` suite needs when it re-enters `ci-local.sh json`; the job's toolchain must be a superset of every subcommand a suite invokes (`.github/workflows/lint.yml`).
+
 ## [0.9.0] - 2026-09-09
 
 - add: `--sources-file` and `--branch-default-all` intake many sources in one bootstrap pass, so registering tens of sources stops costing two prompts apiece (`plugin/skill-engine/skills/engine-bootstrap/`).

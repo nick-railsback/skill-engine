@@ -359,8 +359,43 @@ proceeds, in the order above.
 
 ### Re-read scoping (git-managed)
 
-Before re-reading or re-emitting any reference, read the re-emit candidate
-set `cited_paths.py` prints:
+**Re-pin first.** For every git-managed source whose cache advanced this
+run, move the corpus's permalinks from the old SHA to the new one
+mechanically before reading anything. `repin_citations.py` swaps the SHA
+on every citation into a file the advance did not touch, remaps the line
+range of every citation into a changed file through the hunks of `git
+diff -U0` (accepting the remap only when the cited lines are byte-equal at
+both commits), and leaves every other citation exactly as it was — a
+range a hunk overlaps, a whole-file or directory citation whose target
+changed, a deleted path. Written references land in the proposed tree as
+a sparse copy-on-write; the live tree is never written:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/tests/repin_citations.py" <references-dir> \
+  --repo "${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/<source_id>-<new_sha>" \
+  --old-sha <old_sha> --new-sha <new_sha> \
+  --out-dir "$CTX_PROPOSED/references"
+```
+
+The report's `needs_review` list is what the model reads: each entry names
+a reference, a path, a line range and the reason the citation could not be
+moved on its own, and every one is a place the cited claim may no longer
+hold. Read old against new there, rewrite the sentence if the claim moved,
+and re-pin the citation by hand. Nothing else in the corpus needs a reader
+for the SHA's sake — the re-read below is scoped by what *changed*, not by
+what needs re-pinning. On the 2026-09-09 dogfood refresh this step would
+have moved 206 of 215 permalinks and handed over 9; a run whose
+`needs_review` is empty and whose re-read rewrites no sentence is a
+legitimate proposal whose only substance is the pin.
+
+The cache directory is the one `cache-git.sh advance` just renamed, and it
+holds both commits. The counts (`repinned`, `counts.unchanged_file`,
+`counts.remapped_range`, `counts.needs_review`) go in the post-run
+summary's Coverage report — see `tool-and-output-mechanics.md` § Post-run
+summary.
+
+Then, before re-reading or re-emitting any reference, read the re-emit
+candidate set `cited_paths.py` prints:
 
 ```bash
 python3 "$CLAUDE_PLUGIN_ROOT/tests/cited_paths.py" <references-dir> --changed research/.discover-inventory.json
