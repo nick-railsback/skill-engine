@@ -61,8 +61,22 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      # This job's toolchain must be a superset of every ci-local
+      # subcommand a suite shells out to. Three suites re-enter the script:
+      # sparse-clone runs `json` and `doctrine`, git-verb-cache-scope and
+      # cache-git-helper run `doctrine`. The `json` subcommand refuses to
+      # degrade under CI when check-jsonschema is absent (exit 69), so a
+      # tests job that installs only jq fails sparse-clone's preservation
+      # check for want of a tool the json-validate job installs — a red
+      # that was hidden until ci-local started running every suite.
+      # Same managed-Python step and pin as json-validate; bump both.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Install jq and check-jsonschema
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          python3 -m pip install --quiet check-jsonschema==0.37.2
       - name: Run all test suites (tests/*/run.sh + hooks-audit)
         run: bash scripts/ci-local.sh tests
       - name: Verify bundled examples (verify.sh, permalink density, eval dry-run)
