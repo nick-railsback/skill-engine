@@ -46,7 +46,7 @@ DISCOVER, REFRESH, and `new-reference` do not write into the live `<slug>-contex
 
 ## The navigator (SKILL.md)
 
-### Frontmatter - exactly two fields
+### Frontmatter fields
 
 ```yaml
 ---
@@ -55,7 +55,9 @@ description: Answers questions about the <area-domain> ecosystem. Use when worki
 ---
 ```
 
-No `version`, no `tags`, no `tools`, no `disable-model-invocation`. See [01-principles.md](01-principles.md) for the rationale; in short - non-standard fields produce platform-divergent behavior, and `disable-model-invocation` is broken for plugin-distributed skills.
+No `version`, no `tags`, no `tools`, no `disable-model-invocation`. See [01-principles.md](01-principles.md) for the rationale; in short - non-standard fields produce platform-divergent behavior, and `disable-model-invocation` is broken for plugin-distributed skills — not re-checked against plugin-distributed skills as of 2026-09-03, so the ban stands on Issue #22345's evidence; revisit at the next release boundary.
+
+**2026-09-03:** `paths:` is admitted as an optional third frontmatter field. Claude Code now documents `paths:` support for scoping a skill to a set of file globs — the platform fact that supersedes the divergence rationale above, which predates it. Value shape: a non-empty list of glob strings, omitted by default; intended use is scoping nested or per-slice contextualizers to their file subset. `verify.sh` Check 3 accepts `paths:` as this third key and still rejects any other third key.
 
 ### Description quality is part of the contract
 

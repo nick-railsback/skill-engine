@@ -153,9 +153,9 @@ These aren't "principles" - they're load-bearing bugs in the Claude Code platfor
 
 **What it would have meant for this pattern.** The "obvious" navigator design uses `disable-model-invocation: true` to keep the navigator out of the system prompt entirely (0 tokens) and have it loaded only when the user explicitly invokes it. With the bug, that doesn't work for plugin-installed skills.
 
-**The decision this drove.** The navigator skill avoids `disable-model-invocation` entirely. It uses **only** the two standard frontmatter fields - `name` and `description` - and accepts ~100 tokens of system-prompt overhead so the skill auto-discovers reliably across all distribution channels (plugin, CLI, Desktop). 100 tokens is a rounding error; broken auto-discovery is a hard failure.
+**The decision this drove.** The navigator skill avoids `disable-model-invocation` entirely. Its frontmatter is governed by [02-artifact-contract.md](02-artifact-contract.md) § Frontmatter - `name` and `description` required - and accepts ~100 tokens of system-prompt overhead so the skill auto-discovers reliably across all distribution channels (plugin, CLI, Desktop). 100 tokens is a rounding error; broken auto-discovery is a hard failure.
 
-**In your engine.** Don't use `disable-model-invocation`. Don't add other non-standard frontmatter fields. Stick to `name` and `description`, and craft the description to be just specific enough to fire on your domain queries without false positives. (See [02-artifact-contract.md](02-artifact-contract.md) for description-quality discussion.)
+**In your engine.** Don't use `disable-model-invocation`. Don't add other non-standard frontmatter fields beyond what [02-artifact-contract.md](02-artifact-contract.md) § Frontmatter admits, and craft the description to be just specific enough to fire on your domain queries without false positives. (See [02-artifact-contract.md](02-artifact-contract.md) for description-quality discussion.)
 
 **If/when this resolves.** If [Issue #22345](https://github.com/anthropics/claude-code/issues/22345) closes upstream and `disable-model-invocation: true` becomes load-bearing for plugin-distributed skills, the navigator could adopt the flag and shed the ~100 tokens of system-prompt overhead - at the cost of moving from auto-discovered to user-invoked-only. The trade-off would shift, and the engine's stance on `disable-model-invocation` would tighten in that direction; today, reliable auto-discovery across distribution channels outranks the token saving. Revisit cadence: review every release boundary.
 
@@ -171,7 +171,7 @@ These aren't "principles" - they're load-bearing bugs in the Claude Code platfor
 
 ### Frontmatter discipline (the load-bearing constraint)
 
-The navigator skill's frontmatter has exactly two fields:
+The navigator skill's frontmatter fields are defined by [02-artifact-contract.md](02-artifact-contract.md) § Frontmatter: `name` and `description` are required, and `paths:` is admitted as an optional third field.
 
 ```yaml
 ---
@@ -180,9 +180,9 @@ description: Answers questions about the <area-domain> ecosystem. Use when worki
 ---
 ```
 
-That's it. No `version`, no `tags`, no `tools`, no `disable-model-invocation`, no custom fields.
+That's it beyond the optional `paths:` field (see [02-artifact-contract.md](02-artifact-contract.md) § Frontmatter). No `version`, no `tags`, no `tools`, no `disable-model-invocation`, no custom fields beyond `paths:`.
 
-**Strict adherence to this is critical.** `name` and `description` are the two required frontmatter fields, per [Anthropic's *Complete Guide to Building Skills for Claude* (PDF)](https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf). Custom fields are silently dropped by some consuming platforms and respected by others, producing platform-divergent behavior that you'll spend hours debugging. `disable-model-invocation` is a trap (see Issue #22345 above).
+**Strict adherence to this is critical.** `name` and `description` are the two required frontmatter fields, per [Anthropic's *Complete Guide to Building Skills for Claude* (PDF)](https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf) - required is not the same as exhaustive, and it's this project's own contract, not the guide, that governs the one additional admitted field (`paths:`). Custom fields are silently dropped by some consuming platforms and respected by others, producing platform-divergent behavior that you'll spend hours debugging. `disable-model-invocation` is a trap (see Issue #22345 above).
 
 The `description` is load-bearing for skill discovery. A vague description means the agent never fires the skill. A too-broad description means the agent fires it on irrelevant queries. Description quality is product-quality.
 
