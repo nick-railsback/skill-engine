@@ -3,11 +3,29 @@
 # .claude/skills/skill-engine-context/references/ and its
 # research/source-paths.json pin: the corpus's own GitHub permalinks (and
 # the source-paths.json entry they all derive from) must be pinned to a real
-# commit in this repo's history that nothing the corpus quotes has moved on
-# from — not a commit frozen in the past with nothing noticing drift
-# afterward. Every assertion below is read-only over the live repo —
-# git plumbing and file/JSON inspection only, no network I/O, no writes to
-# anything outside a throwaway tmpdir.
+# commit in this repo's history that nothing the corpus quotes had moved on
+# from as of the latest release — not a commit frozen in the past with
+# nothing noticing drift afterward.
+#
+# "As of the latest release", not "as of HEAD". The corpus is what a
+# consumer of the released plugin reads, and its own navigator names the
+# released version; between releases it is one release behind by design.
+# Measured against HEAD, the drift assertion fired on every commit to any
+# of the 50 paths the corpus cites — nine consecutive red runs on main,
+# both v0.8.0 and v0.9.0 released with the validator red, and two full
+# refresh cycles in one day whose substance was two sentences — because
+# every feature edits cited skills and doctrine, and the release bump edits
+# six cited version surfaces. So the pin is diffed against the latest
+# release tag reachable from HEAD (pin_state.py --tag-match), and the
+# HEAD-relative drift the header used to gate on is still printed on every
+# run, as a NOTE carrying the count and the paths. After a tag lands, the
+# pin precedes it, the window fills, and this suite is red until the
+# post-release refresh re-pins at the tag: the ritual /release Phase 6
+# already prescribes, now with a red check naming it.
+#
+# Every assertion below is read-only over the live repo — git plumbing and
+# file/JSON inspection only, no network I/O, no writes to anything outside
+# a throwaway tmpdir.
 #
 # -e is intentionally omitted: every assertion must run and report, not
 # abort at the first red one.
@@ -25,6 +43,10 @@ WIRING_SCAN="$SCRIPT_DIR/staleness_wiring_scan.py"
 PIN_STATE="$SCRIPT_DIR/pin_state.py"
 
 SOURCE_ID="nick-railsback-skill-engine"
+# Release tags only. The repo also carries pre-/post-monorepo-adapter tags;
+# a bare `--tags` would read one of those as a release the day it lands on
+# main's first-parent line.
+RELEASE_TAG_GLOB="v[0-9]*"
 # The recorded date this same pin held before a refresh — a literal fact
 # about this repo's current (unrefreshed) state, used only to prove the
 # date actually moved rather than merely re-affirming a value that was
@@ -131,13 +153,20 @@ ENTRY_DATE="$(jq_field "$ENTRY_JSON" '.lifecycle.last_checked // empty')"
 
 # Classify the pin before anything consults it. Which assertions below are
 # even askable depends on this, and so does which revision the permalink
-# scan can resolve against.
+# scan can resolve against. --tag-match also names the revision the cited
+# paths are diffed against (the latest release tag, the pin itself when it
+# is already past that tag, HEAD when no tag is reachable) — see the
+# "pin refreshed" section.
 PIN_STATE_JSON=""
 if [ -f "$PIN_STATE" ]; then
   PIN_STATE_JSON="$(python3 "$PIN_STATE" --repo-root "$REPO_ROOT" \
-    --sha "${ENTRY_SHA:-__no_pin_recorded__}" 2>/dev/null || true)"
+    --sha "${ENTRY_SHA:-__no_pin_recorded__}" \
+    --tag-match "$RELEASE_TAG_GLOB" 2>/dev/null || true)"
 fi
 PIN_STATE_VALUE="$(jq_field "$PIN_STATE_JSON" '.state // empty')"
+LATEST_TAG="$(jq_field "$PIN_STATE_JSON" '.latest_tag // empty')"
+COMPARE_REV="$(jq_field "$PIN_STATE_JSON" '.compare_rev // empty')"
+COMPARE_REASON="$(jq_field "$PIN_STATE_JSON" '.compare_reason // empty')"
 
 # A pin whose object is gone cannot be the revision permalinks resolve
 # against — nothing local can answer for it. HEAD can, and after a
@@ -175,8 +204,10 @@ fi
 # What `pin == HEAD` was reaching for is "the corpus is not describing
 # stale code", and that is asserted directly below: an ancestor check (the
 # pin is a real commit here, not fabricated, foreign, or ahead of HEAD)
-# plus a content check (no cited path changed between the pin and HEAD).
-# The looser question of *how far* behind the pin has drifted is already
+# plus a content check (no cited path changed between the pin and the
+# latest release tag — see the header for why the tag and not HEAD). The
+# HEAD-relative drift is still computed and printed as a NOTE, and the
+# looser question of *how far* behind the pin has drifted is already
 # owned, report-only, by the staleness script asserted further down.
 #
 # Both of those need the pin to still be part of this repository's history
@@ -195,8 +226,8 @@ fi
 # So the pin's state is classified first (pin_state.py) and the assertions
 # below follow it:
 #
-#   ancestor      Strict tier, exactly as before: ancestry holds, and the
-#                 cited-path diff between the pin and HEAD runs.
+#   ancestor      Strict tier: ancestry holds, and the cited-path diff
+#                 between the pin and the comparison revision runs.
 #   divergent     Hard failure. The object resolves but belongs to a branch
 #                 this history never took up — a fabricated or foreign pin,
 #                 which is the defect the ancestry check was written for.
@@ -229,28 +260,62 @@ case "$PIN_STATE_VALUE" in
 esac
 
 # Intersect the corpus's cited paths with everything that changed between
-# the pin and HEAD. A non-empty intersection means the corpus quotes a file
-# that has moved on without it — the real staleness this section guards.
+# the pin and a comparison revision. A non-empty intersection means the
+# corpus quotes a file that has moved on without it — the real staleness
+# this section guards.
+#
+# Gating comparison: the latest release tag (pin_state.py's compare_rev).
+# Printed comparison: HEAD, as a NOTE. Both walk the same cited-path set.
 CITED_PATHS="$(jq_field "$SCAN_OUT" '.cited_paths // [] | .[]')"
-DRIFTED_PATHS=""
-if [ "$PIN_STATE_VALUE" = "ancestor" ] && [ -n "$CITED_PATHS" ]; then
-  CHANGED_SINCE_PIN="$(git -C "$REPO_ROOT" diff --name-only "$ENTRY_SHA" HEAD 2>/dev/null || true)"
+
+# drifted_cited_paths <rev> — comma-joined cited paths changed in <pin>..<rev>.
+drifted_cited_paths() {
+  local rev="$1" changed cited out=""
+  changed="$(git -C "$REPO_ROOT" diff --name-only "$ENTRY_SHA" "$rev" 2>/dev/null || true)"
   while IFS= read -r cited; do
     [ -n "$cited" ] || continue
-    if printf '%s\n' "$CHANGED_SINCE_PIN" | grep -Fxq -- "$cited"; then
-      DRIFTED_PATHS="${DRIFTED_PATHS:+$DRIFTED_PATHS, }$cited"
+    if printf '%s\n' "$changed" | grep -Fxq -- "$cited"; then
+      out="${out:+$out, }$cited"
     fi
   done <<< "$CITED_PATHS"
+  printf '%s' "$out"
+}
+
+DRIFTED_PATHS=""
+HEAD_DRIFTED_PATHS=""
+if [ "$PIN_STATE_VALUE" = "ancestor" ] && [ -n "$CITED_PATHS" ]; then
+  if [ -n "$COMPARE_REV" ] && [ "$COMPARE_REV" != "$ENTRY_SHA" ]; then
+    DRIFTED_PATHS="$(drifted_cited_paths "$COMPARE_REV")"
+  fi
+  HEAD_DRIFTED_PATHS="$(drifted_cited_paths HEAD)"
 fi
 
+# The tag is named on every run so a CI log proves it was found: with no
+# tag reachable the comparison silently falls back to HEAD, which is the
+# strict pre-tag behavior and red for the reasons the header gives.
+COMPARE_LABEL="${LATEST_TAG:-HEAD (no release tag reachable)}"
 if [ "$PIN_STATE_VALUE" = "unresolvable" ]; then
-  note "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit" \
+  note "source-paths.json's $SOURCE_ID entry: no path the corpus cites changed between the pinned commit and the latest release tag" \
     "there is no pinned commit to diff against; substituted by structural resolution at HEAD (next section)"
 elif [ "$PIN_STATE_VALUE" = "ancestor" ] && [ -n "$CITED_PATHS" ] && [ -z "$DRIFTED_PATHS" ]; then
-  pass "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit"
+  pass "source-paths.json's $SOURCE_ID entry: no path the corpus cites changed between the pinned commit and the latest release tag ($COMPARE_LABEL; ${COMPARE_REASON:-<no reason>})"
 else
-  fail "source-paths.json's $SOURCE_ID entry: no path the corpus cites has changed since the pinned commit" \
+  fail "source-paths.json's $SOURCE_ID entry: no path the corpus cites changed between the pinned commit and the latest release tag ($COMPARE_LABEL; ${COMPARE_REASON:-<no reason>})" \
     "${DRIFTED_PATHS:-<no cited paths resolved — scan did not run or found none>}"
+fi
+
+# Report-only: the HEAD-relative drift this suite used to gate on. Zero is
+# a PASS; anything else is a NOTE naming the paths, never a FAIL — a
+# cited-path commit between releases is the designed state, and the next
+# release's refresh is what absorbs it.
+if [ "$PIN_STATE_VALUE" = "ancestor" ] && [ -n "$CITED_PATHS" ]; then
+  if [ -z "$HEAD_DRIFTED_PATHS" ]; then
+    pass "report-only: no path the corpus cites has changed between the pinned commit and HEAD"
+  else
+    HEAD_DRIFT_COUNT="$(printf '%s' "$HEAD_DRIFTED_PATHS" | awk -F', ' '{print NF}')"
+    note "report-only: $HEAD_DRIFT_COUNT cited path(s) changed between the pinned commit and HEAD — absorbed by the refresh at the next release tag" \
+      "$HEAD_DRIFTED_PATHS"
+  fi
 fi
 
 if [ -n "$ENTRY_DATE" ] && [ "$ENTRY_DATE" != "$OLD_RECORDED_DATE" ]; then

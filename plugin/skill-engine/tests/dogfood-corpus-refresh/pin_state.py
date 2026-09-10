@@ -36,11 +36,37 @@ it sits on, which is how the squash-merge case reached the `divergent`
 hard-fail arm on main despite this module existing to prevent exactly
 that. Reachability from a ref has one answer everywhere.
 
-Read-only: runs `git cat-file` and `git merge-base` and writes nothing.
-Stdlib only, no network I/O.
+A second, independent question rides alongside the classification: which
+revision the corpus's cited paths should be diffed against to decide whether
+the pin is stale *in substance*. Against <rev> itself (HEAD), every commit
+to a cited path re-stales the corpus, including the release bump that edits
+six cited version surfaces — so the check was red on main after nearly
+every push and at both of the last two releases. The property the corpus
+actually promises its consumers is "true as of the last release": a consumer
+installs the released plugin, and the corpus's own navigator names the
+released version. `--tag-match <glob>` therefore selects the latest release
+tag reachable from <rev> and reports a `compare_rev`:
+
+  pin precedes the tag      compare_rev = the tag. The window pin..tag is
+                            what the caller diffs; a cited path changed in
+                            it means the corpus describes something older
+                            than what shipped.
+  pin at or past the tag    compare_rev = the pin itself, an empty window.
+                            The corpus is at least as current as the
+                            release. Once the next tag lands the pin
+                            precedes it again and the window refills —
+                            which is the post-release refresh the release
+                            ritual owes, now with a red check naming it.
+  no matching tag           compare_rev = <rev>, the strict HEAD-relative
+                            comparison — the behavior before this flag.
+  pin not an ancestor       compare_rev = <rev>; the state alone decides.
+
+Read-only: runs `git cat-file`, `git merge-base` and `git describe` and
+writes nothing. Stdlib only, no network I/O.
 
 Usage:
     python3 pin_state.py --repo-root <path> --sha <sha> [--rev <rev>]
+                         [--tag-match <glob>]
 
 Exit code is always 0 — this is a classifier, not a pass/fail gate; the
 caller applies its own assertions to the emitted JSON.
@@ -119,15 +145,57 @@ def classify(repo_root: Path, sha: str, rev: str) -> dict:
     }
 
 
+def latest_tag(repo_root: Path, rev: str, tag_match: str) -> str | None:
+    """The nearest tag matching `tag_match` reachable from <rev>, or None.
+    `--match` is what keeps a non-release tag (this repo carries
+    `pre-monorepo-adapter` and `post-monorepo-adapter`) from being read as
+    a release the day one lands on the first-parent line."""
+    out = _git_out(
+        repo_root, "describe", "--tags", "--abbrev=0", "--match", tag_match, rev
+    ).strip()
+    return out or None
+
+
+def comparison(repo_root: Path, classified: dict, tag_match: str | None) -> dict:
+    """Which revision the caller should diff the pin against, and why.
+    Additive to `classify`'s output: every key it emitted is untouched."""
+    sha, rev = classified["sha"], classified["rev"]
+    tag = latest_tag(repo_root, rev, tag_match) if tag_match else None
+    if classified["state"] != "ancestor":
+        compare_rev, reason = rev, "pin is not an ancestor of rev; state decides"
+    elif tag_match is None:
+        compare_rev, reason = rev, "no tag consulted; comparing against rev"
+    elif tag is None:
+        compare_rev, reason = rev, "no tag matches; comparing against rev"
+    elif _git_ok(repo_root, "merge-base", "--is-ancestor", sha, tag):
+        compare_rev, reason = tag, "pin precedes the latest tag"
+    elif _git_ok(repo_root, "merge-base", "--is-ancestor", tag, sha):
+        compare_rev, reason = sha, "pin is at or past the latest tag; nothing to diff"
+    else:
+        compare_rev, reason = rev, "pin and latest tag are unrelated; comparing against rev"
+    return {
+        **classified,
+        "latest_tag": tag,
+        "compare_rev": compare_rev,
+        "compare_reason": reason,
+    }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Classify a recorded corpus pin.")
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--rev", default="HEAD",
                         help="Revision the pin is checked against. Default HEAD.")
+    parser.add_argument("--tag-match", default=None,
+                        help="Glob for release tags (e.g. 'v[0-9]*'). When "
+                             "given, the output also names the latest "
+                             "matching tag reachable from --rev and the "
+                             "revision the pin should be diffed against.")
     args = parser.parse_args(argv)
 
-    print(json.dumps(classify(args.repo_root, args.sha, args.rev)))
+    result = classify(args.repo_root, args.sha, args.rev)
+    print(json.dumps(comparison(args.repo_root, result, args.tag_match)))
     return 0
 
 

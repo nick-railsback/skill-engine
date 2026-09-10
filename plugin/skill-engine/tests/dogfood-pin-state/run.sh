@@ -59,6 +59,31 @@
 #     whenever object_present is false, and is what separates 'divergent'
 #     from 'unresolvable' when the object is present but not an ancestor.
 #
+#   python3 pin_state.py ... --tag-match <glob>
+#
+#     Additive: every key above is unchanged, and three more are emitted
+#     (also emitted, with latest_tag null and compare_rev == rev, when the
+#     flag is absent):
+#
+#       "latest_tag": "<tag>" | null,
+#       "compare_rev": "<tag>" | "<sha>" | "<rev>",
+#       "compare_reason": "<one line>"
+#
+#     latest_tag is the nearest tag matching <glob> reachable from <rev>
+#     — the glob is what keeps a non-release tag out. compare_rev is the
+#     revision the caller should diff the pin's cited paths against to
+#     decide whether the corpus is stale in substance: the tag when the
+#     pin precedes it (the window pin..tag is what a release would have
+#     shipped without); the pin itself when the pin is at or past the tag
+#     (an empty window — the corpus is at least as current as the last
+#     release, and the next tag is what re-opens it); <rev> when no tag
+#     matches (the strict HEAD-relative comparison this replaced) or the
+#     pin is not an 'ancestor'. Why the tag and not HEAD: measured against
+#     HEAD, every cited-path commit re-staled the dogfood corpus and the
+#     oracle was red on main for nine consecutive pushes across two
+#     releases; the property the corpus promises is "true as of the last
+#     release".
+#
 #   python3 permalink_scan.py <refs> --repo-root <p> --expected-sha <s>
 #           [--resolve-at <rev>]
 #
@@ -368,6 +393,114 @@ if [ "$(json_field "$out" '.structural_fail_count')" = "1" ]; then
 else
   fail "resolving at HEAD still fails a citation whose line range overruns the file (the fallback is a check, not a bypass)" \
     "scan output: ${out:-<empty — scan did not run>}"
+fi
+
+section "pin_state names the release tag the pin should be diffed against"
+
+# The fixture's main line is now c1 ── c2 ── squash. Tags are laid down
+# here, after every classification case above ran untagged, so nothing
+# above depended on them.
+#
+# A non-release tag on the newest commit first: it must never be chosen.
+# Then a release tag on c2, with the squash commit sitting past it — the
+# shape main has between a release and the next one, with the pin either
+# side of the tag.
+git -C "$FIXTURE" tag post-fixture "$SQUASH"
+git -C "$FIXTURE" tag v0.1.0 "$C2"
+
+TAG_GLOB="v[0-9]*"
+
+pin_state_tagged() {
+  python3 "$PIN_STATE_PY" --repo-root "$FIXTURE" --sha "$1" --tag-match "$TAG_GLOB" 2>/dev/null || printf ''
+}
+
+# Pin before the tag: the window pin..tag is the one that matters.
+out="$(pin_state_tagged "$C1")"
+if [ "$(json_field "$out" '.latest_tag')" = "v0.1.0" ] \
+   && [ "$(json_field "$out" '.compare_rev')" = "v0.1.0" ] \
+   && [ "$(json_field "$out" '.state')" = "ancestor" ]; then
+  pass "a pin that precedes the latest release tag is compared against that tag, not HEAD"
+else
+  fail "a pin that precedes the latest release tag is compared against that tag, not HEAD" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# The non-release tag sits on the newest commit; the glob must skip it.
+if [ "$(json_field "$out" '.latest_tag')" != "post-fixture" ]; then
+  pass "a tag outside the release glob on a newer commit is not read as the latest release"
+else
+  fail "a tag outside the release glob on a newer commit is not read as the latest release" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# Pin exactly at the tag: an ancestor of itself, so the window is pin..tag
+# and empty.
+out="$(pin_state_tagged "$C2")"
+if [ "$(json_field "$out" '.compare_rev')" = "v0.1.0" ]; then
+  pass "a pin at the tagged commit itself is compared against the tag (an empty window)"
+else
+  fail "a pin at the tagged commit itself is compared against the tag (an empty window)" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# Pin past the tag: the corpus is more current than the release. Nothing
+# to diff — the comparison revision is the pin itself, and the reason
+# says so. This is the state main is in after a mid-cycle refresh, and it
+# is green, not red.
+out="$(pin_state_tagged "$SQUASH")"
+if [ "$(json_field "$out" '.latest_tag')" = "v0.1.0" ] \
+   && [ "$(json_field "$out" '.compare_rev')" = "$SQUASH" ] \
+   && [ "$(json_field "$out" '.state')" = "ancestor" ]; then
+  pass "a pin past the latest release tag is compared against itself — an empty window, not a HEAD-relative one"
+else
+  fail "a pin past the latest release tag is compared against itself — an empty window, not a HEAD-relative one" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# The next release re-opens the window: tag the newest commit and the pin
+# that was past v0.1.0 now precedes v0.2.0. This is the post-release red
+# that names the owed refresh.
+git -C "$FIXTURE" tag v0.2.0 "$SQUASH"
+out="$(pin_state_tagged "$C2")"
+if [ "$(json_field "$out" '.latest_tag')" = "v0.2.0" ] \
+   && [ "$(json_field "$out" '.compare_rev')" = "v0.2.0" ]; then
+  pass "a new release tag past the pin re-opens the window: the pin is compared against the new tag"
+else
+  fail "a new release tag past the pin re-opens the window: the pin is compared against the new tag" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# A glob that matches nothing falls back to <rev>: the strict comparison
+# this flag replaced, not a silently empty window.
+out="$(python3 "$PIN_STATE_PY" --repo-root "$FIXTURE" --sha "$C1" --tag-match 'release-[0-9]*' 2>/dev/null || printf '')"
+if [ "$(json_field "$out" '.latest_tag')" = "null" ] \
+   && [ "$(json_field "$out" '.compare_rev')" = "HEAD" ]; then
+  pass "with no tag matching the glob, the comparison falls back to the named rev (HEAD)"
+else
+  fail "with no tag matching the glob, the comparison falls back to the named rev (HEAD)" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# The keys are additive: a caller that never passes the flag sees the
+# same six keys it always did, with the three new ones inert.
+out="$(pin_state "$C1")"
+if [ "$(json_field "$out" '.state')" = "ancestor" ] \
+   && [ "$(json_field "$out" '.latest_tag')" = "null" ] \
+   && [ "$(json_field "$out" '.compare_rev')" = "HEAD" ]; then
+  pass "without --tag-match the classification is unchanged and the comparison is the named rev"
+else
+  fail "without --tag-match the classification is unchanged and the comparison is the named rev" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
+fi
+
+# A divergent pin is decided by its state; no tag can rescue it.
+out="$(pin_state_tagged "$O1")"
+if [ "$(json_field "$out" '.state')" = "divergent" ] \
+   && [ "$(json_field "$out" '.compare_rev')" = "HEAD" ]; then
+  pass "a divergent pin stays divergent under --tag-match; the tag never softens the hard-fail arm"
+else
+  fail "a divergent pin stays divergent under --tag-match; the tag never softens the hard-fail arm" \
+    "pin_state output: ${out:-<empty — helper did not run>}"
 fi
 
 echo

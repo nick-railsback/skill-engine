@@ -238,11 +238,24 @@ Release $NEW_VERSION is staged. Next steps for you to run (from the repo root):
 6. Marketplace sync: not applicable — the plugin marketplace lives in this same
    repo (`.claude-plugin/marketplace.json`) and is already version-bumped in
    Phase 3 above. See `plugin/skill-engine/docs/04-delivery.md` for details.
+
+7. Refresh the dogfood corpus at the tag. The bump in step 2 edits six paths
+   the corpus at `.claude/skills/skill-engine-context/` cites, and the
+   feature that just merged almost certainly edited more, so once the tag
+   from step 4 exists `tests/dogfood-corpus-refresh` is red on your machine
+   until the corpus is re-pinned at it (the suite diffs the pin against the
+   latest release tag, not HEAD — a pin past the previous tag was green
+   until now). Run it on `main` at the tagged commit, never on a branch:
+     CLAUDE_PLUGIN_ROOT=$PWD/plugin/skill-engine /skill-engine:refresh skill-engine
+     /skill-engine:review skill-engine  →  /skill-engine:apply skill-engine
+   Then commit the refresh as the last cited-path commit of the cycle. Doc
+   corrections the refresh surfaces land BEFORE it, not after — a later
+   commit to any cited path re-opens the same window.
 ```
 
 Then explicitly remind the maintainer:
 
-> The version surfaces have been edited and the CHANGELOG entry drafted. **No git commands have been run on your behalf.** Run steps 1-6 above when you're ready.
+> The version surfaces have been edited and the CHANGELOG entry drafted. **No git commands have been run on your behalf.** Run steps 1-7 above when you're ready.
 
 ## Failure-mode notes
 
