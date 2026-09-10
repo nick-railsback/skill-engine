@@ -245,8 +245,11 @@ Release $NEW_VERSION is staged. Next steps for you to run (from the repo root):
    from step 4 exists `tests/dogfood-corpus-refresh` is red on your machine
    until the corpus is re-pinned at it (the suite diffs the pin against the
    latest release tag, not HEAD — a pin past the previous tag was green
-   until now). Run it on `main` at the tagged commit, never on a branch:
-     CLAUDE_PLUGIN_ROOT=$PWD/plugin/skill-engine /skill-engine:refresh skill-engine
+   until now). Run it on `main` at the tagged commit, never on a branch,
+   from a session launched with CLAUDE_PLUGIN_ROOT exported so the engine
+   skills run from this working tree rather than the marketplace cache:
+     export CLAUDE_PLUGIN_ROOT="$PWD/plugin/skill-engine"   # in the shell, before `claude`
+     /skill-engine:refresh skill-engine
      /skill-engine:review skill-engine  →  /skill-engine:apply skill-engine
    Then commit the refresh as the last cited-path commit of the cycle. Doc
    corrections the refresh surfaces land BEFORE it, not after — a later
