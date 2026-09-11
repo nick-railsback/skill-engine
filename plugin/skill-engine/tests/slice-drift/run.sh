@@ -727,6 +727,180 @@ else
     "and NOT packages/vendor/v.py, so only the former counts as drift."
 fi
 
+# ===========================================================================
+# The docstring promises "exits 1 with a stderr message naming the
+# offending value". Four shapes delivered a traceback instead, and REFRESH
+# prescribes nothing for a non-zero exit, so each reached the model as an
+# unhandled stack trace. (PR #16 review, finding 12.)
+# ===========================================================================
+section "malformed inputs exit 1 with a diagnostic, never a traceback"
+
+sd_is_traceback() {
+  printf '%s' "$1" | grep -q 'Traceback (most recent call last)'
+}
+
+bad_config_case() {
+  # bad_config_case <label> <config-json>
+  local label="$1" content="$2" cfg err rc
+  cfg="$WORK/badcfg-$(printf '%s' "$label" | tr -c 'a-z0-9' '-' | cut -c1-32).json"
+  printf '%s' "$content" > "$cfg"
+  err="$(sd_err "$CACHE1" --old "$SHA_A1" --new "$SHA_B1" --config "$cfg")"
+  rc=$?
+  if [ "$rc" -ne 0 ] && [ -n "$err" ] && ! sd_is_traceback "$err"; then
+    pass "$label"
+  else
+    fail "$label" "rc=$rc" "stderr: ${err:-<empty>}"
+  fi
+}
+
+bad_config_case "monorepos: null exits 1 with a diagnostic" \
+  '{"version":"1.0","monorepos":null}'
+
+bad_config_case "a slice with no id exits 1 with a diagnostic" \
+  '{"version":"1.0","monorepos":[{"url":"u","slices":[{"paths":["packages/x/**"]}]}]}'
+
+bad_config_case "a slice with no paths exits 1 with a diagnostic" \
+  '{"version":"1.0","monorepos":[{"url":"u","slices":[{"id":"billing"}]}]}'
+
+bad_config_case "slices as an array of strings exits 1 with a diagnostic" \
+  '{"version":"1.0","monorepos":[{"url":"u","slices":["billing","web"]}]}'
+
+bad_config_case "slices: null exits 1 with a diagnostic" \
+  '{"version":"1.0","monorepos":[{"url":"u","slices":null}]}'
+
+bad_config_case "paths as a bare string exits 1 with a diagnostic" \
+  '{"version":"1.0","monorepos":[{"url":"u","slices":[{"id":"billing","paths":"packages/x/**"}]}]}'
+
+missing_cfg_err="$(sd_err "$CACHE1" --old "$SHA_A1" --new "$SHA_B1" --config "$WORK/definitely-not-here.json")"
+missing_cfg_rc=$?
+if [ "$missing_cfg_rc" -ne 0 ] && ! sd_is_traceback "$missing_cfg_err" \
+   && printf '%s' "$missing_cfg_err" | grep -qF 'definitely-not-here.json'; then
+  pass "an unreadable --config exits 1 naming the path, not FileNotFoundError"
+else
+  fail "an unreadable --config exits 1 naming the path, not FileNotFoundError" \
+    "rc=$missing_cfg_rc" "stderr: ${missing_cfg_err:-<empty>}"
+fi
+
+bad_config_case "a config that is not JSON at all exits 1 with a diagnostic" \
+  '{"version": "1.0", "monorepos": ['
+
+# ---------------------------------------------------------------------------
+# Raw bytes: git's -z output is not guaranteed UTF-8, and `text=True` with
+# no errors= decodes it strictly. One undecodable filename anywhere under a
+# slice's patterns killed the run even when nothing had changed, because
+# the failure fires inside the whole-tree probe. `text=True` also applies
+# universal-newline translation, so a path containing CR came back with LF
+# silently substituted -- exit 0, changed:true, and a corrupted path handed
+# to Re-read scoping. repin_citations.py already ships the hardened form.
+# ---------------------------------------------------------------------------
+section "undecodable and CR-carrying paths do not crash or corrupt the run"
+
+# Built entirely through plumbing -- update-index / write-tree /
+# commit-tree -- and never checked out. macOS refuses an invalid-UTF-8
+# filename on disk (Errno 92), so the path can only exist inside git
+# objects; that is also exactly the shape git hands back from `-z` output,
+# which is the input this guards. The repository doubles as its own cache
+# directory: slice_drift.py only requires both SHAs to resolve there, and
+# cloning it would need a checkout the filesystem will not accept.
+UP_BYTES="$WORK/upstream-bytes"
+init_upstream "$UP_BYTES"
+bytes_blob_a="$(printf '1\n' | git -C "$UP_BYTES" hash-object -w -t blob --stdin)"
+bytes_blob_b="$(printf '2\n' | git -C "$UP_BYTES" hash-object -w -t blob --stdin)"
+
+# Two hostile names alongside one ordinary file: a byte that is not valid
+# UTF-8, and a name carrying a carriage return (which `text=True` silently
+# rewrites to LF under universal-newline translation).
+bytes_index_a="$WORK/bytes-index-a"
+printf '100644 %s\tpackages/billing/ok.txt\0' "$bytes_blob_a" > "$bytes_index_a"
+printf '100644 %s\tpackages/billing/bad\xffname.txt\0' "$bytes_blob_a" >> "$bytes_index_a"
+printf '100644 %s\tpackages/billing/cr\rname.txt\0' "$bytes_blob_a" >> "$bytes_index_a"
+git -C "$UP_BYTES" update-index -z --add --index-info < "$bytes_index_a"
+tree_a_bytes="$(git -C "$UP_BYTES" write-tree)"
+SHA_A_BYTES="$(git -C "$UP_BYTES" -c user.email=oracle@example.invalid -c user.name=oracle \
+  commit-tree "$tree_a_bytes" -m "commit A")"
+
+bytes_index_b="$WORK/bytes-index-b"
+printf '100644 %s\tpackages/billing/ok.txt\0' "$bytes_blob_b" > "$bytes_index_b"
+printf '100644 %s\tpackages/billing/cr\rname.txt\0' "$bytes_blob_b" >> "$bytes_index_b"
+git -C "$UP_BYTES" update-index -z --add --index-info < "$bytes_index_b"
+tree_b_bytes="$(git -C "$UP_BYTES" write-tree)"
+SHA_B_BYTES="$(git -C "$UP_BYTES" -c user.email=oracle@example.invalid -c user.name=oracle \
+  commit-tree "$tree_b_bytes" -p "$SHA_A_BYTES" -m "commit B")"
+
+CONFIG_BYTES="$WORK/monorepo-config-bytes.json"
+cat > "$CONFIG_BYTES" <<'EOF'
+{
+  "version": "1.0",
+  "monorepos": [
+    {
+      "url": "https://example.com/acme/mono-bytes",
+      "type": "internal-repo",
+      "slices": [
+        {"id": "billing", "paths": ["packages/billing/**"]}
+      ]
+    }
+  ]
+}
+EOF
+
+bytes_err="$(sd_err "$UP_BYTES" --old "$SHA_A_BYTES" --new "$SHA_B_BYTES" --config "$CONFIG_BYTES")"
+bytes_rc=$?
+OUT_BYTES="$(sd_out "$UP_BYTES" --old "$SHA_A_BYTES" --new "$SHA_B_BYTES" --config "$CONFIG_BYTES")"
+if [ "$bytes_rc" -eq 0 ] && ! sd_is_traceback "$bytes_err" \
+   && jq_check "$OUT_BYTES" '(type=="array") and (length==1) and (.[0].changed == true)
+      and (.[0].changed_paths | index("packages/billing/ok.txt") != null)'; then
+  pass "an undecodable filename in the slice does not kill the run"
+else
+  fail "an undecodable filename in the slice does not kill the run" \
+    "rc=$bytes_rc" "stderr: ${bytes_err:-<empty>}" "stdout: ${OUT_BYTES:-<empty>}"
+fi
+
+# The CR-carrying path is unchanged between the two commits, so it must not
+# appear in changed_paths at all. What must never happen is it appearing
+# with the CR rewritten to LF -- that is the universal-newline corruption,
+# and it would hand Re-read scoping a path that does not exist.
+if [ "$bytes_rc" -eq 0 ] \
+   && ! printf '%s' "$OUT_BYTES" | grep -qF 'cr\nname.txt' \
+   && ! printf '%s' "$OUT_BYTES" | grep -q 'crname\.txt'; then
+  pass "a CR-carrying path is not returned with its CR rewritten to LF"
+else
+  fail "a CR-carrying path is not returned with its CR rewritten to LF" \
+    "rc=$bytes_rc" "stdout: ${OUT_BYTES:-<empty>}"
+fi
+
+# ---------------------------------------------------------------------------
+# The empty-tree constant. EMPTY_TREE was the hardcoded SHA-1 OID, so on a
+# SHA-256 repository the run exited 1 with `fatal: bad revision '4b825dc...'`
+# -- AFTER both SHAs had already passed the rev-parse gate, so the operator
+# was told only that some unnamed revision was bad.
+# ---------------------------------------------------------------------------
+section "a SHA-256 repository is handled, not rejected by a hardcoded SHA-1 constant"
+
+UP256="$WORK/upstream-sha256"
+if git init -q --object-format=sha256 "$UP256" 2>/dev/null; then
+  git -C "$UP256" checkout -q -b main
+  mkdir -p "$UP256/packages/billing"
+  printf '1\n' > "$UP256/packages/billing/a.py"
+  SHA_A256="$(commit_all "$UP256" "commit A")"
+  printf '2\n' > "$UP256/packages/billing/a.py"
+  SHA_B256="$(commit_all "$UP256" "commit B")"
+
+  err256="$(sd_err "$UP256" --old "$SHA_A256" --new "$SHA_B256" --config "$CONFIG_BYTES")"
+  rc256=$?
+  OUT256="$(sd_out "$UP256" --old "$SHA_A256" --new "$SHA_B256" --config "$CONFIG_BYTES")"
+  if [ "$rc256" -eq 0 ] && jq_check "$OUT256" '
+      (type=="array") and (length==1) and (.[0].slice_id=="billing")
+      and (.[0].changed == true)
+      and (.[0].changed_paths == ["packages/billing/a.py"])'; then
+    pass "a SHA-256 repository reports drift normally"
+  else
+    fail "a SHA-256 repository reports drift normally" \
+      "rc=$rc256" "stderr: ${err256:-<empty>}" "stdout: ${OUT256:-<empty>}"
+  fi
+else
+  pass "a SHA-256 repository reports drift normally (skipped: this git cannot create one)"
+fi
+
 section "a slice whose patterns match nothing in either tree"
 
 OUT1G="$(sd_out "$CACHE1" --old "$SHA_A1" --new "$SHA_B1" --config "$CONFIG_3SLICE_PLUS_GHOST")"
@@ -808,6 +982,12 @@ READONLY = {"diff", "status", "log", "show", "clone", "ls-remote",
 # and so is a bare `git update-index` with no scoping at all.
 # (PR #16 review, finding 9.)
 SCRATCH_ONLY = {"init", "hash-object", "update-index", "sparse-checkout"}
+# `git hash-object` writes nothing unless -w is given: without it the verb
+# only computes and prints an OID, which is how the empty-tree OID of THIS
+# repository is derived instead of hardcoding SHA-1's. So it is read-only
+# against the cache in that form and scratch-only in the -w form.
+def is_readonly_hash_object(toks):
+    return "-w" not in toks
 INVOKERS = {"run", "call", "check_output", "check_call", "Popen", "system", "popen"}
 
 bad = []
@@ -826,11 +1006,13 @@ def verb_from_tokens(toks):
         return t
     return None
 
-def note(verb, where, scratch=False, cache=False):
+def note(verb, where, scratch=False, cache=False, toks=()):
     if verb is None:
         return
     seen[0] = True
     if verb in READONLY:
+        return
+    if verb == "hash-object" and is_readonly_hash_object(toks):
         return
     if verb in SCRATCH_ONLY and scratch and not cache:
         return
@@ -864,7 +1046,7 @@ class V(ast.NodeVisitor):
                     else "<expr>"
                     for e in elts[1:]]
             is_scratch, is_cache = scope_of(elts[1:])
-            note(verb_from_tokens(toks), "argv", is_scratch, is_cache)
+            note(verb_from_tokens(toks), "argv", is_scratch, is_cache, toks)
 
     def visit_List(self, node):
         self._seq(node)
@@ -927,9 +1109,14 @@ import subprocess
 def go():
     subprocess.run(["git", "update-index", "--refresh"])
 MUTEOF
+  cat > "$WORK/mutant-cache-hash-object-w.py" <<'MUTEOF'
+import subprocess
+def go(cache_dir):
+    subprocess.run(["git", "-C", cache_dir, "hash-object", "-w", "-t", "blob", "--stdin"])
+MUTEOF
   mutant_ok=1
   mutant_detail=()
-  for mutant in mutant-cache-write mutant-unscoped-write; do
+  for mutant in mutant-cache-write mutant-unscoped-write mutant-cache-hash-object-w; do
     mutant_verdict="$(python3 "$VERB_SCAN" "$WORK/$mutant.py")"
     case "$mutant_verdict" in
       BAD:*) ;;
@@ -937,13 +1124,13 @@ MUTEOF
     esac
   done
   if [ "$mutant_ok" -eq 1 ]; then
-    pass "git_verb_scope_rule_still_rejects_a_cache_write_and_an_unscoped_write"
+    pass "git_verb_scope_rule_still_rejects_a_cache_write_an_unscoped_write_and_a_cache_hash_object_w"
   else
-    fail "git_verb_scope_rule_still_rejects_a_cache_write_and_an_unscoped_write" "${mutant_detail[@]}"
+    fail "git_verb_scope_rule_still_rejects_a_cache_write_an_unscoped_write_and_a_cache_hash_object_w" "${mutant_detail[@]}"
   fi
 else
   pass "git_verbs_limited_to_read_only_allow_list (vacuous: slice_drift.py does not exist yet, so it invokes no git verb)"
-  pass "git_verb_scope_rule_still_rejects_a_cache_write_and_an_unscoped_write (vacuous: slice_drift.py does not exist yet)"
+  pass "git_verb_scope_rule_still_rejects_a_cache_write_an_unscoped_write_and_a_cache_hash_object_w (vacuous: slice_drift.py does not exist yet)"
 fi
 
 section "read-only against the cache"
@@ -1043,6 +1230,26 @@ if near_all "$DRIFT_TEXT" 'slice_drift(\.py)?' 250 '(non-zero|nonzero|exits? 1|f
 else
   fail "consuming_prose_prescribes_something_for_a_non_zero_exit" \
     "expected the prose to say what to do when slice_drift.py exits non-zero"
+fi
+
+# The invocation must spell a resolved config path, and name both
+# documented locations. A bare `research/monorepo-config.json` -- the only
+# relative path in a file whose every other block spells $CTX_ROOT /
+# $CTX_PROPOSED -- resolves against the launch directory, and at the
+# engine-self-contextualizer location it does not resolve at all.
+# (PR #16 review, finding 12d.)
+if near_all "$DRIFT_TEXT" '\-\-config' 250 'CTX_ROOT'; then
+  pass "the slice_drift.py invocation spells a CTX_ROOT-anchored --config path"
+else
+  fail "the slice_drift.py invocation spells a CTX_ROOT-anchored --config path" \
+    "expected --config documented near CTX_ROOT, not a bare relative path"
+fi
+
+if near_all "$DRIFT_TEXT" '\-\-config' 250 'CTX_ROOT/monorepo-config\.json'; then
+  pass "the invocation names the second documented config location too"
+else
+  fail "the invocation names the second documented config location too" \
+    "expected the \$CTX_ROOT/monorepo-config.json fallback named alongside the research/ one"
 fi
 
 if near "$DRIFT_TEXT" 'gh api commits\?path=' 'optional|fast.path' 200 \

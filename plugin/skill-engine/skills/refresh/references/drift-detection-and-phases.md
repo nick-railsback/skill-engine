@@ -450,7 +450,16 @@ being the slice's own derived id, not the parent's):
       "${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/<source_id>-<new_sha>" \
       --old <prior last_checked_sha for this slice> \
       --new <new_sha> \
-      --config research/monorepo-config.json
+      --config "$CTX_ROOT/research/monorepo-config.json"
+
+`--config` takes the same **resolved** path DISCOVER's pre-flight step 1.7
+resolves: `$CTX_ROOT/research/monorepo-config.json` when it exists, else
+`$CTX_ROOT/monorepo-config.json`, which is the engine-self-contextualizer
+location §7.3 documents and `verify.sh`'s monorepo-config check inspects.
+Spelled as the bare relative `research/monorepo-config.json` — the only
+relative path in a file whose every other block spells `$CTX_ROOT` /
+`$CTX_PROPOSED` — it resolves against whatever directory the run was
+launched from, and at the second location it does not resolve at all.
 
 GitHub's `gh api commits?path=` form (section 7.5) is an optional,
 forge-specific fast path; `slice_drift.py` above works from the cache alone

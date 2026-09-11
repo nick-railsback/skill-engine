@@ -44,10 +44,15 @@ one that is merely edited. A slice whose patterns match no path in either
 tree instead carries `"changed": false, "changed_paths": [], "notice":
 "..."` naming the slice.
 
-Stdlib-only. Read-only against the cache. Exits 0 on success; exits 1 with
-a stderr message naming the offending value when --old or --new is not
-resolvable in <cache_dir>, or when a git invocation fails after that
-resolvability check already passed.
+Stdlib-only. Read-only against the cache -- the pattern matcher writes
+only to a disposable scratch repository of its own. Exits 0 on success;
+exits 1 with a stderr message naming the offending value when --config is
+unreadable or is not valid JSON, when the config is malformed (monorepos or
+slices not an array, a slice missing a non-empty string id, a slice whose
+paths is not a non-empty array of non-empty strings), when --old or --new
+is not resolvable in <cache_dir>, or when a git invocation fails after that
+resolvability check already passed. Never a traceback: REFRESH's prose
+prescribes what to do with a non-zero exit and nothing with a stack trace.
 """
 from __future__ import annotations
 
@@ -57,14 +62,46 @@ import subprocess
 import sys
 import tempfile
 
-EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+def _run(args: list[str], stdin: bytes = b"") -> subprocess.CompletedProcess:
+    """Run a git invocation, capturing stdout and stderr as BYTES.
+
+    Never `text=True`. Git's `-z` output is raw pathnames, which are not
+    guaranteed to be valid UTF-8 -- strict decoding raised
+    UnicodeDecodeError on one such file anywhere under a slice, killing a
+    run in which nothing had even changed. `text=True` additionally applies
+    universal-newline translation, so a pathname containing CR came back
+    with LF silently substituted and a path that does not exist was handed
+    to Re-read scoping. `repin_citations.py` already ships this hardened
+    shape; the lesson is inherited here rather than relearned.
+
+    Pathnames stay bytes for the whole pipeline and are decoded once, at
+    the JSON boundary, with errors="replace" -- so an undecodable name is
+    reported readably without ever being matched or compared in its
+    lossy form.
+    """
+    return subprocess.run(args, input=stdin, capture_output=True, check=False)
 
 
-def _run(args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(args, capture_output=True, text=True, check=False)
+def _err(raw: bytes) -> str:
+    return raw.decode("utf-8", errors="replace")
 
 
-def _matched_subset(patterns: list[str], candidates: list[str]) -> list[str]:
+def _empty_tree(cache_dir: str) -> str:
+    """The empty-tree OID *of this repository*.
+
+    Hardcoding SHA-1's 4b825dc6... made every SHA-256 repository exit 1
+    with `fatal: bad revision`, after both --old and --new had already
+    passed the resolvability gate -- so the operator was told only that
+    some unnamed revision was bad.
+    """
+    result = _run(["git", "-C", cache_dir, "hash-object", "-t", "tree", "/dev/null"])
+    if result.returncode != 0:
+        sys.stderr.write(_err(result.stderr))
+        sys.exit(1)
+    return result.stdout.decode().strip()
+
+
+def _matched_subset(patterns: list[str], candidates: list[bytes]) -> list[bytes]:
     """The subset of `candidates` a `--no-cone` checkout of `patterns` carries.
 
     Asks git's own sparse-checkout machinery rather than reimplementing
@@ -82,29 +119,25 @@ def _matched_subset(patterns: list[str], candidates: list[str]) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="slice-drift-match-") as scratch:
         init = _run(["git", "init", "-q", scratch])
         if init.returncode != 0:
-            sys.stderr.write(init.stderr)
+            sys.stderr.write(_err(init.stderr))
             sys.exit(1)
 
-        blob = subprocess.run(
-            ["git", "-C", scratch, "hash-object", "-w", "-t", "blob", "--stdin"],
-            input=b"", capture_output=True, check=False,
-        )
+        blob = _run(["git", "-C", scratch, "hash-object", "-w", "-t", "blob", "--stdin"])
         if blob.returncode != 0:
-            sys.stderr.write(blob.stderr.decode(errors="replace"))
+            sys.stderr.write(_err(blob.stderr))
             sys.exit(1)
         empty_blob = blob.stdout.decode().strip()
 
         # -z, so a path carrying a newline or a quote cannot desynchronize
         # the record stream the way a line-oriented --index-info would.
-        index_info = b"".join(
-            f"100644 {empty_blob}\t{path}\0".encode() for path in candidates
-        )
-        add = subprocess.run(
+        prefix = f"100644 {empty_blob}\t".encode()
+        index_info = b"".join(prefix + path + b"\0" for path in candidates)
+        add = _run(
             ["git", "-C", scratch, "update-index", "-z", "--add", "--index-info"],
-            input=index_info, capture_output=True, check=False,
+            stdin=index_info,
         )
         if add.returncode != 0:
-            sys.stderr.write(add.stderr.decode(errors="replace"))
+            sys.stderr.write(_err(add.stderr))
             sys.exit(1)
 
         # --skip-checks suppresses the "this looks like a leading-slash
@@ -117,20 +150,17 @@ def _matched_subset(patterns: list[str], candidates: list[str]) -> list[str]:
             applied = _run(["git", "-C", scratch, "sparse-checkout", "set",
                             "--no-cone", *patterns])
         if applied.returncode != 0:
-            sys.stderr.write(applied.stderr)
+            sys.stderr.write(_err(applied.stderr))
             sys.exit(1)
 
-        listed = subprocess.run(
-            ["git", "-C", scratch, "ls-files", "-v", "-z"],
-            capture_output=True, check=False,
-        )
+        listed = _run(["git", "-C", scratch, "ls-files", "-v", "-z"])
         if listed.returncode != 0:
-            sys.stderr.write(listed.stderr.decode(errors="replace"))
+            sys.stderr.write(_err(listed.stderr))
             sys.exit(1)
         # Each record is "<tag> <path>". A tag of "S" is skip-worktree,
         # i.e. outside the sparse patterns; everything else is inside.
         inside = {
-            record[2:].decode(errors="replace")
+            record[2:]
             for record in listed.stdout.split(b"\0")
             if record and record[:1] != b"S"
         }
@@ -138,16 +168,63 @@ def _matched_subset(patterns: list[str], candidates: list[str]) -> list[str]:
     return [path for path in candidates if path in inside]
 
 
+def _bad_config(message: str) -> None:
+    """Exit 1 naming the offending value, which is what the contract promises.
+
+    `.get(k, [])` returns None for a present-but-null key, so `monorepos:
+    null` raised TypeError; a slice missing `id` or `paths` raised
+    KeyError; and every shape verify.sh's monorepo-config check used to
+    bless raised TypeError. REFRESH prescribes what to do with a non-zero
+    exit but nothing with a stack trace, so each of these reached the model
+    as an unhandled traceback.
+    """
+    sys.stderr.write(f"error: {message}\n")
+    sys.exit(1)
+
+
 def _collect_slices(config: dict) -> list[tuple[str, list[str]]]:
+    if not isinstance(config, dict):
+        _bad_config(f"config root must be a JSON object, got {type(config).__name__}")
+    # Absent and null are both rejected, matching what verify.sh's
+    # monorepo-config check rejects (`.monorepos | type` is "null" for
+    # each). Coercing either to [] would turn a malformed config into a
+    # clean "no slices moved" verdict.
+    monorepos = config.get("monorepos")
+    if not isinstance(monorepos, list):
+        _bad_config(f"monorepos must be an array, got {type(monorepos).__name__}")
+
     slices: list[tuple[str, list[str]]] = []
     seen: set[str] = set()
-    for monorepo in config.get("monorepos", []):
-        for slice_decl in monorepo.get("slices", []):
-            slice_id = slice_decl["id"]
+    for m_index, monorepo in enumerate(monorepos):
+        if not isinstance(monorepo, dict):
+            _bad_config(f"monorepos[{m_index}] must be an object, "
+                        f"got {type(monorepo).__name__}")
+        # slices ABSENT is valid (a monorepo declaring none); slices null
+        # is not — again matching the config check, whose rule is "slices,
+        # when present, is an array".
+        declared = monorepo.get("slices", [])
+        if not isinstance(declared, list):
+            _bad_config(f"monorepos[{m_index}].slices must be an array, "
+                        f"got {type(declared).__name__}")
+        for s_index, slice_decl in enumerate(declared):
+            where = f"monorepos[{m_index}].slices[{s_index}]"
+            if not isinstance(slice_decl, dict):
+                _bad_config(f"{where} must be an object, "
+                            f"got {type(slice_decl).__name__}")
+            slice_id = slice_decl.get("id")
+            if not isinstance(slice_id, str) or not slice_id:
+                _bad_config(f"{where} needs a non-empty string id, got {slice_id!r}")
+            paths = slice_decl.get("paths")
+            if not isinstance(paths, list) or not paths:
+                _bad_config(f"slice '{slice_id}': paths must be a non-empty array, "
+                            f"got {paths!r}")
+            if not all(isinstance(entry, str) and entry for entry in paths):
+                _bad_config(f"slice '{slice_id}': every paths entry must be a "
+                            f"non-empty string, got {paths!r}")
             if slice_id in seen:
                 continue
             seen.add(slice_id)
-            slices.append((slice_id, slice_decl["paths"]))
+            slices.append((slice_id, paths))
     return slices
 
 
@@ -159,7 +236,7 @@ def _resolvable(cache_dir: str, sha: str, flag: str) -> bool:
     return True
 
 
-def _diff_names(cache_dir: str, old: str, new: str) -> list[str]:
+def _diff_names(cache_dir: str, old: str, new: str) -> list[bytes]:
     """Every path differing between two commits, unfiltered.
 
     No pathspec: which of these paths belongs to a slice is decided by
@@ -167,9 +244,9 @@ def _diff_names(cache_dir: str, old: str, new: str) -> list[str]:
     """
     result = _run(["git", "-C", cache_dir, "diff", "--name-only", "-z", old, new])
     if result.returncode != 0:
-        sys.stderr.write(result.stderr)
+        sys.stderr.write(_err(result.stderr))
         sys.exit(1)
-    return [p for p in result.stdout.split("\0") if p]
+    return [p for p in result.stdout.split(b"\0") if p]
 
 
 def main() -> None:
@@ -180,8 +257,13 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
 
-    with open(args.config, encoding="utf-8") as fh:
-        config = json.load(fh)
+    try:
+        with open(args.config, encoding="utf-8") as fh:
+            config = json.load(fh)
+    except OSError as exc:
+        _bad_config(f"cannot read --config {args.config}: {exc.strerror or exc}")
+    except json.JSONDecodeError as exc:
+        _bad_config(f"--config {args.config} is not valid JSON: {exc}")
     slices = _collect_slices(config)
 
     # Check both before proceeding, so a simultaneously-bad --old and --new
@@ -195,15 +277,21 @@ def main() -> None:
     # The three path sets are the same for every slice -- only the pattern
     # filter differs -- so they are computed once rather than once per
     # slice.
-    all_old = _diff_names(args.cache_dir, EMPTY_TREE, args.old)
-    all_new = _diff_names(args.cache_dir, EMPTY_TREE, args.new)
+    empty_tree = _empty_tree(args.cache_dir)
+    all_old = _diff_names(args.cache_dir, empty_tree, args.old)
+    all_new = _diff_names(args.cache_dir, empty_tree, args.new)
     all_changed = _diff_names(args.cache_dir, args.old, args.new)
 
     results = []
     for slice_id, paths in slices:
         existed_old = bool(_matched_subset(paths, all_old))
         existed_new = bool(_matched_subset(paths, all_new))
-        changed_paths = sorted(_matched_subset(paths, all_changed))
+        # Decoded once, here, at the JSON boundary -- never before
+        # matching, so a lossy replacement can never affect a verdict.
+        changed_paths = sorted(
+            raw.decode("utf-8", errors="replace")
+            for raw in _matched_subset(paths, all_changed)
+        )
         if not existed_old and not existed_new:
             results.append({
                 "slice_id": slice_id,
