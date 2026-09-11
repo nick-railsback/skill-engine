@@ -164,18 +164,28 @@ When `/skill-engine:refresh` is invoked:
      updated),
    - `status ∈ {confirmed, proposed}` (rejected companions don't
      refresh),
-   - **the source is not itself a slice (`slice_of` absent), and its `url`
-     is not named as `slice_of` by any `sources[]` entry that is itself
-     in-scope by the three criteria above** — a monorepo parent with one
-     or more live applied slices is excluded from re-read; its slices
-     cover it now, and each slice remains in-scope in its own right
-     regardless of sharing the parent's `url`. A slice that is
-     `archived: true`, `lifecycle.state: "removed"` or
-     `status: "rejected"` covers nothing and never excludes its parent:
-     it is not crawled either, so counting it would drop the whole
-     monorepo out of REFRESH permanently, and silently, since an excluded
-     source prints no line. Render one line in the pre-flight summary:
-     `Parent <id> excluded from crawling — <N> slice(s) applied.`
+   and it is not excluded by the parent rule below.
+
+   **The parent rule** is a rule about parents, not a fourth criterion a
+   source must satisfy to be in scope: **a source whose `slice_of` is
+   absent, and whose `url` is named as `slice_of` by at least one
+   `sources[]` entry that is itself in-scope by the three criteria above,
+   is excluded from re-read.** Nothing else is excluded by it. A slice is
+   *never* excluded by it — a slice has `slice_of` set, so the rule does
+   not reach it, and each slice is in scope in its own right regardless of
+   sharing the parent's `url`. The promotion-ordering recipe below spells
+   the same rule as a disjunction (`.slice_of != null or (...)`) for
+   exactly this reason. Stated instead as a conjunct in the list above
+   ("the source is not itself a slice, and ..."), it would read as
+   *in-scope implies `slice_of` absent*, which excludes every slice — the
+   opposite of the feature.
+
+   A slice that is `archived: true`, `lifecycle.state: "removed"` or
+   `status: "rejected"` covers nothing and never excludes its parent: it
+   is not crawled either, so counting it would drop the whole monorepo out
+   of REFRESH permanently, and silently, since an excluded source prints
+   no line. Render one line in the pre-flight summary for each excluded
+   parent: `Parent <id> excluded from crawling — <N> slice(s) applied.`
 
 5. **`--lifecycle-only` flag.** If passed, perform only the lifecycle
    state-check pass below; skip drift detection and reference re-emit.

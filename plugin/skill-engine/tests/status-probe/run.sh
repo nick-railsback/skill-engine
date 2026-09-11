@@ -381,6 +381,96 @@ else
 fi
 
 # ===========================================================================
+# A monorepo parent covered by a live slice is out of scope here too
+# ===========================================================================
+# This script's own docstring says it applies "the same in-scope filter
+# REFRESH's own pre-flight already applies", and SKILL.md's Provenance-probe
+# section repeats the claim. The monorepo adapter added a fourth criterion
+# to that filter -- a parent whose url is named as slice_of by a live slice
+# is excluded, because its slices cover it now -- and it was added to
+# DISCOVER's pre-flight, REFRESH's pre-flight and REFRESH's promotion jq,
+# but not here. A slice inherits its parent's url, so without it the script
+# runs `git ls-remote` once per slice AND once for the parent, all against
+# the SAME url: N+1 identical network round-trips per --probe, and N+1 rows
+# reporting one live SHA as independent facts. Worse, REFRESH now
+# permanently excludes that parent from promotion, so its
+# lifecycle.last_checked_sha never advances and STATUS reports it as
+# `mismatch` on every run forever. (PR #16 review, finding 6.)
+echo
+echo "── a parent covered by a live slice is excluded, like REFRESH excludes it ──"
+
+slice_repo="$TMPDIR_CASE/repo-bigmono"
+new_repo "$slice_repo"
+slice_repo_sha="$(git -C "$slice_repo" rev-parse HEAD)"
+slice_url="$slice_repo"
+
+slice_fixture="$TMPDIR_CASE/sources-parent-and-slices.json"
+write_sources_file "$slice_fixture" \
+  "$(source_entry bigmono git-managed "$slice_url" confirmed false reachable "$slice_repo_sha")" \
+  "$(jq -n --arg url "$slice_url" --arg sha "$slice_repo_sha" '
+     {id:"bigmono-billing", kind:"git-managed", url:$url,
+      slice_of:$url, slice_id:"billing", slice_paths:["packages/billing/**"],
+      status:"confirmed", archived:false,
+      lifecycle:{state:"reachable", last_checked:null, last_checked_sha:$sha, proposed_url:null},
+      discovered_via:null}')" \
+  "$(jq -n --arg url "$slice_url" --arg sha "$slice_repo_sha" '
+     {id:"bigmono-reports", kind:"git-managed", url:$url,
+      slice_of:$url, slice_id:"reports", slice_paths:["apps/reports/**"],
+      status:"confirmed", archived:false,
+      lifecycle:{state:"reachable", last_checked:null, last_checked_sha:$sha, proposed_url:null},
+      discovered_via:null}')"
+
+run_probe "$slice_fixture"
+if jq_check "$PROBE_OUT" 'map(.source_id) | (index("bigmono") == null)'; then
+  pass "the parent of two live slices is not probed — one url is not three independent facts"
+else
+  fail "the parent of two live slices is not probed — one url is not three independent facts" \
+    "rc=$PROBE_RC stdout: ${PROBE_OUT:-<empty>}"
+fi
+
+if jq_check "$PROBE_OUT" '(length == 2)
+  and (map(.source_id) | index("bigmono-billing") != null)
+  and (map(.source_id) | index("bigmono-reports") != null)'; then
+  pass "both slices are still probed in their own right"
+else
+  fail "both slices are still probed in their own right" \
+    "rc=$PROBE_RC stdout: ${PROBE_OUT:-<empty>}"
+fi
+
+# A DEAD slice covers nothing, so it must not exclude its parent here
+# either — the same rule finding 5 fixed in REFRESH's promotion ordering.
+dead_slice_fixture="$TMPDIR_CASE/sources-parent-and-dead-slice.json"
+write_sources_file "$dead_slice_fixture" \
+  "$(source_entry bigmono git-managed "$slice_url" confirmed false reachable "$slice_repo_sha")" \
+  "$(jq -n --arg url "$slice_url" --arg sha "$slice_repo_sha" '
+     {id:"bigmono-billing", kind:"git-managed", url:$url,
+      slice_of:$url, slice_id:"billing", slice_paths:["packages/billing/**"],
+      status:"confirmed", archived:false,
+      lifecycle:{state:"removed", last_checked:null, last_checked_sha:$sha, proposed_url:null},
+      discovered_via:null}')"
+
+run_probe "$dead_slice_fixture"
+if jq_check "$PROBE_OUT" '(length == 1) and (.[0].source_id == "bigmono")'; then
+  pass "a removed slice does not exclude its parent — the parent is still probed, alone"
+else
+  fail "a removed slice does not exclude its parent — the parent is still probed, alone" \
+    "rc=$PROBE_RC stdout: ${PROBE_OUT:-<empty>}"
+fi
+
+# Control: an unsliced source with the same shape is untouched, so the new
+# clause cannot pass by excluding everything with a url.
+plain_fixture="$TMPDIR_CASE/sources-unsliced-control.json"
+write_sources_file "$plain_fixture" \
+  "$(source_entry bigmono git-managed "$slice_url" confirmed false reachable "$slice_repo_sha")"
+run_probe "$plain_fixture"
+if jq_check "$PROBE_OUT" '(length == 1) and (.[0].source_id == "bigmono")'; then
+  pass "control: a source no slice names is probed exactly as before"
+else
+  fail "control: a source no slice names is probed exactly as before" \
+    "rc=$PROBE_RC stdout: ${PROBE_OUT:-<empty>}"
+fi
+
+# ===========================================================================
 # SKILL.md: the doc-prose half of the contract. status_probe.py is invoked
 # from a new section of plugin/skill-engine/skills/status/SKILL.md; these
 # checks assert what that section documents, and that it leaves the rest of

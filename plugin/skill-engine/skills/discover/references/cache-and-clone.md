@@ -167,21 +167,29 @@ When `/skill-engine:discover` is invoked:
      `moved` surfaces for user accept but is not crawled until the URL
      is updated),
    - `status ∈ {intake, proposed, confirmed}` (rejected is skipped),
-   - **the source is not itself a slice (`slice_of` absent), and its `url`
-     is not named as `slice_of` by any already-applied `sources[]` entry
-     that is itself in-scope by the three criteria above** —
-     a monorepo parent with one or more live applied slices is excluded from
-     crawling; its slices cover it now, and each slice remains in-scope in
-     its own right regardless of sharing the parent's `url`. Render one line
-     in the pre-flight summary: `Parent <id> excluded from crawling — <N>
-     slice(s) applied.` (A slice entry staged by *this run's* step 1.7 does
-     not yet count here — nothing is applied until `/skill-engine:apply`
-     promotes the proposal; only entries already live in
-     `research/source-paths.json` trigger the exclusion.) A slice that is
-     `archived: true`, `lifecycle.state: "removed"` or `status: "rejected"`
-     covers nothing and never excludes its parent: it is not crawled
-     either, so counting it would drop the whole monorepo out of DISCOVER
-     permanently, and silently, since an excluded source prints no line.
+   and it is not excluded by the parent rule below.
+
+   **The parent rule** is a rule about parents, not a fourth criterion a
+   source must satisfy to be in scope: **a source whose `slice_of` is
+   absent, and whose `url` is named as `slice_of` by at least one
+   already-applied `sources[]` entry that is itself in-scope by the three
+   criteria above, is excluded from crawling.** Nothing else is excluded
+   by it. In particular a slice is *never* excluded by it — a slice has
+   `slice_of` set, so the rule does not reach it, and each slice is in
+   scope in its own right regardless of sharing the parent's `url`. Stated
+   the other way round, as a conjunct in the list above ("the source is not
+   itself a slice, and ..."), it would read as *in-scope implies `slice_of`
+   absent*, which excludes every slice — the opposite of the feature.
+
+   Render one line in the pre-flight summary for each excluded parent:
+   `Parent <id> excluded from crawling — <N> slice(s) applied.` A slice
+   entry staged by *this run's* step 1.7 does not yet count — nothing is
+   applied until `/skill-engine:apply` promotes the proposal; only entries
+   already live in `research/source-paths.json` trigger the exclusion. Nor
+   does a slice that is `archived: true`, `lifecycle.state: "removed"` or
+   `status: "rejected"`: it covers nothing and is not crawled either, so
+   counting it would drop the whole monorepo out of DISCOVER permanently,
+   and silently, since an excluded source prints no line.
 
 3. **Targeted invocation.** If a positional argument matches a
    registered source id (e.g., `/skill-engine:discover vitejs-vite`),

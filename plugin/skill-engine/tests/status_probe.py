@@ -3,13 +3,25 @@
 
 Read-only: for every in-scope `kind: git-managed` source in a
 `research/source-paths.json` (`status` in {confirmed, proposed},
-`archived` not true, `lifecycle.state` not "removed" — the same
-in-scope filter REFRESH's own pre-flight already applies), run one
-`git ls-remote` against the source's `url` (its `branch` field when
-present, else `HEAD`) and compare the result to the pinned
+`archived` not true, `lifecycle.state` not "removed", and not a monorepo
+parent already covered by a live slice — the same in-scope filter
+REFRESH's own pre-flight already applies), run one `git ls-remote`
+against the source's `url` (its `branch` field when present, else
+`HEAD`) and compare the result to the pinned
 `lifecycle.last_checked_sha`. Writes one JSON array to stdout, never
 writes to the input file, and never exits non-zero on account of any
 individual source's probe result — report-only, not a gate.
+
+The parent-exclusion clause is not cosmetic. A derived slice inherits
+its parent's `url`, so probing both asks one remote the same question
+twice and prints the answers as independent facts — N+1 round-trips and
+N+1 rows per sliced monorepo. And REFRESH permanently excludes such a
+parent from promotion, so its `lifecycle.last_checked_sha` never
+advances again: reported here, it would read `mismatch` on every run
+forever, directly above its healthy slices. Only a LIVE slice excludes
+its parent; one that is archived, removed or rejected covers nothing and
+is never crawled either, so the parent remains the only thing standing
+for that url.
 
 Usage:
     python3 status_probe.py <source-paths.json>
@@ -30,8 +42,22 @@ def is_in_scope(source: dict) -> bool:
         source.get("kind") == "git-managed"
         and source.get("status") in IN_SCOPE_STATUSES
         and source.get("archived") is not True
-        and source.get("lifecycle", {}).get("state") != "removed"
+        and (source.get("lifecycle") or {}).get("state") != "removed"
     )
+
+
+def covered_parent_urls(sources: list) -> set:
+    """The urls named as `slice_of` by an in-scope slice.
+
+    Built from the filtered slices, never from the whole array: a dead
+    slice covers nothing, and counting it would drop its parent out of
+    every report while nothing else stood for that url.
+    """
+    return {
+        s["slice_of"]
+        for s in sources
+        if is_in_scope(s) and s.get("slice_of")
+    }
 
 
 def probe(source: dict) -> dict:
@@ -87,7 +113,13 @@ def main(argv: list[str]) -> int:
     data = json.loads(args.source_paths.read_text(encoding="utf-8"))
     sources = data.get("sources", [])
 
-    results = [probe(s) for s in sources if is_in_scope(s)]
+    covered = covered_parent_urls(sources)
+    results = [
+        probe(s)
+        for s in sources
+        if is_in_scope(s)
+        and (s.get("slice_of") is not None or s.get("url") not in covered)
+    ]
     json.dump(results, sys.stdout)
     sys.stdout.write("\n")
     return 0

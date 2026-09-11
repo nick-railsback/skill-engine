@@ -890,6 +890,84 @@ else
     "expected exclusion language near 'parent'/'slice_of' and 'slice' in drift-detection-and-phases.md, in the git-managed re-read/promotion area (not the web-doc-only Phase 2/3 sections)"
 fi
 
+# The rule must be stated ABOUT PARENTS, not as a conjunct in the AND-ed
+# list of in-scope criteria. "A source is in-scope if: ... the source is
+# not itself a slice (slice_of absent), and ..." reads literally as
+# in-scope => slice_of absent, which excludes every slice -- the opposite
+# of the feature -- and the sentence that follows it contradicts it in the
+# same bullet ("each slice remains in-scope in its own right"), so a model
+# executing the reference has to guess which half governs. REFRESH's jq 170
+# lines later gets it right as a disjunction, so that file contains its own
+# correction; cache-and-clone.md has no jq for this rule at all, and its
+# prose IS the specification. (PR #16 review, finding 6.)
+CONJUNCT_RE='the source is not itself a slice[^.]{0,40}and its .?url'
+for exclusion_file in "cache-and-clone.md:$PREFLIGHT_TEXT" "drift-detection-and-phases.md:$REFRESH_TEXT"; do
+  ex_label="${exclusion_file%%:*}"
+  ex_text="${exclusion_file#*:}"
+  if printf '%s' "$ex_text" | grep -qiE "$CONJUNCT_RE"; then
+    fail "$ex_label states the parent exclusion as a rule about parents, not as an in-scope conjunct" \
+      "found the AND-ed conjunct form, which reads as 'in-scope implies slice_of absent' and so excludes every slice"
+  elif near_all "$ex_text" '(is excluded from|excluded from)' 250 'slice_of.{0,20}(is )?absent' 'named as .?slice_of'; then
+    pass "$ex_label states the parent exclusion as a rule about parents, not as an in-scope conjunct"
+  else
+    fail "$ex_label states the parent exclusion as a rule about parents, not as an in-scope conjunct" \
+      "expected an 'a source whose slice_of is absent, and whose url is named as slice_of by ... is excluded' form"
+  fi
+
+  # And it must say the rule does not reach a slice, so the reader who
+  # stops before the jq still knows which half governs.
+  if near_all "$ex_text" '(never excluded|not excluded|does not reach)' 250 'slice'; then
+    pass "$ex_label says explicitly that a slice is never excluded by the parent rule"
+  else
+    fail "$ex_label says explicitly that a slice is never excluded by the parent rule" \
+      "expected a 'a slice is never excluded by it / the rule does not reach it' statement"
+  fi
+done
+
+# STATUS applies the same filter it claims to apply. Both status_probe.py
+# and the inline projection in status/SKILL.md assert they use "the same
+# filter REFRESH's own pre-flight uses"; as shipped in this PR that was
+# false, and the consequences land on exactly the contextualizer the
+# feature targets -- N+1 identical ls-remote round-trips per --probe, a
+# probe_budget projection that disagrees with REFRESH by one per sliced
+# monorepo, and a permanently-`mismatch` parent row rendered directly above
+# its healthy slices.
+STATUS_PROBE_PY="$PLUGIN_ROOT/tests/status_probe.py"
+
+# Scoped to the code that actually filters, not to the file at large:
+# status/SKILL.md names slice_of in its Slice-grouping section regardless,
+# so a whole-file grep would pass vacuously. The `python` fence under
+# "## Priority surface" is the projection that computes k for the
+# probe_budget line, and it is the thing that has to agree with REFRESH.
+status_projection="$(awk '
+  /^## Priority surface/ { insec = 1; next }
+  insec && /^## / { exit }
+  insec && /^```python[[:space:]]*$/ { infence = 1; next }
+  infence && /^```[[:space:]]*$/ { exit }
+  infence { print }
+' "$STATUS_SKILL")"
+
+if [ -z "${status_projection//[$'\t\r\n ']/}" ]; then
+  fail "status/SKILL.md's priority-surface projection is extractable" \
+    "no \`\`\`python fence found under '## Priority surface'"
+  fail "status/SKILL.md's in-scope projection accounts for slice_of" \
+    "cannot evaluate — the projection was not extracted"
+elif printf '%s' "$status_projection" | grep -qF 'slice_of'; then
+  pass "status/SKILL.md's priority-surface projection is extractable"
+  pass "status/SKILL.md's in-scope projection accounts for slice_of"
+else
+  pass "status/SKILL.md's priority-surface projection is extractable"
+  fail "status/SKILL.md's in-scope projection accounts for slice_of" \
+    "the section claims the projection matches REFRESH's in-scope filter, but the fence never mentions slice_of — so the probe_budget skip count disagrees with REFRESH by one per sliced monorepo"
+fi
+
+if grep -qF 'slice_of' "$STATUS_PROBE_PY"; then
+  pass "status_probe.py's in-scope filter accounts for slice_of"
+else
+  fail "status_probe.py's in-scope filter accounts for slice_of" \
+    "the docstring claims to apply the same in-scope filter REFRESH's pre-flight applies, but the script never mentions slice_of"
+fi
+
 SUMMARY_LINE_RE='(parent|slice_of)'
 COUNT_RE='(<N>|<[a-z]*count[a-z]*>|[0-9]+ slices?|slice count|count of slices)'
 if near_all "$PREFLIGHT_TEXT" 'slice' 250 "$SUMMARY_LINE_RE" '(one.line|summary)' "$COUNT_RE"; then
