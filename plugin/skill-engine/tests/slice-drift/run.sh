@@ -1006,6 +1006,45 @@ else
     "expected slice_drift(.py) documented near an unchanged/skip/Phase 2 phrase"
 fi
 
+# slice_drift.py has a THIRD outcome besides changed/unchanged: the object
+# carrying `notice`, which means "this slice's declared paths no longer
+# match anything in either commit" -- a monorepo renaming packages/billing/
+# to services/billing/, or a typo in slice_paths from the day it was
+# written. It is emitted with changed:false, and the consuming prose
+# documented only two outcomes, so the slice was skipped on every REFRESH,
+# its references decayed indefinitely, STATUS still rendered it fresh under
+# its parent, and the only artifact that knew was a JSON key nothing read.
+# This suite already asserts the producer emits it; that froze a producer
+# whose consumer was never written. (PR #16 review, finding 10.)
+if near_all "$DRIFT_TEXT" 'notice' 250 'slice' '(match(es)? no|no longer match|match nothing)'; then
+  pass "consuming_prose_documents_the_notice_outcome"
+else
+  fail "consuming_prose_documents_the_notice_outcome" \
+    "expected the REFRESH prose to document the 'notice' object -- the case where a" \
+    "slice's declared paths match nothing in either commit -- near 'slice' and a" \
+    "no-match phrase. Without it a stale slice_paths reads as 'nothing moved'."
+fi
+
+# And it must prescribe SURFACING it rather than silently skipping: the
+# failure this outcome reports is a broken configuration, not a quiet run.
+if near_all "$DRIFT_TEXT" 'notice' 250 '(surface|report|render|Coverage report|summary|warn)'; then
+  pass "consuming_prose_prescribes_surfacing_the_notice_not_skipping_silently"
+else
+  fail "consuming_prose_prescribes_surfacing_the_notice_not_skipping_silently" \
+    "expected the prose to say the notice is surfaced to the user (post-run summary /" \
+    "Coverage report), not folded into the same silent skip as 'nothing changed'."
+fi
+
+# A non-zero exit must be prescribed too: the prose told the model how to
+# read changed:true / changed:false and nothing about a failure, so every
+# error reached the model as an unhandled stack trace.
+if near_all "$DRIFT_TEXT" 'slice_drift(\.py)?' 250 '(non-zero|nonzero|exits? 1|fails)'; then
+  pass "consuming_prose_prescribes_something_for_a_non_zero_exit"
+else
+  fail "consuming_prose_prescribes_something_for_a_non_zero_exit" \
+    "expected the prose to say what to do when slice_drift.py exits non-zero"
+fi
+
 if near "$DRIFT_TEXT" 'gh api commits\?path=' 'optional|fast.path' 200 \
   && ! near "$DRIFT_TEXT" 'gh api commits\?path=' 'must|required|mandatory|only way' 200; then
   pass "drift_doc_gh_api_commits_path_named_optional_never_mandatory"

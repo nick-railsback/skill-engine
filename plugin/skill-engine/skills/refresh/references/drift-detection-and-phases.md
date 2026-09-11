@@ -406,11 +406,41 @@ proceeds, in the order above.
 
 See `07-monorepo-adapter.md` section 7.3, 7.5. For an in-scope source
 carrying `slice_of`: `slice_drift.py` reports, for a slice's parent, whether
-anything under that slice's own paths changed. A `changed: false` object
-means skip Re-read scoping and Phase 2 this run for that slice_id --
-whatever else changed elsewhere in the parent monorepo, between the
-previously recorded SHA and this run's newly probed SHA. A `changed: true`
-object proceeds to Re-read scoping below, scoped to its `changed_paths`.
+anything under that slice's own paths changed; unchanged means skip Re-read
+scoping and Phase 2 this run for that slice_id. **Three outcomes, not
+two**, though — reading only the first two is what makes a broken slice
+indistinguishable from a quiet one:
+
+1. A `changed: true` object proceeds to Re-read scoping below, scoped to its
+   `changed_paths`.
+2. A `changed: false` object with **no** `notice` key means skip Re-read
+   scoping and Phase 2 this run for that slice_id -- whatever else changed
+   elsewhere in the parent monorepo, between the previously recorded SHA and
+   this run's newly probed SHA. Nothing to report: this is the ordinary
+   quiet slice.
+3. A `changed: false` object **carrying a `notice`** means the slice's
+   declared `slice_paths` match no path in either commit. That is not "the
+   slice did not change" — it is "this slice's configuration no longer
+   describes anything", the shape a monorepo renaming `packages/billing/`
+   to `services/billing/` produces, and the shape a typo in `slice_paths`
+   produces on the day it is written. Skip Re-read scoping for it as in
+   case 2, and **surface the `notice` verbatim** in the post-run summary's
+   Coverage report, one line per affected slice id, so the maintainer is
+   told their config needs fixing:
+
+   ```
+   Slice <slice_id>: <notice> — update slice_paths in monorepo-config.json, or remove the slice.
+   ```
+
+   Without that line the slice is skipped on every REFRESH, its references
+   decay indefinitely, STATUS still renders it fresh under its parent, and
+   the only artifact that knows is a JSON key nothing reads.
+
+If `slice_drift.py` exits **non-zero**, do not treat the slice as
+unchanged: the run produced no verdict for it at all. Surface the script's
+stderr in the Coverage report as a skip-reason naming the slice id, and
+leave that slice's `lifecycle.last_checked_sha` unadvanced so the next
+REFRESH retries it rather than recording a check that never happened.
 
 Invoke it against the slice's own advanced cache directory
 (`$SKILL_ENGINE_CACHE_ROOT/git-managed/<source_id>-<new_sha>`, `source_id`
