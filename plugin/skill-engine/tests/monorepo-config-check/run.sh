@@ -1109,6 +1109,145 @@ else
     "${c6_order_detail[@]}"
 fi
 
+# ----------------------------------------------------------------------------
+# Check 6's slice branch: anchored citation, every slice_path, no double
+# enumeration of the parent
+# ----------------------------------------------------------------------------
+# The slice branch scored a slice cited with an UNANCHORED `\b<slice_id>\b`
+# grep over all of references/ -- exactly the form the member path's own
+# comment in the same loop forbids, citing PR #15 review finding 1: "a
+# generic [^[:alnum:]_] on the left drops the anchor: `api` would match
+# inside a cited sibling's `web-api` at the `-`". Slice ids like api, web,
+# core and db are the common case, and the branch even computed $slice_dir
+# -- the anchor it needs -- and never used it. It also read only
+# slice_paths[0], though 07-monorepo-adapter.md and the schema both say the
+# field feeds Check 6 "the same way workspace_roots does", and
+# workspace_roots iterates every entry. (PR #16 review, finding 15.)
+section "Check 6 -- slice citation is path-anchored, reads every slice_path, and does not double-count the parent"
+
+c6_slice_fixture() {
+  # c6_slice_fixture <name> <slice-paths-json> <reference-body>
+  # Builds a contextualizer whose slice `api` is genuinely uncited, with
+  # one reference carrying the given body. Echoes the coverage section.
+  local name="$1" slice_paths="$2" ref_body="$3" root cache purl sources
+  root="$WORK/check6-slice-$name"
+  build_nav "$root"
+  mkdir -p "$root/references"
+  printf '%s\n' "$ref_body" > "$root/references/notes.md"
+  purl="https://example.com/acme/mono-$name"
+  sources="$( {
+    git_managed_source acme-mono-"$name" "$purl"
+    git_managed_source acme-mono-"$name"-api "$purl" \
+      "$(jq -n --arg of "$purl" --argjson sp "$slice_paths" \
+         '{slice_of:$of, slice_id:"api", slice_paths:$sp}')"
+  } | jq -s '.' )"
+  write_sources "$root" "$sources"
+  cache="$root-cache"
+  mkdir -p "$cache/git-managed/acme-mono-$name-api-a1b2c3d4/packages/api" \
+           "$cache/git-managed/acme-mono-$name-api-a1b2c3d4/shared/api-types" \
+           "$cache/git-managed/acme-mono-$name-a1b2c3d4/packages/api"
+  printf 'x\n' > "$cache/git-managed/acme-mono-$name-api-a1b2c3d4/packages/api/m.go"
+  printf 'x\n' > "$cache/git-managed/acme-mono-$name-api-a1b2c3d4/shared/api-types/t.go"
+  printf 'x\n' > "$cache/git-managed/acme-mono-$name-a1b2c3d4/packages/api/m.go"
+  check_section "$(run_verify "$root" "$cache")" 'Monorepo-coverage'
+}
+
+# Each assertion names the branch it is about. The slice branch reports the
+# slice's own derived source id; the member branch reports the parent's.
+# Conflating them is how the pre-fix behaviour read as "something warned":
+# the parent warned about packages/api while the slice branch, in the same
+# run, scored that identical directory cited.
+slice_warned() { printf '%s' "$1" | grep -qE "\\[WARN\\].*acme-mono-$2-api\\b"; }
+parent_warned() { printf '%s' "$1" | grep -qE "\\[WARN\\].*acme-mono-$2([^-]|$)"; }
+
+# (a) The only occurrence of "api" anywhere under references/ is inside an
+# unrelated `packages/web-api` path. An unanchored \bapi\b matches at the
+# hyphen and scores the slice cited.
+c6_hyphen="$(c6_slice_fixture hyphen '["packages/api/**"]' \
+  '# Notes
+
+The web front end lives under packages/web-api and is documented there.')"
+if slice_warned "$c6_hyphen" hyphen; then
+  pass "monorepo-coverage: a slice named 'api' is NOT scored cited by 'packages/web-api' in an unrelated reference"
+else
+  fail "monorepo-coverage: a slice named 'api' is NOT scored cited by 'packages/web-api' in an unrelated reference" \
+    "an unanchored word-boundary grep matches 'api' inside 'web-api' at the hyphen" \
+    "coverage section: ${c6_hyphen:-<empty>}"
+fi
+
+# (b) The bare word in prose is not a citation either -- the member path
+# requires the ROOT-PREFIXED path form, and the slice path must too.
+c6_prose="$(c6_slice_fixture prose '["packages/api/**"]' \
+  '# Notes
+
+This corpus says a lot about api design in general.')"
+if slice_warned "$c6_prose" prose; then
+  pass "monorepo-coverage: the bare word 'api' in prose does not score the slice cited"
+else
+  fail "monorepo-coverage: the bare word 'api' in prose does not score the slice cited" \
+    "coverage section: ${c6_prose:-<empty>}"
+fi
+
+# (c) Control: the slice's actual path IS a citation.
+c6_cited="$(c6_slice_fixture cited '["packages/api/**"]' \
+  '# Notes
+
+The handler lives in packages/api/m.go and is described here.')"
+if slice_warned "$c6_cited" cited; then
+  fail "monorepo-coverage: control — citing the slice's own path scores it cited" \
+    "coverage section: ${c6_cited:-<empty>}"
+else
+  pass "monorepo-coverage: control — citing the slice's own path scores it cited"
+fi
+
+# (d) Every slice_paths entry counts, not only the first. The slice
+# declares two; only the SECOND is cited.
+c6_second="$(c6_slice_fixture second '["packages/api/**", "shared/api-types/**"]' \
+  '# Notes
+
+The shared types live in shared/api-types/t.go.')"
+if slice_warned "$c6_second" second; then
+  fail "monorepo-coverage: a citation of the SECOND slice_paths entry scores the slice cited" \
+    "07-monorepo-adapter.md and the schema both say slice_paths feeds Check 6 the same way" \
+    "workspace_roots does, and workspace_roots iterates every entry" \
+    "coverage section: ${c6_second:-<empty>}"
+else
+  pass "monorepo-coverage: a citation of the SECOND slice_paths entry scores the slice cited"
+fi
+
+# (e) A first entry that is a bare glob or names a file must not
+# [N/A]-skip the whole slice when a later entry resolves.
+c6_globfirst="$(c6_slice_fixture globfirst '["**/api/**", "packages/api/**"]' \
+  '# Notes
+
+The handler lives in packages/api/m.go and is described here.')"
+if printf '%s' "$c6_globfirst" | grep -qE '\[N/A\].*acme-mono-globfirst-api'; then
+  fail "monorepo-coverage: a leading glob entry does not [N/A]-skip a slice whose later entry resolves" \
+    "coverage section: ${c6_globfirst:-<empty>}"
+else
+  pass "monorepo-coverage: a leading glob entry does not [N/A]-skip a slice whose later entry resolves"
+fi
+
+# (f) The parent must not be enumerated as an ordinary source alongside its
+# own slices: one run emitted [WARN] workspace member api under <parent>
+# from the member branch while the slice branch scored the identical
+# directory cited -- two opposite verdicts on one directory, in one run.
+if parent_warned "$c6_hyphen" hyphen; then
+  fail "monorepo-coverage: an applied parent is not also enumerated as an ordinary source" \
+    "the parent branch warned about a directory its own slice branch also judged" \
+    "coverage section: ${c6_hyphen:-<empty>}"
+else
+  pass "monorepo-coverage: an applied parent is not also enumerated as an ordinary source"
+fi
+
+# (g) A slice is not a "workspace member ... under" its own source id.
+if printf '%s' "$c6_hyphen" | grep -qE '\[WARN\].*workspace member api under acme-mono-hyphen-api'; then
+  fail "monorepo-coverage: a slice is reported as a slice, not as a workspace member under itself" \
+    "coverage section: ${c6_hyphen:-<empty>}"
+else
+  pass "monorepo-coverage: a slice is reported as a slice, not as a workspace member under itself"
+fi
+
 # ============================================================================
 # Doctrine text -- 07-monorepo-adapter.md stops saying "not enforced";
 # 02-artifact-contract.md documents the three new fields

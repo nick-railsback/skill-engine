@@ -1596,8 +1596,23 @@ elif [ "$(jq -r '.sources | length' "$sp_file" 2>/dev/null)" = "0" ]; then
 else
   monorepo_concerns=0
   monorepo_inspected=0
-  while IFS=$'\x1f' read -r src_id src_kind src_path ws_roots_csv has_foi slice_of slice_id; do
+  # The urls covered by an applied slice. A parent named here is NOT
+  # enumerated as an ordinary source below: its slices are the citable
+  # units now, and DISCOVER/REFRESH exclude it from crawling, so
+  # enumerating it produced two opposite verdicts on one directory in a
+  # single run -- "[WARN] workspace member api under <parent> is not
+  # cited" from the member branch while the slice branch scored that same
+  # directory cited (PR #16 review, finding 15).
+  sliced_parent_urls="$(jq -r '
+    [.sources[]? | select(type == "object") | .slice_of | select(type == "string" and . != "")]
+    | unique | .[]
+  ' "$sp_file" 2>/dev/null)"
+  while IFS=$'\x1f' read -r src_id src_kind src_path ws_roots_csv has_foi slice_of slice_id src_url; do
     tree=""
+    if [ -z "$slice_of" ] && [ -n "$src_url" ] \
+       && printf '%s\n' "$sliced_parent_urls" | grep -qxF -- "$src_url"; then
+      continue
+    fi
     if [ -n "$slice_of" ]; then
       # Resolve the SLICE's own cache tree, keyed on its own derived
       # source id -- never the parent's. chunk 04 ("slice-sparse-crawl")
@@ -1619,29 +1634,63 @@ else
       fi
       monorepo_inspected=1
 
-      # The slice itself is the citable unit, not a root under which further
-      # members get enumerated -- derive its directory from the first
-      # slice_paths entry by stripping a trailing glob segment
-      # ("domains/billing/**" -> "domains/billing").
-      slice_path_first="$(jq -r --arg id "$src_id" '
-        [.sources[]? | select((.id // "") == $id) | ((.slice_paths // [])[0] // "")] | first // ""
-      ' "$sp_file" 2>/dev/null)"
-      slice_dir="${slice_path_first%%\**}"
-      slice_dir="${slice_dir%/}"
-      if [ -z "$slice_dir" ] || [ ! -d "$tree/$slice_dir" ]; then
-        skip "monorepo-coverage: $src_id's slice_paths entry '$slice_path_first' does not resolve under its own sparse tree -- skipping coverage for this slice"
+      # The slice itself is the citable unit, not a root under which
+      # further members get enumerated. EVERY slice_paths entry is read,
+      # not just the first: 07-monorepo-adapter.md and
+      # source-paths.schema.json both say the field feeds this check "the
+      # same way workspace_roots does", and workspace_roots iterates every
+      # entry. Reading only [0] meant a slice declaring
+      # ["packages/billing/**", "shared/billing-types/**"] never had its
+      # second path checked, and a first entry leading with a glob
+      # ("**/billing/**") or naming a file yielded a non-directory and
+      # [N/A]-skipped the whole slice.
+      #
+      # Each entry contributes its literal prefix -- the part before the
+      # first glob metacharacter -- which is the longest thing that can
+      # appear verbatim in a citation. "domains/billing/**" gives
+      # "domains/billing"; "packages/api/schema.proto" gives itself; a
+      # leading-glob entry gives nothing and is simply skipped.
+      slice_prefixes=()
+      while IFS= read -r slice_pattern; do
+        [ -n "$slice_pattern" ] || continue
+        slice_prefix="${slice_pattern%%[*?[]*}"
+        slice_prefix="${slice_prefix%/}"
+        [ -n "$slice_prefix" ] || continue
+        # -e, not -d: a pattern may name a file, which is citable too.
+        [ -e "$tree/$slice_prefix" ] || continue
+        slice_prefixes+=("$slice_prefix")
+      done < <(jq -r --arg id "$src_id" '
+        .sources[]? | select((.id // "") == $id) | (.slice_paths // [])[]? | select(type == "string")
+      ' "$sp_file" 2>/dev/null)
+
+      if [ "${#slice_prefixes[@]}" -eq 0 ]; then
+        skip "monorepo-coverage: none of $src_id's slice_paths resolve under its own sparse tree -- skipping coverage for this slice"
         continue
       fi
 
-      ere_escape_one "$slice_id"
-      slice_esc="$ERE_ESCAPE_ONE_RESULT"
+      # Anchored on the slice's own PATH, never on its bare id. The member
+      # branch in this same loop greps "<root>/(<member>)\b" precisely so
+      # that "api" cannot match inside a cited sibling's "web-api" at the
+      # '-' (PR #15 review, finding 1), and a bare-id grep here was exactly
+      # the form that comment forbids: slice ids like api, web, core and db
+      # are the common case, and one was scored cited by the word "billing"
+      # appearing in a reference's prose. A slice_paths prefix always
+      # carries at least one '/', which is the same anchor "<root>/" is for
+      # a workspace member.
       slice_cited=0
-      if [ -d "$CTX_ROOT/references" ] && grep -rqE "\b${slice_esc}\b" "$CTX_ROOT/references" 2>/dev/null; then
-        slice_cited=1
+      if [ -d "$CTX_ROOT/references" ]; then
+        slice_alt=""
+        for slice_prefix in "${slice_prefixes[@]}"; do
+          ere_escape_one "$slice_prefix"
+          slice_alt="${slice_alt:+$slice_alt|}$ERE_ESCAPE_ONE_RESULT"
+        done
+        if grep -rqE "($slice_alt)\b" "$CTX_ROOT/references" 2>/dev/null; then
+          slice_cited=1
+        fi
       fi
       if [ "$slice_cited" -eq 0 ]; then
         monorepo_concerns=$((monorepo_concerns + 1))
-        printf '  [WARN] workspace member %s under %s is not cited in any reference (verify post-run summary for an explicit skip-reason)\n' "$slice_id" "$src_id"
+        printf '  [WARN] slice %s (%s) is not cited in any reference (verify post-run summary for an explicit skip-reason)\n' "$slice_id" "$src_id"
       fi
       continue
     fi
@@ -1792,11 +1841,11 @@ else
   # count, so a wrong-typed files_of_interest was silently read as scoped.
   # Check 2 is what reports the malformed entry; this guard only keeps it
   # from silencing its neighbours.
-  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end), (.slice_of // ""), (.slice_id // "")] | join("\u001f")' "$sp_file" 2>/dev/null)
+  done < <(jq -r '.sources[]? | [(.id // ""), (.kind // ""), (.path // ""), (if (.workspace_roots | type) == "array" then (.workspace_roots | join(",")) else "" end), (if (.files_of_interest | type) == "array" then (.files_of_interest | length) else 0 end), (.slice_of // ""), (.slice_id // ""), (.url // "")] | join("\u001f")' "$sp_file" 2>/dev/null)
   if [ "$monorepo_inspected" -eq 0 ]; then
     : # every per-source skip() already reported why; no aggregate line needed
   elif [ "$monorepo_concerns" -eq 0 ]; then
-    pass "monorepo-coverage heuristic clean (no workspace members surfaced as uncited)"
+    pass "monorepo-coverage heuristic clean (no workspace members or slices surfaced as uncited)"
   else
     pass "monorepo-coverage heuristic registered $monorepo_concerns warning(s) above (reviewer to disposition)"
   fi
