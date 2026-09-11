@@ -64,7 +64,7 @@ Loading rules:
 
 ## Catalog
 
-*No references yet.* Run `/skill-engine:discover` to populate per-source catalogs. DISCOVER reads each registered source, discovers the essence of its content, and writes reference files that satisfy the four reference invariants. Per-source `## Catalog: <source-slug>` sections appear here as references accumulate.
+*No references yet.* Run `/skill-engine:discover` to populate per-source catalogs. DISCOVER reads each registered source, discovers the essence of its content, and writes reference files that satisfy the four reference invariants. Per-source `## Catalog: <source-slug>` sections appear here as references accumulate. A sliced monorepo source's slices land the same way, sectioned as `## Catalog: <slug>/<slice-id>` instead.
 
 <!-- Per-source catalogs land here after DISCOVER's first emit pass. The expected shape, populated by /skill-engine:self-audit and refreshed by /skill-engine:discover:
 
@@ -84,7 +84,30 @@ Loading rules:
 
      Each Catalog header binds to one source entry in research/source-paths.json (by `id`). The self-audit workflow enforces bijection — every primary appears in exactly one catalog row; every catalog row points at an existing primary.
 
-     Each catalog row's link MAY use the file form `references/<source-slug>-<topic>.md` (default, for text-only references) OR the directory form `references/<source-slug>-<topic>/` (opt-in, for multimodal references that ship alongside non-.md assets like diagrams or schemas). Both forms are first-class; the per-section bijection set-equality is computed over canonical reference IDs and extends to directory-form references unchanged. See https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md "### Reference depth (one level)" for the directory-form contract. -->
+     Each catalog row's link MAY use the file form `references/<source-slug>-<topic>.md` (default, for text-only references) OR the directory form `references/<source-slug>-<topic>/` (opt-in, for multimodal references that ship alongside non-.md assets like diagrams or schemas). Both forms are first-class; the per-section bijection set-equality is computed over canonical reference IDs and extends to directory-form references unchanged. See https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/02-artifact-contract.md "### Reference depth (one level)" for the directory-form contract.
+
+     A sliced monorepo source's slices section the same way, nested in this
+     same container as `## Catalog: <slug>/<slice-id>` -- `<slug>` is the
+     parent monorepo's own registered source id, `<slice-id>` the slice's
+     stable identifier from `monorepo-config.json` (see
+     `07-monorepo-adapter.md` §7.7, "reference-catalog grouping"):
+
+         ## Catalog: bigmono/billing
+
+         | Reference | Description | Tags |
+         |---|---|---|
+         | [bigmono-billing-invoicing](references/bigmono-billing-invoicing.md) | <one-line description> | |
+
+         ## Catalog: bigmono/reports
+
+         | Reference | Description | Tags |
+         |---|---|---|
+         | [bigmono-reports-exports](references/bigmono-reports-exports.md) | <one-line description> | |
+
+     Slice sections bind and bijection-enforce exactly like source
+     sections, and compose freely alongside plain per-source sections in
+     the same navigator when a contextualizer registers both sliced and
+     unsliced sources. -->
 
 ## Markdown style for generated references
 
