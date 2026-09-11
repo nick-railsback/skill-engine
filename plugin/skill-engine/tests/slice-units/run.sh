@@ -563,6 +563,163 @@ else
 fi
 
 # ===========================================================================
+# Section E2 — executed: the derivation is idempotent across applies, and a
+# monorepo carrying no url at all halts like a dangling one.
+#
+# Section C runs the derivation exactly once, against a registry holding
+# only the parent. That is the FIRST run. Every run after the first reads a
+# registry that also holds the slices a previous /skill-engine:apply
+# promoted -- and every one of those slices carries the parent's own url,
+# because the derivation stamps `url: $m.url` onto each entry it emits. A
+# parent lookup written as a jq generator therefore binds once per matching
+# entry rather than once, and the comprehension emits matches x slices.
+# (PR #16 review, finding 1.)
+# ===========================================================================
+section "derivation block — a post-apply registry derives no duplicate and no phantom entry"
+
+# The registry as it stands after one apply: the parent plus the two slices
+# derived from this same config, each carrying the parent's url verbatim.
+reapply_config="$WORK/monorepo-config-reapply.json"
+cat > "$reapply_config" <<EOF
+{
+  "version": "1.0",
+  "monorepos": [
+    {
+      "url": "$PARENT_URL",
+      "type": "internal-repo",
+      "slices": [
+        {"id": "billing", "paths": ["packages/billing/**"]},
+        {"id": "reports", "paths": ["apps/reports-dashboard/**"]}
+      ]
+    }
+  ]
+}
+EOF
+
+reapply_sources="$WORK/source-paths-postapply.json"
+jq --arg purl "$PARENT_URL" --arg pid "$PARENT_ID" --arg pbranch "$PARENT_BRANCH" '
+  .sources += [
+    {
+      id: ($pid + "-billing"), kind: "git-managed", url: $purl, branch: $pbranch,
+      slice_of: $purl, slice_id: "billing", slice_paths: ["packages/billing/**"],
+      status: "confirmed", archived: false,
+      lifecycle: {state: "reachable", last_checked: "2026-09-08", last_checked_sha: "aaa1111", proposed_url: null}
+    },
+    {
+      id: ($pid + "-reports"), kind: "git-managed", url: $purl, branch: $pbranch,
+      slice_of: $purl, slice_id: "reports", slice_paths: ["apps/reports-dashboard/**"],
+      status: "confirmed", archived: false,
+      lifecycle: {state: "reachable", last_checked: "2026-09-08", last_checked_sha: "bbb2222", proposed_url: null}
+    }
+  ]
+' "$main_sources" > "$reapply_sources"
+
+if [ -n "$DERIVATION_BLOCK" ]; then
+  run_derivation "$reapply_config" "$reapply_sources"
+
+  if [ "$DERIVE_RC" -eq 0 ]; then
+    # Every emitted id must be one the registry does not already carry, and
+    # no id may repeat within the emission. A generator-bound parent fails
+    # both at once: it re-emits acme-monorepo-billing / -reports AND invents
+    # acme-monorepo-billing-billing and three more like it.
+    reapply_new="$(printf '%s' "$DERIVE_OUT" | jq -e --slurpfile reg "$reapply_sources" '
+      ([$reg[0].sources[].id]) as $live
+      | map(.id) as $emitted
+      | ($emitted | map(select(. as $i | $live | index($i)))) as $dupes
+      | ($emitted | group_by(.) | map(select(length > 1) | .[0])) as $repeats
+      | {dupes: $dupes, repeats: $repeats}
+    ' 2>&1)"
+    if printf '%s' "$reapply_new" | jq -e '.dupes == [] and .repeats == []' >/dev/null 2>&1; then
+      pass "a second run over an applied registry emits no id the registry already carries and no repeat"
+    else
+      fail "a second run over an applied registry emits no id the registry already carries and no repeat" \
+        "collisions: $reapply_new" "stdout: $DERIVE_OUT"
+    fi
+
+    # The phantom shape is what a generator-bound parent produces and a
+    # lookup cannot: an id built by concatenating a slice id onto an id
+    # that already ends in one.
+    if printf '%s' "$DERIVE_OUT" | jq -e '
+      map(select(.id | test("-(billing|reports)-(billing|reports)$"))) | length == 0
+    ' >/dev/null 2>&1; then
+      pass "no derived id concatenates a slice id onto an already-sliced id (no <parent>-<slice>-<slice> phantom)"
+    else
+      fail "no derived id concatenates a slice id onto an already-sliced id (no <parent>-<slice>-<slice> phantom)" \
+        "stdout: $DERIVE_OUT"
+    fi
+
+    # A third run compounds it: the phantoms from run 2 are themselves
+    # url-matching sources by then. Fan-out must not grow with each apply.
+    reapply_sources3="$WORK/source-paths-postapply3.json"
+    jq --slurpfile derived <(printf '%s' "$DERIVE_OUT") '.sources += $derived[0]' \
+      "$reapply_sources" > "$reapply_sources3" 2>/dev/null
+    run_derivation "$reapply_config" "$reapply_sources3"
+    if [ "$DERIVE_RC" -eq 0 ] && printf '%s' "$DERIVE_OUT" | jq -e 'length <= 2' >/dev/null 2>&1; then
+      pass "a third run emits at most one entry per declared slice (fan-out does not grow with each apply)"
+    else
+      fail "a third run emits at most one entry per declared slice (fan-out does not grow with each apply)" \
+        "rc=$DERIVE_RC count: $(printf '%s' "$DERIVE_OUT" | jq -r 'length' 2>&1) -- stdout: $DERIVE_OUT"
+    fi
+  else
+    fail "a second run over an applied registry emits no id the registry already carries and no repeat" \
+      "rc=$DERIVE_RC stderr: $DERIVE_ERR"
+    fail "no derived id concatenates a slice id onto an already-sliced id (no <parent>-<slice>-<slice> phantom)" \
+      "rc=$DERIVE_RC stderr: $DERIVE_ERR"
+    fail "a third run emits at most one entry per declared slice (fan-out does not grow with each apply)" \
+      "rc=$DERIVE_RC stderr: $DERIVE_ERR"
+  fi
+else
+  fail "a second run over an applied registry emits no id the registry already carries and no repeat" "$NO_BLOCK_REASON"
+  fail "no derived id concatenates a slice id onto an already-sliced id (no <parent>-<slice>-<slice> phantom)" "$NO_BLOCK_REASON"
+  fail "a third run emits at most one entry per declared slice (fan-out does not grow with each apply)" "$NO_BLOCK_REASON"
+fi
+
+# ===========================================================================
+section "derivation block — a monorepo entry carrying no url halts like a dangling one"
+
+# §7.3's five rules require url UNIQUENESS, not presence, and the
+# monorepo-config check passes a url-less entry -- so the derivation's own
+# dangling-url guard is the only thing standing between a typo'd config and
+# a silent zero-slice run. `map(select(...)) | (.[0].url // empty)` selects
+# the entry and then reports nothing about it, which is the same as not
+# selecting it.
+for urlless_shape in absent null; do
+  urlless_config="$WORK/monorepo-config-urlless-$urlless_shape.json"
+  if [ "$urlless_shape" = "absent" ]; then
+    url_field=""
+  else
+    url_field='"url": null,'
+  fi
+  cat > "$urlless_config" <<EOF
+{
+  "version": "1.0",
+  "monorepos": [
+    {
+      $url_field
+      "type": "internal-repo",
+      "slices": [
+        {"id": "billing", "paths": ["packages/billing/**"]},
+        {"id": "reports", "paths": ["apps/reports-dashboard/**"]}
+      ]
+    }
+  ]
+}
+EOF
+
+  if [ -n "$DERIVATION_BLOCK" ]; then
+    run_derivation "$urlless_config" "$main_sources"
+    if [ "$DERIVE_RC" -ne 0 ] && [ -n "${DERIVE_ERR//[$'\t\r\n ']/}" ]; then
+      pass "a monorepos[] entry whose url is $urlless_shape halts non-zero with a diagnostic"
+    else
+      fail "a monorepos[] entry whose url is $urlless_shape halts non-zero with a diagnostic" \
+        "rc=$DERIVE_RC stdout: $DERIVE_OUT stderr: $DERIVE_ERR"
+    fi
+  else
+    fail "a monorepos[] entry whose url is $urlless_shape halts non-zero with a diagnostic" "$NO_BLOCK_REASON"
+  fi
+done
+
+# ===========================================================================
 # Section F — executed: absent-config backward compat (the implicit
 # criterion the Goal statement's "when present" clause implies).
 # ===========================================================================
@@ -608,6 +765,19 @@ if near_all "$PREFLIGHT_TEXT" 'monorepo-config\.json' 200 'research/' '(read|rea
 else
   fail "pre-flight documents reading research/monorepo-config.json when present" \
     "expected 'monorepo-config.json' documented near 'research/' and a read/present phrase"
+fi
+
+# Both documented locations, not just the canonical one. §7.3 declares two
+# and verify.sh's monorepo-config check inspects both (its elif branch); a
+# step 1.7 that names only research/ hands the engine-self-contextualizer a
+# green verify, a validated config naming its slices, and a run that stages
+# zero of them -- the absent-file branch is a documented no-op, so nothing
+# is printed. (PR #16 review, finding 1c.)
+if near_all "$PREFLIGHT_TEXT" 'monorepo-config\.json' 250 'CTX_ROOT/monorepo-config\.json' '(precedence|falling back|falls back)'; then
+  pass "pre-flight names both documented config locations and their precedence"
+else
+  fail "pre-flight names both documented config locations and their precedence" \
+    "expected \$CTX_ROOT/monorepo-config.json documented alongside the research/ location, with the precedence between them stated"
 fi
 
 if near_all "$PREFLIGHT_TEXT" 'monorepo-config\.json' 250 'CTX_PROPOSED' 'source-paths\.json'; then
