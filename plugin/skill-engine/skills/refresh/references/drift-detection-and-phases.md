@@ -165,12 +165,17 @@ When `/skill-engine:refresh` is invoked:
    - `status ∈ {confirmed, proposed}` (rejected companions don't
      refresh),
    - **the source is not itself a slice (`slice_of` absent), and its `url`
-     is not named as `slice_of` by any `sources[]` entry** — a monorepo
-     parent with one or more applied slices is excluded from re-read; its
-     slices cover it now, and each slice remains in-scope in its own right
-     regardless of sharing the parent's `url`. Render one line in the
-     pre-flight summary: `Parent <id> excluded from crawling — <N>
-     slice(s) applied.`
+     is not named as `slice_of` by any `sources[]` entry that is itself
+     in-scope by the three criteria above** — a monorepo parent with one
+     or more live applied slices is excluded from re-read; its slices
+     cover it now, and each slice remains in-scope in its own right
+     regardless of sharing the parent's `url`. A slice that is
+     `archived: true`, `lifecycle.state: "removed"` or
+     `status: "rejected"` covers nothing and never excludes its parent:
+     it is not crawled either, so counting it would drop the whole
+     monorepo out of REFRESH permanently, and silently, since an excluded
+     source prints no line. Render one line in the pre-flight summary:
+     `Parent <id> excluded from crawling — <N> slice(s) applied.`
 
 5. **`--lifecycle-only` flag.** If passed, perform only the lifecycle
    state-check pass below; skip drift detection and reference re-emit.
@@ -326,24 +331,38 @@ so never-probed sources sort to the front); further ties are broken by
 ascending source `id`. The ordering recipe:
 
 ```jq
+def in_scope:
+  (.archived // false) == false
+  and (.lifecycle.state // "") != "removed"
+  and (.status == "confirmed" or .status == "proposed")
+  and .kind == "git-managed";
+
 .sources as $all
+| [$all[] | select(in_scope and .slice_of != null) | .slice_of] as $covered
 | $all
-| map(select(
-    (.archived // false) == false
-    and (.lifecycle.state // "") != "removed"
-    and (.status == "confirmed" or .status == "proposed")
-    and .kind == "git-managed"
-    and (.slice_of != null or (([.url] - ($all | map(.slice_of // empty))) == [.url]))))
+| map(select(in_scope
+    and (.slice_of != null or (([.url] - $covered) == [.url]))))
 | sort_by([-(.importance // 3), (.lifecycle.last_checked // "1970-01-01T00:00:00Z"), .id])
 | .[].id
 ```
 
-The added clause excludes a source whose `url` is named as `slice_of` by any
-other entry — i.e., it is a monorepo parent that one or more slice entries
-already cover, per Pre-flight step 4's new bullet above. A slice entry itself
-is never excluded by this clause (`.slice_of != null` short-circuits it),
-even though a derived slice inherits its parent's `url` — the exclusion
-targets the parent, not every entry sharing that `url`.
+The added clause excludes a source whose `url` is named as `slice_of` by an
+**in-scope** entry — i.e., it is a monorepo parent that one or more live
+slice entries already cover, per Pre-flight step 4's new bullet above. A
+slice entry itself is never excluded by this clause (`.slice_of != null`
+short-circuits it), even though a derived slice inherits its parent's `url`
+— the exclusion targets the parent, not every entry sharing that `url`.
+
+`$covered` is built from the **filtered** slices, not from `.sources`
+wholesale, and that is load-bearing rather than tidiness. The only
+justification for excluding a parent is that its slices cover it now; a
+slice that is `archived: true`, `lifecycle.state: "removed"` or
+`status: "rejected"` covers nothing and is never crawled either. Computing
+the exclusion set over the unfiltered array lets one dead slice drop its
+entire monorepo out of REFRESH permanently — silently, since an excluded
+source prints no line and its `lifecycle.last_checked_sha` simply stops
+advancing. Bind the predicate once and use it for both the membership set
+and the `map(select(...))`, so the two can never drift apart.
 
 The `select` is Pre-flight step 4's in-scope filter plus `kind ==
 "git-managed"`, which is as far as the registry alone can narrow the set:

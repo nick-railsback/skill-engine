@@ -525,6 +525,71 @@ else
         "offsets: zzz-eligible-high=${elig_hi:-<absent>} zzy-eligible-proposed=${elig_lo:-<absent>}" \
         "full output: ${ELIG_OUT:-<empty>}"
     fi
+
+    # ---- a DEAD slice must not exclude its parent ----------------------
+    # The parent-exclusion clause added by the monorepo adapter binds $all
+    # to the UNFILTERED .sources array and tests membership against it, so
+    # a slice that is archived, lifecycle.state removed, or status rejected
+    # still contributes its slice_of to the exclusion set. The prose's
+    # justification for excluding a parent -- "its slices cover it now" --
+    # is exactly false in that case: the slice that excludes it is dead and
+    # will never be crawled either, so the monorepo silently drops out of
+    # REFRESH forever with no line printed. The exclusion set has to be
+    # computed over the already-filtered in-scope slices, not over $all.
+    # (PR #16 review, finding 5.)
+    DEAD_SLICE_FIXTURE="$SCRIPT_DIR/fixtures/source-paths-dead-slices.json"
+    DEAD_SCRATCH="$WORK/exec-dead-slices"
+    mkdir -p "$DEAD_SCRATCH/research"
+    cp "$DEAD_SLICE_FIXTURE" "$DEAD_SCRATCH/research/source-paths.json"
+
+    DEAD_OUT=""
+    if [ "$FENCE_LANG" = "jq" ]; then
+      DEAD_OUT="$(cd "$DEAD_SCRATCH" && jq "$FENCE_BODY" research/source-paths.json 2>&1 < research/source-paths.json)"
+    else
+      DEAD_OUT="$(cd "$DEAD_SCRATCH" && bash -c "$FENCE_BODY" 2>&1 < research/source-paths.json)"
+    fi
+
+    # Each parent below is sliced exactly once, by a slice that is out of
+    # scope for a different reason. All three parents must survive.
+    dead_missing=""
+    for parent_id in bigmono thirdmono fourthmono; do
+      printf '%s' "$DEAD_OUT" | grep -qF -- "$parent_id" || dead_missing="${dead_missing}${parent_id} "
+    done
+    if [ -z "$dead_missing" ]; then
+      pass "c1_executed_dead_slice_does_not_exclude_its_parent"
+    else
+      fail "c1_executed_dead_slice_does_not_exclude_its_parent" \
+        "a removed/rejected/archived slice excluded its parent from promotion: $dead_missing" \
+        "full output: ${DEAD_OUT:-<empty>}"
+    fi
+
+    # The complement, so the clause cannot pass by excluding nothing: a
+    # LIVE slice must still exclude its parent, and must itself survive.
+    if printf '%s' "$DEAD_OUT" | grep -qE '(^|[^-])othermono([^-]|$)'; then
+      fail "c1_executed_live_slice_still_excludes_its_parent" \
+        "othermono has a live slice (othermono-auth) and must be excluded from promotion" \
+        "full output: ${DEAD_OUT:-<empty>}"
+    elif printf '%s' "$DEAD_OUT" | grep -qF -- 'othermono-auth'; then
+      pass "c1_executed_live_slice_still_excludes_its_parent"
+    else
+      fail "c1_executed_live_slice_still_excludes_its_parent" \
+        "the live slice othermono-auth must itself remain in scope" \
+        "full output: ${DEAD_OUT:-<empty>}"
+    fi
+
+    # The dead slices themselves stay out — this fixture must not pass by
+    # the filter having stopped filtering.
+    dead_leaked=""
+    for dead_id in bigmono-billing thirdmono-legacy fourthmono-ui; do
+      printf '%s' "$DEAD_OUT" | grep -qF -- "$dead_id" && dead_leaked="${dead_leaked}${dead_id} "
+    done
+    if [ -z "$dead_leaked" ]; then
+      pass "c1_executed_dead_slices_stay_out_of_scope"
+    else
+      fail "c1_executed_dead_slices_stay_out_of_scope" \
+        "removed/rejected/archived slices were promoted: $dead_leaked" \
+        "full output: ${DEAD_OUT:-<empty>}"
+    fi
   fi
 fi
 

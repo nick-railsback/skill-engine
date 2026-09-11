@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "bigmono",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/bigmono",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 4,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "aaa1111", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "bigmono-billing",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/bigmono",
+      "slice_of": "https://example.com/acme/bigmono",
+      "slice_id": "billing",
+      "slice_paths": ["packages/billing/**"],
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {"state": "removed", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "bbb2222", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "othermono",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/othermono",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 3,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "ccc3333", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "othermono-auth",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/othermono",
+      "slice_of": "https://example.com/acme/othermono",
+      "slice_id": "auth",
+      "slice_paths": ["packages/auth/**"],
+      "status": "confirmed",
+      "archived": false,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "ddd4444", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "thirdmono",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/thirdmono",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 2,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "eee5555", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "thirdmono-legacy",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/thirdmono",
+      "slice_of": "https://example.com/acme/thirdmono",
+      "slice_id": "legacy",
+      "slice_paths": ["packages/legacy/**"],
+      "status": "rejected",
+      "archived": false,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "fff6666", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "fourthmono",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/fourthmono",
+      "status": "confirmed",
+      "archived": false,
+      "importance": 1,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "9997777", "proposed_url": null},
+      "discovered_via": null
+    },
+    {
+      "id": "fourthmono-ui",
+      "kind": "git-managed",
+      "url": "https://example.com/acme/fourthmono",
+      "slice_of": "https://example.com/acme/fourthmono",
+      "slice_id": "ui",
+      "slice_paths": ["packages/ui/**"],
+      "status": "confirmed",
+      "archived": true,
+      "lifecycle": {"state": "reachable", "last_checked": "2026-09-01T00:00:00Z", "last_checked_sha": "8888888", "proposed_url": null},
+      "discovered_via": null
+    }
+  ]
+}
