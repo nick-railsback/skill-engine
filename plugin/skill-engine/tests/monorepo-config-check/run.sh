@@ -1098,15 +1098,61 @@ check3_case "a third key of author: is rejected (a second, distinct instance of 
 description: ${NAV_DESC}
 author: someone" fail
 
-check3_case "paths: present but as a scalar string (not a list) is rejected" \
+# Claude Code documents `paths` as accepting "a comma-separated string or a
+# YAML list", and 02-artifact-contract.md justifies admitting the field by
+# pointing at that documentation. Check 3 was a line-oriented grep that fell
+# through to a scalar arm for any same-line value other than the literal
+# `[]`, so BOTH documented spellings failed -- the flow sequence with the
+# diagnostic "must be a YAML list, not a scalar value", which is not merely
+# strict but factually false, since yaml.safe_load on that same frontmatter
+# returns a list. The item-counting awk below the branch, the only code that
+# actually counts entries, was unreachable for anything but block style.
+# This expectation is a deliberate flip of the previously frozen one.
+# (PR #16 review, finding 8.)
+check3_case "paths: as a YAML flow sequence passes -- it IS a list" \
   "name: acme-context
 description: ${NAV_DESC}
-paths: packages/billing/**" fail
+paths: [packages/billing/**, shared/**]" pass
+
+check3_case "paths: as a single-item flow sequence passes" \
+  "name: acme-context
+description: ${NAV_DESC}
+paths: [packages/billing/**]" pass
+
+check3_case "paths: as a comma-separated string passes -- the other spelling the platform documents" \
+  "name: acme-context
+description: ${NAV_DESC}
+paths: packages/billing/**, shared/**" pass
+
+check3_case "paths: as a single-glob string passes" \
+  "name: acme-context
+description: ${NAV_DESC}
+paths: packages/billing/**" pass
+
+check3_case "paths: as a quoted flow sequence passes" \
+  "name: acme-context
+description: ${NAV_DESC}
+paths: [\"packages/billing/**\", \"shared/**\"]" pass
 
 check3_case "paths: [] (empty list) is rejected -- the admitted shape requires non-empty" \
   "name: acme-context
 description: ${NAV_DESC}
 paths: []" fail
+
+check3_case "paths: with only separators and no glob is rejected" \
+  "name: acme-context
+description: ${NAV_DESC}
+paths: [ , , ]" fail
+
+check3_case "paths: as a bare comma is rejected" \
+  "name: acme-context
+description: ${NAV_DESC}
+paths: ," fail
+
+check3_case "paths: with an empty key and no block entries is still rejected" \
+  "name: acme-context
+description: ${NAV_DESC}
+paths:" fail
 
 section "Check 3 -- the four real in-repo navigators still pass, unchanged"
 

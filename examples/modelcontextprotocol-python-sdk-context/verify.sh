@@ -804,16 +804,42 @@ else
       esac
     done < <(printf '%s\n' "$fm" | grep -oE '^[A-Za-z0-9_.-]+:' | sed 's/:$//')
 
-    # paths:, when present, must be a non-empty YAML block list — a
-    # scalar value or an empty list both fail, naming the shape defect.
+    # paths:, when present, must name at least one glob. Three spellings
+    # are admitted, which are the ones Claude Code documents for the
+    # field ("a comma-separated string or a YAML list") plus the block
+    # form: a YAML block list, a YAML flow sequence, and a
+    # comma-separated string. Only emptiness is a failure.
+    #
+    # A line-oriented grep that sent every same-line value other than the
+    # literal `[]` to a "must be a YAML list, not a scalar value" arm was
+    # not merely strict but wrong: `[a, b]` IS a YAML list, and the
+    # item-counting pass below — the only code that actually counts
+    # entries — was unreachable for anything but block style.
+    #
+    # Nothing here parses YAML. It does not need to: the question is
+    # "how many non-empty items", which survives stripping one layer of
+    # brackets and splitting on commas, and verify.sh ships stamped into
+    # user repos where a PyYAML dependency would not.
     if printf '%s\n' "$fm" | grep -qE '^paths:'; then
       fm_paths_line="$(printf '%s\n' "$fm" | grep -E '^paths:' | head -1)"
       fm_paths_value="$(printf '%s' "${fm_paths_line#paths:}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
       if [ -n "$fm_paths_value" ]; then
-        if [ "$fm_paths_value" = "[]" ]; then
-          fail "$nav_rel frontmatter: paths: is an empty list — must contain at least one glob"
-        else
-          fail "$nav_rel frontmatter: paths: must be a YAML list, not a scalar value ('$fm_paths_value')"
+        fm_paths_inner="$fm_paths_value"
+        case "$fm_paths_value" in
+          \[*\]) fm_paths_inner="${fm_paths_value#\[}"; fm_paths_inner="${fm_paths_inner%\]}" ;;
+        esac
+        # Quote characters are deleted rather than matched, so the count
+        # does not depend on which of YAML's two quotings was used. The
+        # single quote arrives via a variable: spelling it inline inside
+        # this already single-quoted context is what turns a one-line
+        # counter into a quoting puzzle.
+        fm_paths_squote="'"
+        fm_paths_items="$(printf '%s' "$fm_paths_inner" \
+          | tr ',' '\n' \
+          | tr -d "\"$fm_paths_squote" \
+          | grep -c '[^[:space:]]')" || fm_paths_items=0
+        if [ "${fm_paths_items:-0}" -eq 0 ]; then
+          fail "$nav_rel frontmatter: paths: names no glob ('$fm_paths_value') — must contain at least one"
         fi
       else
         fm_paths_items=$(printf '%s\n' "$fm" | awk '
