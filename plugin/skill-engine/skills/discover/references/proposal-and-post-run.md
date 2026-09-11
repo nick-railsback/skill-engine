@@ -166,6 +166,12 @@ five components (no multi-column tables, no interactive menus):
    reviewer to check the post-run summary for a minimal-essence
    justification — the WARN is working as designed when this shape is
    the answer it finds.
+
+   When a covered source carries declared slices, group the coverage
+   enumeration by slice id rather than reporting the parent as one
+   undifferentiated source — e.g. `slice: billing (source_id:
+   acme-monorepo-billing) — <files read, references written>` — followed by
+   the parent's own remaining (non-slice) coverage, if any.
 2. **Skip-reasoning.** For files and companion sources you
    considered but excluded: "I deliberately skipped Z because… I
    considered companions P, Q and excluded them because…" Empty-skip

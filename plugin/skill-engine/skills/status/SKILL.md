@@ -89,6 +89,18 @@ section of [`maintenance-agent.md.template`](../../engine-bootstrap-templates/ma
 The freshness categories (fresh, stale, critical) and their default thresholds
 are documented in chapter [`05-invariants.md`](../../docs/05-invariants.md).
 
+## Slice grouping
+
+A source carrying `slice_of` (a monorepo slice, per
+[`07-monorepo-adapter.md`](../../docs/07-monorepo-adapter.md)) renders
+grouped under its parent in the freshness listing: the parent's row
+first, then each of its slices nested immediately beneath it, each shown
+by its own `slice_id` and its own freshness (fresh / stale / critical,
+computed the same way as any other source — see
+[`05-invariants.md`](../../docs/05-invariants.md) for the thresholds).
+This is purely additive — a contextualizer with zero `slice_of` entries
+renders exactly as it does today.
+
 ## Cadence
 
 Quick read; run anytime. STATUS does not write, so it is a safe first step on
