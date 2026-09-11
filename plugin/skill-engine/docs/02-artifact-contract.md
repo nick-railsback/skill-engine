@@ -246,8 +246,13 @@ be refused on every clone attempt. Pairs with `slice_of` and
 **`slice_paths`** — optional. A non-empty list of git path patterns
 (`git sparse-checkout` glob syntax) this slice covers. Feeds `verify.sh`'s
 `monorepo-coverage` (Check 6) heuristic the same way `workspace_roots`
-does for a non-sliced source, resolved against the slice's parent's cache
-tree rather than a tree of its own. Pairs with `slice_of` and `slice_id`.
+does for a non-sliced source, resolved against the slice's **own** sparse
+cache tree — the one `cache-git.sh sparse-clone` installs at
+`git-managed/<slice source_id>-<sha>/`. Not the parent's: every sibling
+slice inherits the parent's `url`, so a lookup keyed on that url is
+decided by `sources[]` array order, and an applied parent is excluded
+from crawling, so its own directory is never advanced again. Pairs with
+`slice_of` and `slice_id`.
 
 **`probe_budget`** — optional, document-root (not per-entry). A JSON
 integer ≥ 1. Absent, every promoted source proceeds to re-read; REFRESH

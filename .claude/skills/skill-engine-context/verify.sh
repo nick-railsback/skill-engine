@@ -658,11 +658,19 @@ else
             fail "sources[$idx] ($id): slice_of/slice_id/slice_paths must all be present together (got only: ${slice_fields_set% })"
             entries_ok=0
           else
-            slice_of_matches_other="$(jq -r --argjson idx "$idx" --arg of "$slice_of" '
-              [.sources | to_entries[] | select(.key != $idx) | (.value.url // "")] | any(. == $of)
+            # The match must be a NON-SLICE entry. Every derived slice
+            # carries `url: $m.url` -- the parent's own url -- so
+            # excluding self alone lets two sibling slices satisfy this
+            # gate for each other, and a registry holding slices with no
+            # parent at all passes. The gate would then bind only for a
+            # lone slice, i.e. never in the case slicing exists for.
+            slice_of_matches_parent="$(jq -r --argjson idx "$idx" --arg of "$slice_of" '
+              [.sources | to_entries[]
+                | select(.key != $idx and ((.value.slice_of // null) == null))
+                | (.value.url // "")] | any(. == $of)
             ' "$sp_file" 2>/dev/null)"
-            if [ "$slice_of_matches_other" != "true" ]; then
-              fail "sources[$idx] ($id): slice_of '$slice_of' does not match any other registered source's url"
+            if [ "$slice_of_matches_parent" != "true" ]; then
+              fail "sources[$idx] ($id): slice_of '$slice_of' does not match any registered non-slice source's url"
               entries_ok=0
             fi
           fi
@@ -1536,14 +1544,22 @@ else
   while IFS=$'\x1f' read -r src_id src_kind src_path ws_roots_csv has_foi slice_of slice_id; do
     tree=""
     if [ -n "$slice_of" ]; then
-      # A slice entry has no clone of its own (chunk 04, "slice-sparse-crawl,"
-      # is what will ever give it one) -- resolve the PARENT's cache tree,
-      # never the slice's own id.
-      slice_parent_id="$(jq -r --arg of "$slice_of" '
-        [.sources[]? | select((.url // "") == $of) | (.id // "")] | first // ""
-      ' "$sp_file" 2>/dev/null)"
-      if [ -z "$slice_parent_id" ] || ! tree="$(resolve_git_managed_tree "$slice_parent_id")"; then
-        skip "monorepo-coverage: $src_id is a slice of '$slice_of', which has no resolvable local cache tree -- skipping coverage for this slice"
+      # Resolve the SLICE's own cache tree, keyed on its own derived
+      # source id -- never the parent's. chunk 04 ("slice-sparse-crawl")
+      # gives every slice a sparse clone of its own, installed by
+      # `cache-git.sh sparse-clone "$source_id"` at
+      # git-managed/<slice source_id>-<sha>/. Two reasons the parent is
+      # the wrong tree to resolve. The parent's url is shared by every
+      # sibling slice (the derivation stamps `url: $m.url`), so a lookup
+      # keyed on it is decided by .sources[] array order: a slice could
+      # resolve to a sibling's sparse tree, or to itself, and since skip()
+      # counts as a pass the misresolution would make the heuristic report
+      # CLEAN rather than merely drop coverage. And chunk 02 excludes an
+      # applied parent from crawling, so its directory is never created or
+      # advanced again -- after /skill-engine:clean-cache or on a fresh
+      # machine it is gone permanently and every slice would skip forever.
+      if ! tree="$(resolve_git_managed_tree "$src_id")"; then
+        skip "monorepo-coverage: $src_id (slice '$slice_id' of '$slice_of') has no local cache tree under \$SKILL_ENGINE_CACHE_ROOT/git-managed/ -- skipping coverage for this slice"
         continue
       fi
       monorepo_inspected=1
@@ -1558,7 +1574,7 @@ else
       slice_dir="${slice_path_first%%\**}"
       slice_dir="${slice_dir%/}"
       if [ -z "$slice_dir" ] || [ ! -d "$tree/$slice_dir" ]; then
-        skip "monorepo-coverage: $src_id's slice_paths entry '$slice_path_first' does not resolve under the parent's tree -- skipping coverage for this slice"
+        skip "monorepo-coverage: $src_id's slice_paths entry '$slice_path_first' does not resolve under its own sparse tree -- skipping coverage for this slice"
         continue
       fi
 

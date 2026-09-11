@@ -784,6 +784,58 @@ else
     "source-entries section: ${c2_partial2:-<empty>}"
 fi
 
+# ----------------------------------------------------------------------------
+# Check 2's parent-existence gate must require a NON-SLICE match
+# ----------------------------------------------------------------------------
+# A derived slice carries `url: $m.url` -- the parent's own url -- so url is
+# not a unique key into .sources[]. The gate excluded only the entry being
+# checked (`select(.key != $idx)`) and never required the match to be a
+# non-slice entry, so two sibling slices satisfied it for each other and a
+# registry with slices but NO PARENT AT ALL passed. The gate only bound for
+# a lone slice, i.e. never in the case slicing exists for.
+# (PR #16 review, finding 7.)
+root_orphan_slices="$WORK/check2-orphan-slices"
+build_nav "$root_orphan_slices"
+orphan_parent_url="https://example.com/acme/orphan-monorepo"
+orphan_billing_extra="$(jq -n --arg of "$orphan_parent_url" \
+  '{slice_of: $of, slice_id: "billing", slice_paths: ["packages/billing/**"]}')"
+orphan_reports_extra="$(jq -n --arg of "$orphan_parent_url" \
+  '{slice_of: $of, slice_id: "reports", slice_paths: ["apps/reports/**"]}')"
+orphan_sources="$( {
+  git_managed_source acme-orphan-billing "$orphan_parent_url" "$orphan_billing_extra"
+  git_managed_source acme-orphan-reports "$orphan_parent_url" "$orphan_reports_extra"
+} | jq -s '.' )"
+write_sources "$root_orphan_slices" "$orphan_sources"
+cache_orphan="$WORK/check2-orphan-cache"
+mkdir -p "$cache_orphan"
+c2_orphan="$(check_section "$(run_verify "$root_orphan_slices" "$cache_orphan")" 'Source entries')"
+if printf '%s' "$c2_orphan" | grep -q '\[FAIL\]'; then
+  pass "source-entries: two sibling slices with no parent entry fail — a sibling does not satisfy the parent gate"
+else
+  fail "source-entries: two sibling slices with no parent entry fail — a sibling does not satisfy the parent gate" \
+    "source-entries section: ${c2_orphan:-<empty>}"
+fi
+
+# Control: with the parent present, the identical pair passes. Without
+# this the gate could satisfy the case above by rejecting every slice.
+root_sibling_ok="$WORK/check2-siblings-with-parent"
+build_nav "$root_sibling_ok"
+sibling_ok_sources="$( {
+  git_managed_source acme-orphan "$orphan_parent_url"
+  git_managed_source acme-orphan-billing "$orphan_parent_url" "$orphan_billing_extra"
+  git_managed_source acme-orphan-reports "$orphan_parent_url" "$orphan_reports_extra"
+} | jq -s '.' )"
+write_sources "$root_sibling_ok" "$sibling_ok_sources"
+cache_sibling_ok="$WORK/check2-siblings-with-parent-cache"
+mkdir -p "$cache_sibling_ok"
+c2_sibling_ok="$(check_section "$(run_verify "$root_sibling_ok" "$cache_sibling_ok")" 'Source entries')"
+if printf '%s' "$c2_sibling_ok" | grep -q '\[FAIL\]'; then
+  fail "source-entries: control — the same two slices WITH their parent registered pass" \
+    "source-entries section: ${c2_sibling_ok:-<empty>}"
+else
+  pass "source-entries: control — the same two slices WITH their parent registered pass"
+fi
+
 # ============================================================================
 # Check 6 -- an uncited slice warns by slice id and parent; a cited one
 # does not
@@ -818,6 +870,14 @@ write_sources "$root_slices" "$slices_sources"
 cache_slices="$WORK/check6-slices-cache"
 mkdir -p "$cache_slices/git-managed/acme-monorepo-slices-a1b2c3d4"
 populate_monorepo_tree "$cache_slices/git-managed/acme-monorepo-slices-a1b2c3d4"
+# Each slice also has its own sparse tree, installed under its own derived
+# source id -- what `cache-git.sh sparse-clone "$source_id"` actually
+# creates (chunk 04, "slice-sparse-crawl"). The parent's own clone stays
+# alongside them: chunk 02 excludes it from crawling but never deletes it.
+mkdir -p "$cache_slices/git-managed/acme-monorepo-slices-billing-a1b2c3d4/domains/billing" \
+         "$cache_slices/git-managed/acme-monorepo-slices-auth-a1b2c3d4/domains/auth"
+printf 'billing code\n' > "$cache_slices/git-managed/acme-monorepo-slices-billing-a1b2c3d4/domains/billing/main.go"
+printf 'auth code\n' > "$cache_slices/git-managed/acme-monorepo-slices-auth-a1b2c3d4/domains/auth/main.go"
 
 out_slices="$(run_verify "$root_slices" "$cache_slices")"
 c6_slices="$(check_section "$out_slices" 'Monorepo-coverage')"
@@ -835,6 +895,101 @@ if printf '%s' "$c6_slices" | grep -qE '\[WARN\].*\bauth\b'; then
     "monorepo-coverage section: ${c6_slices:-<empty>}"
 else
   pass "monorepo-coverage: the cited slice (auth) does not also warn"
+fi
+
+# ----------------------------------------------------------------------------
+# Check 6's slice-tree resolution must not depend on .sources[] order
+# ----------------------------------------------------------------------------
+# The branch resolved the PARENT's cache tree through
+# `[.sources[]? | select((.url // "") == $of) | .id] | first`. Every sibling
+# slice carries the parent's url too, so `first` is decided by array order:
+# a slice can resolve to a SIBLING's tree, or to itself. And since skip() is
+# `passed=$((passed + 1))`, a misresolution does not merely drop coverage --
+# the heuristic reports clean. The branch's own comment named the cause ("a
+# slice entry has no clone of its own -- chunk 04 is what will ever give it
+# one"), and chunk 04 is in this same PR: cache-git.sh sparse-clone installs
+# each slice under its OWN derived source id. Resolve that, and the
+# order-dependence disappears with the sibling lookup. (PR #16 review,
+# finding 7.)
+# The fixture above gives each slice its own distinct url, which is not
+# what step 1.7 emits: the derivation stamps `url: $m.url`, so every slice
+# carries the PARENT's url verbatim. That is precisely what makes url a
+# non-unique key, so the order-dependence only reproduces against the real
+# shape. Built here rather than by patching the fixture above, which stays
+# as the narrower already-frozen case.
+real_billing_extra="$(jq -n --arg of "$parent_slices_url" \
+  '{slice_of: $of, slice_id: "billing", slice_paths: ["domains/billing/**"]}')"
+real_auth_extra="$(jq -n --arg of "$parent_slices_url" \
+  '{slice_of: $of, slice_id: "auth", slice_paths: ["domains/auth/**"]}')"
+real_slices_sources="$( {
+  git_managed_source acme-monorepo-slices "$parent_slices_url"
+  git_managed_source acme-monorepo-slices-billing "$parent_slices_url" "$real_billing_extra"
+  git_managed_source acme-monorepo-slices-auth "$parent_slices_url" "$real_auth_extra"
+} | jq -s '.' )"
+
+run_check6_order() {
+  # run_check6_order <label-suffix> <jq-reorder-program>
+  local suffix="$1" reorder="$2" root cache
+  root="$WORK/check6-order-$suffix"
+  build_nav "$root"
+  mkdir -p "$root/references"
+  printf '# Auth notes\n\nSee domains/auth for the service implementation.\n' \
+    > "$root/references/acme-monorepo-auth.md"
+  write_sources "$root" "$(printf '%s' "$real_slices_sources" | jq "$reorder")"
+  cache="$root-cache"
+  # Each slice gets its own sparse tree under its own derived id, which is
+  # what bin/cache-git.sh sparse-clone actually installs, plus the parent's
+  # own clone (the pre-slicing one, which chunk 02 now excludes from
+  # crawling but never deletes).
+  mkdir -p "$cache/git-managed/acme-monorepo-slices-a1b2c3d4" \
+           "$cache/git-managed/acme-monorepo-slices-billing-a1b2c3d4" \
+           "$cache/git-managed/acme-monorepo-slices-auth-a1b2c3d4"
+  populate_monorepo_tree "$cache/git-managed/acme-monorepo-slices-a1b2c3d4"
+  mkdir -p "$cache/git-managed/acme-monorepo-slices-billing-a1b2c3d4/domains/billing"
+  printf 'billing code\n' > "$cache/git-managed/acme-monorepo-slices-billing-a1b2c3d4/domains/billing/main.go"
+  mkdir -p "$cache/git-managed/acme-monorepo-slices-auth-a1b2c3d4/domains/auth"
+  printf 'auth code\n' > "$cache/git-managed/acme-monorepo-slices-auth-a1b2c3d4/domains/auth/main.go"
+  check_section "$(run_verify "$root" "$cache")" 'Monorepo-coverage'
+}
+
+# The parent first, then the two slices -- and the exact reverse. The
+# verdict must be identical.
+c6_order_fwd="$(run_check6_order fwd '.')"
+c6_order_rev="$(run_check6_order rev 'reverse')"
+
+c6_warns_fwd="$(printf '%s' "$c6_order_fwd" | grep -c '\[WARN\]' || true)"
+c6_warns_rev="$(printf '%s' "$c6_order_rev" | grep -c '\[WARN\]' || true)"
+c6_skips_fwd="$(printf '%s' "$c6_order_fwd" | grep -c '\[N/A\]' || true)"
+c6_skips_rev="$(printf '%s' "$c6_order_rev" | grep -c '\[N/A\]' || true)"
+
+if [ "$c6_warns_fwd" = "$c6_warns_rev" ] && [ "$c6_skips_fwd" = "$c6_skips_rev" ]; then
+  pass "monorepo-coverage: reordering .sources[] does not change the slice verdicts"
+else
+  fail "monorepo-coverage: reordering .sources[] does not change the slice verdicts" \
+    "forward: $c6_warns_fwd WARN / $c6_skips_fwd N-A -- reversed: $c6_warns_rev WARN / $c6_skips_rev N-A" \
+    "forward section: ${c6_order_fwd:-<empty>}" \
+    "reversed section: ${c6_order_rev:-<empty>}"
+fi
+
+# Non-vacuity: in BOTH orders the uncited slice must actually warn and the
+# cited one must not. Equal-but-both-silent would satisfy the check above.
+c6_order_ok=1
+c6_order_detail=()
+for c6_ord in "forward:$c6_order_fwd" "reversed:$c6_order_rev"; do
+  c6_ord_label="${c6_ord%%:*}"
+  c6_ord_text="${c6_ord#*:}"
+  printf '%s' "$c6_ord_text" | grep -qE '\[WARN\].*\bbilling\b' \
+    || { c6_order_ok=0; c6_order_detail+=("$c6_ord_label: uncited slice 'billing' did not warn"); }
+  printf '%s' "$c6_ord_text" | grep -qE '\[WARN\].*\bauth\b' \
+    && { c6_order_ok=0; c6_order_detail+=("$c6_ord_label: cited slice 'auth' warned"); }
+  printf '%s' "$c6_ord_text" | grep -qE '\[N/A\].*slice' \
+    && { c6_order_ok=0; c6_order_detail+=("$c6_ord_label: a slice was [N/A]-skipped though its own tree is cached"); }
+done
+if [ "$c6_order_ok" -eq 1 ]; then
+  pass "monorepo-coverage: in both orders the uncited slice warns, the cited one does not, and neither is skipped"
+else
+  fail "monorepo-coverage: in both orders the uncited slice warns, the cited one does not, and neither is skipped" \
+    "${c6_order_detail[@]}"
 fi
 
 # ============================================================================
