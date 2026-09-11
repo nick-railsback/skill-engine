@@ -109,8 +109,8 @@
         },
         "slice_id": {
           "type": ["string", "null"],
-          "pattern": "^[a-z][a-z0-9_-]{0,30}$",
-          "description": "Optional. Short stable identifier for the slice within its parent monorepo — same constraint as reference filenames. Pairs with slice_of and slice_paths."
+          "pattern": "^[a-z][a-z0-9-]{0,30}$",
+          "description": "Optional. Short stable identifier for the slice within its parent monorepo. Narrower than a reference filename: the derived source id is \"<parent id>-<slice_id>\", which is interpolated into a filesystem path, so the same ^[a-z0-9][a-z0-9-]*$ constraint the id property documents applies here too — no underscore. Pairs with slice_of and slice_paths."
         },
         "slice_paths": {
           "type": ["array", "null"],

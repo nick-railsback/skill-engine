@@ -235,8 +235,12 @@ against sibling array elements. See
 [`07-monorepo-adapter.md`](07-monorepo-adapter.md).
 
 **`slice_id`** — optional. Short stable identifier for the slice within
-its parent monorepo, matching `^[a-z][a-z0-9_-]{0,30}$` — the same
-constraint as reference filenames. Pairs with `slice_of` and
+its parent monorepo, matching `^[a-z][a-z0-9-]{0,30}$` — *narrower* than a
+reference filename, which admits `_`. The derived source id is
+`<parent id>-<slice_id>`, and `bin/cache-git.sh` interpolates that into a
+cache directory name behind a guard admitting `[a-z0-9-]` only, so a
+slice id carrying an underscore would validate, stage and apply, and then
+be refused on every clone attempt. Pairs with `slice_of` and
 `slice_paths`.
 
 **`slice_paths`** — optional. A non-empty list of git path patterns

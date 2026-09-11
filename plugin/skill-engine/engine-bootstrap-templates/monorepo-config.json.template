@@ -8,7 +8,7 @@
       "type": "internal-repo",
       "slices": [
         {
-          "_comment": "EXAMPLE — replace with a real slice. id is the stable identifier the engine uses in STATUS rendering and worker-dispatch logs; it must match ^[a-z][a-z0-9_-]{0,30}$ (same constraint as reference filenames). paths is an array of git glob patterns following sparse-checkout --no-cone syntax.",
+          "_comment": "EXAMPLE — replace with a real slice. id is the stable identifier the engine uses in STATUS rendering and worker-dispatch logs; it must match ^[a-z][a-z0-9-]{0,30}$ (no underscore: the derived source id <parent id>-<slice id> becomes a cache directory name). paths is an array of git glob patterns following sparse-checkout --no-cone syntax.",
           "id": "billing",
           "paths": [
             "packages/billing/**",

@@ -365,6 +365,10 @@ run_cfg_case "rule E (leading digit) -- slice id must start with a lowercase let
   '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-e2","type":"internal-repo","slices":[{"id":"1team","paths":["packages/team/**"]}]}]}' \
   fail "1team"
 
+run_cfg_case "rule E (underscore) -- a slice id carrying _ cannot survive cache-git.sh and must be rejected here" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-e3","type":"internal-repo","slices":[{"id":"web_app","paths":["apps/web/**"]}]}]}' \
+  fail "web_app"
+
 run_cfg_case "bonus -- malformed JSON fails instead of crashing the run" \
   '{"version": "1.0", "monorepos": [' fail ""
 
@@ -496,9 +500,10 @@ write_schema_doc "$WORK/slice-bad-id.json" '{"slice_of":"https://example.com/acm
 write_schema_doc "$WORK/slice-paths-string.json" '{"slice_of":"https://example.com/acme/parent","slice_id":"billing","slice_paths":"packages/billing/**"}'
 write_schema_doc "$WORK/slice-paths-empty.json" '{"slice_of":"https://example.com/acme/parent","slice_id":"billing","slice_paths":[]}'
 write_schema_doc "$WORK/slice-paths-blank-entry.json" '{"slice_of":"https://example.com/acme/parent","slice_id":"billing","slice_paths":["packages/billing/**",""]}'
+write_schema_doc "$WORK/slice-id-underscore.json" '{"slice_of":"https://example.com/acme/parent","slice_id":"web_app","slice_paths":["apps/web/**"]}'
 
 fixture_ok=true
-for f in slice-absent slice-all-present slice-bad-id slice-paths-string slice-paths-empty slice-paths-blank-entry; do
+for f in slice-absent slice-all-present slice-bad-id slice-paths-string slice-paths-empty slice-paths-blank-entry slice-id-underscore; do
   if ! jq empty "$WORK/$f.json" 2>/dev/null; then
     fixture_ok=false
     fail "fixture $f.json is well-formed JSON"
@@ -513,6 +518,79 @@ if [ "$HAVE_CJS" -eq 1 ]; then
   schema_rejects "slice_paths as a bare string (non-array) is rejected" "$WORK/slice-paths-string.json"
   schema_rejects "slice_paths as an empty array is rejected" "$WORK/slice-paths-empty.json"
   schema_rejects "slice_paths containing an empty string is rejected" "$WORK/slice-paths-blank-entry.json"
+  schema_rejects "slice_id carrying _ is rejected — the derived source id is a cache path segment" "$WORK/slice-id-underscore.json"
+fi
+
+# ============================================================================
+# The slice-id pattern vs. the guard that actually consumes the derived id
+# ============================================================================
+# Every derived source id is "<parent id>-<slice_id>" (cache-and-clone.md
+# step 1.7) and is interpolated straight into a cache directory name by
+# bin/cache-git.sh, whose own guard is narrower than the slice-id pattern
+# was. An id the config check blesses but cache-git.sh refuses validates,
+# stages and applies, and is then never cached, never crawled, and
+# [N/A]-skipped by Checks 6 and 8 forever -- the failure has no line of its
+# own anywhere. This asserts the containment directly rather than trusting
+# two regexes written 1,100 lines apart to agree. (PR #16 review, finding 2.)
+section "slice-id pattern ⊆ cache-git.sh's source_id guard"
+
+CACHE_GIT_SH="$PLUGIN_ROOT/bin/cache-git.sh"
+
+# cfg_admits_slice_id <slice-id> -- true when the SHIPPED monorepo-config
+# check accepts a one-slice config carrying that id. Reads the real
+# verify.sh rather than re-spelling its regex here, so this stays an
+# assertion about what ships and not about a copy of it.
+cfg_admits_slice_id() {
+  local sid="$1" root cache out mc
+  root="$WORK/guard-cfg-$(printf '%s' "$sid" | tr -c 'a-zA-Z0-9' '-')"
+  build_nav "$root"
+  write_sources "$root" '[]'
+  write_monorepo_config "$root" research \
+    "$(jq -n --arg id "$sid" '{version:"1.0",monorepos:[{url:"https://example.com/acme/guard",type:"internal-repo",slices:[{id:$id,paths:["packages/x/**"]}]}]}')"
+  cache="$root-cache"
+  mkdir -p "$cache"
+  out="$(run_verify "$root" "$cache")"
+  mc="$(check_section "$out" '(monorepo-config)')"
+  ! printf '%s' "$mc" | grep -q '\[FAIL\]'
+}
+
+# cache_git_admits <source_id> -- true when cmd_sparse_clone's guard lets
+# the id through. The clone that follows is expected to fail (the url is
+# unroutable by construction); only the guard's own refusal line is read.
+cache_git_admits() {
+  local sid="$1" out
+  out="$(SKILL_ENGINE_CACHE_ROOT="$WORK/guard-cache" \
+    bash "$CACHE_GIT_SH" sparse-clone "$sid" "file://$WORK/no-such-repo" HEAD -- 'packages/x/**' 2>&1)"
+  ! printf '%s' "$out" | grep -qF 'refusing unsafe source_id'
+}
+
+if [ ! -f "$CACHE_GIT_SH" ]; then
+  fail "bin/cache-git.sh is present to check the derived id against" "not found at $CACHE_GIT_SH"
+else
+  guard_ok=1
+  guard_detail=()
+  for slice_id in billing web_app under_score plain-dash x2; do
+    derived="acme-monorepo-$slice_id"
+    if cfg_admits_slice_id "$slice_id" && ! cache_git_admits "$derived"; then
+      guard_ok=0
+      guard_detail+=("slice id '$slice_id' passes the monorepo-config check but cache-git.sh refuses '$derived'")
+    fi
+  done
+  if [ "$guard_ok" -eq 1 ]; then
+    pass "every slice id the monorepo-config check accepts yields a derived source id cache-git.sh accepts"
+  else
+    fail "every slice id the monorepo-config check accepts yields a derived source id cache-git.sh accepts" \
+      "${guard_detail[@]}"
+  fi
+
+  # The containment must not be vacuous: at least one id in the probe set
+  # has to be accepted on both sides, or the loop above proves nothing.
+  if cfg_admits_slice_id billing && cache_git_admits "acme-monorepo-billing"; then
+    pass "the containment check is non-vacuous — an ordinary slice id is admitted by both surfaces"
+  else
+    fail "the containment check is non-vacuous — an ordinary slice id is admitted by both surfaces" \
+      "'billing' must pass the config check and yield a cache-git.sh-admissible derived id"
+  fi
 fi
 
 # ============================================================================

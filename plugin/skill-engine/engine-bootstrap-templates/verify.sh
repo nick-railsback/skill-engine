@@ -344,13 +344,19 @@ else
     ] | unique[]
   ' "$mc_file" 2>/dev/null)
 
-  # Rule: slice id matches ^[a-z][a-z0-9_-]{0,30}$.
+  # Rule: slice id matches ^[a-z][a-z0-9-]{0,30}$.  This is NARROWER
+  # than reference filenames: a slice id becomes the tail of the derived
+  # source id "<parent id>-<slice_id>", which bin/cache-git.sh
+  # interpolates into a cache directory name behind a
+  # `*[!a-z0-9-]*` guard. An id carrying `_` would validate here, stage,
+  # apply, and then be refused on every clone attempt -- never cached,
+  # never crawled, [N/A]-skipped by Checks 6 and 8 forever.
   while IFS= read -r bad_id; do
     [ -n "$bad_id" ] || continue
-    mc_lines+=("slice id \"$bad_id\" does not match ^[a-z][a-z0-9_-]{0,30}\$")
+    mc_lines+=("slice id \"$bad_id\" does not match ^[a-z][a-z0-9-]{0,30}\$ (the derived source id <parent>-<slice id> becomes a cache path segment)")
   done < <(jq -r '
     [.monorepos[]? | (.slices // [])[]? | (.id // "")
-      | select(. != "" and (test("^[a-z][a-z0-9_-]{0,30}$") | not))
+      | select(. != "" and (test("^[a-z][a-z0-9-]{0,30}$") | not))
     ] | unique[]
   ' "$mc_file" 2>/dev/null)
 

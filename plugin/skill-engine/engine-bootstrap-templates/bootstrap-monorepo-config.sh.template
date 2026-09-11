@@ -82,7 +82,7 @@ emit_stub() {
       "type": "internal-repo",
       "slices": [
         {
-          "_comment": "EXAMPLE — replace with a real slice declaration. id must match ^[a-z][a-z0-9_-]{0,30}$. paths are git glob patterns (sparse-checkout --no-cone syntax).",
+          "_comment": "EXAMPLE — replace with a real slice declaration. id must match ^[a-z][a-z0-9-]{0,30}$ (no underscore — the derived source id becomes a cache directory name). paths are git glob patterns (sparse-checkout --no-cone syntax).",
           "id": "example-slice",
           "paths": [
             "packages/example/**"
@@ -100,16 +100,19 @@ json_string() {
   printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
 }
 
-# Kebab-case + lowercase a string. Keep [a-z0-9-_]; collapse runs of other
-# chars to a single dash; trim leading/trailing dashes; truncate to 30 chars.
-# Ensure the result starts with [a-z] per the documented id regex
-# `^[a-z][a-z0-9_-]{0,30}$` — if the post-trim leading char is a digit, dash,
-# or underscore, prepend `s-` and re-truncate.
+# Kebab-case + lowercase a string. Keep [a-z0-9-]; collapse runs of other
+# chars -- underscore included -- to a single dash; trim leading/trailing
+# dashes; truncate to 30 chars. Ensure the result starts with [a-z] per the
+# documented id regex `^[a-z][a-z0-9-]{0,30}$` — if the post-trim leading
+# char is a digit or dash, prepend `s-` and re-truncate. The underscore is
+# collapsed rather than kept because the derived source id
+# `<parent id>-<slice id>` is interpolated into a cache directory name by
+# bin/cache-git.sh, which refuses anything outside [a-z0-9-].
 kebab_lower() {
   local result
   result=$(printf '%s' "$1" \
     | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/[^a-z0-9_-]\{1,\}/-/g' -e 's/^-\{1,\}//' -e 's/-\{1,\}$//' \
+    | sed -e 's/[^a-z0-9-]\{1,\}/-/g' -e 's/^-\{1,\}//' -e 's/-\{1,\}$//' \
     | cut -c 1-30)
   case "$result" in
     [a-z]*) printf '%s' "$result" ;;

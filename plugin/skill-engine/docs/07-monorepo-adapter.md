@@ -70,7 +70,11 @@ Optional documentation fields (`owner_team`, `notes`, `weight`) are recognized b
 - Each `monorepos[].url` is unique within the file.
 - Each slice's `id` is unique within its monorepo's `slices[]`.
 - Each slice has at least one path; paths are non-empty strings.
-- Slice `id` matches `^[a-z][a-z0-9_-]{0,30}$` — same constraint as reference filenames.
+- Slice `id` matches `^[a-z][a-z0-9-]{0,30}$` — narrower than a reference
+  filename, because the derived source id `<parent id>-<slice id>` is
+  interpolated into a cache directory name by `bin/cache-git.sh`, whose own
+  guard admits `[a-z0-9-]` only. An underscore here validates, stages and
+  applies, then fails every clone.
 
 Two locations are valid: `<project-root>/monorepo-config.json` (engine-self-contextualizer case) and `<project-root>/research/monorepo-config.json` (the canonical contextualizer location). The verify check inspects both. Absent file is the default — most contextualizers are not monorepos.
 
