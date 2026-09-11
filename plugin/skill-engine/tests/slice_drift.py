@@ -241,8 +241,22 @@ def _diff_names(cache_dir: str, old: str, new: str) -> list[bytes]:
 
     No pathspec: which of these paths belongs to a slice is decided by
     `_matched_subset`, with the engine sparse-checkout itself uses.
+
+    `--no-renames` is not optional here, for two independent reasons.
+    Rename detection collapses a moved-and-edited file into its NEW path
+    alone, which contradicts this file's own contract that `changed_paths`
+    includes deletions and renames -- and REFRESH's Re-read scoping, handed
+    only the new path, never learns the old one is gone, so a reference
+    citing it keeps a dead citation. And inexact similarity scoring needs
+    blob CONTENT, while every cache clone is `--filter=blob:none`: with
+    detection on, scoring reaches back to the promisor remote, which is an
+    unplanned network round-trip per slice per REFRESH from a script
+    documented "Read-only against the cache". `cache-git.sh`'s
+    `cmd_since_last_check` already spells `diff --name-status
+    --no-renames` for the same reason.
     """
-    result = _run(["git", "-C", cache_dir, "diff", "--name-only", "-z", old, new])
+    result = _run(["git", "-C", cache_dir, "diff", "--name-only", "--no-renames",
+                   "-z", old, new])
     if result.returncode != 0:
         sys.stderr.write(_err(result.stderr))
         sys.exit(1)

@@ -901,6 +901,88 @@ else
   pass "a SHA-256 repository reports drift normally (skipped: this git cannot create one)"
 fi
 
+# ===========================================================================
+# Renames. `git diff --name-only` does rename detection by default, and it
+# is wrong here on both counts. It contradicts the docstring's own stated
+# contract ("changed_paths includes deletions and renames, not only
+# modifications — a path present in one tree and absent in the other
+# differs exactly as much as one that is merely edited"): a moved-and-
+# edited file is reported at its NEW path only, so a reference citing the
+# old path silently keeps a dead citation. And inexact rename similarity
+# scoring needs CONTENT, while every cache clone is --filter=blob:none, so
+# scoring reaches back to the promisor remote -- an unplanned network
+# round-trip per slice per REFRESH, from a script whose docstring says
+# "Read-only against the cache". cache-git.sh's cmd_since_last_check
+# already spells `diff --name-status --no-renames`.
+# (PR #16 review, finding 13.)
+# ===========================================================================
+section "a rename reports both its old and its new path"
+
+UP_REN="$WORK/upstream-rename"
+init_upstream "$UP_REN"
+mkdir -p "$UP_REN/packages/billing/old"
+printf 'line one\nline two\nline three\nline four\nline five\n' \
+  > "$UP_REN/packages/billing/old/f1.txt"
+printf 'untouched\n' > "$UP_REN/packages/billing/stay.txt"
+SHA_A_REN="$(commit_all "$UP_REN" "commit A")"
+
+CACHE_REN="$WORK/cache-rename"
+seed_shallow_cache "$UP_REN" "$CACHE_REN"
+
+# Moved across directories AND edited, which is the shape that makes
+# rename detection collapse two paths into one.
+mkdir -p "$UP_REN/packages/billing/new"
+git -C "$UP_REN" mv packages/billing/old/f1.txt packages/billing/new/moved1.txt
+printf 'line six\n' >> "$UP_REN/packages/billing/new/moved1.txt"
+SHA_B_REN="$(commit_all "$UP_REN" "commit B")"
+
+advance_cache_inplace "$CACHE_REN" "$UP_REN" "$SHA_B_REN"
+
+CONFIG_REN="$WORK/monorepo-config-rename.json"
+cat > "$CONFIG_REN" <<'EOF'
+{
+  "version": "1.0",
+  "monorepos": [
+    {
+      "url": "https://example.com/acme/mono-rename",
+      "type": "internal-repo",
+      "slices": [
+        {"id": "billing", "paths": ["packages/billing/**"]}
+      ]
+    }
+  ]
+}
+EOF
+
+OUT_REN="$(sd_out "$CACHE_REN" --old "$SHA_A_REN" --new "$SHA_B_REN" --config "$CONFIG_REN")"
+RC_REN=$?
+
+if [ "$RC_REN" -eq 0 ] && jq_check "$OUT_REN" '
+    (type=="array") and (length==1)
+    and (.[0].changed == true)
+    and (.[0].changed_paths == ["packages/billing/new/moved1.txt", "packages/billing/old/f1.txt"])
+  '; then
+  pass "a moved-and-edited file reports BOTH its old and its new path"
+else
+  fail "a moved-and-edited file reports BOTH its old and its new path" \
+    "rc=$RC_REN" "stdout: ${OUT_REN:-<empty>}" \
+    "with rename detection on (git diff's default) only the new path is printed," \
+    "so REFRESH's Re-read scoping never learns the old path was removed and a" \
+    "reference citing it keeps a dead citation."
+fi
+
+# The mechanism, asserted directly rather than only through its effect:
+# --no-renames must be on the diff invocation, so a future edit cannot
+# reintroduce the default without a red.
+if grep -qF -- '--no-renames' "$SLICE_DRIFT_PY"; then
+  pass "the diff invocation spells --no-renames"
+else
+  fail "the diff invocation spells --no-renames" \
+    "rename detection is on by default, and inexact similarity scoring needs blob" \
+    "content the --filter=blob:none cache does not have -- so it is fetched from" \
+    "the promisor remote, from a script documented read-only against the cache."
+fi
+
 section "a slice whose patterns match nothing in either tree"
 
 OUT1G="$(sd_out "$CACHE1" --old "$SHA_A1" --new "$SHA_B1" --config "$CONFIG_3SLICE_PLUS_GHOST")"
