@@ -172,6 +172,13 @@ When `/skill-engine:discover` is invoked:
    its sibling slices' — a SHA match or mismatch on one slice never affects
    another.
 
+   This per-slice SHA comparison is deliberately coarse — a slice shares its
+   parent's `url`, so its SHA changes on any commit anywhere in the
+   monorepo, not only under the slice's own paths. REFRESH layers a
+   finer-grained, path-scoped decision on top of this same comparison before
+   actually re-reading a slice; see
+   `refresh/references/drift-detection-and-phases.md` § Slice drift.
+
 6. **Cache-miss offer (per in-scope source, kind-aware).** For each
    in-scope source, probe the cache location that matches its `kind`:
 

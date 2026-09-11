@@ -373,6 +373,30 @@ dropped — render once, in the post-run summary's Coverage report:
 No skip line is printed absent `probe_budget`: every promoted source
 proceeds, in the order above.
 
+### Slice drift (git-managed monorepo slices only)
+
+See `07-monorepo-adapter.md` section 7.3, 7.5. For an in-scope source
+carrying `slice_of`: `slice_drift.py` reports, for a slice's parent, whether
+anything under that slice's own paths changed. A `changed: false` object
+means skip Re-read scoping and Phase 2 this run for that slice_id --
+whatever else changed elsewhere in the parent monorepo, between the
+previously recorded SHA and this run's newly probed SHA. A `changed: true`
+object proceeds to Re-read scoping below, scoped to its `changed_paths`.
+
+Invoke it against the slice's own advanced cache directory
+(`$SKILL_ENGINE_CACHE_ROOT/git-managed/<source_id>-<new_sha>`, `source_id`
+being the slice's own derived id, not the parent's):
+
+    python3 "$CLAUDE_PLUGIN_ROOT/tests/slice_drift.py" \
+      "${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/<source_id>-<new_sha>" \
+      --old <prior last_checked_sha for this slice> \
+      --new <new_sha> \
+      --config research/monorepo-config.json
+
+GitHub's `gh api commits?path=` form (section 7.5) is an optional,
+forge-specific fast path; `slice_drift.py` above works from the cache alone
+and is what every forge, GitHub or otherwise, can rely on.
+
 ### Re-read scoping (git-managed)
 
 **Re-pin first.** For every git-managed source whose cache advanced this
