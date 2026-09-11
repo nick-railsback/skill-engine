@@ -658,6 +658,35 @@ else
             fail "sources[$idx] ($id): slice_of/slice_id/slice_paths must all be present together (got only: ${slice_fields_set% })"
             entries_ok=0
           else
+            # slice_id and slice_paths are constrained here, not only in
+            # source-paths.schema.json. The schema calls itself the
+            # machine-readable transcription of what Checks 1 and 2
+            # enforce, but scripts/ci-local.sh points check-jsonschema at
+            # the template and the examples -- never at a live
+            # contextualizer's own registry -- so without these two rules
+            # NOTHING validated the file every consumer actually reads.
+            # The same two constraints are already enforced on the config
+            # side by the monorepo-config check: validating the file the
+            # engine derives FROM and not the registry it derives TO is
+            # the asymmetry these close.
+            if ! printf '%s' "$slice_id" | grep -qE '^[a-z][a-z0-9-]{0,30}$'; then
+              fail "sources[$idx] ($id): slice_id '$slice_id' does not match ^[a-z][a-z0-9-]{0,30}\$ (the derived source id <parent>-<slice id> becomes a cache path segment)"
+              entries_ok=0
+            fi
+            slice_paths_defect="$(jq -r ".sources[$idx] | (
+              if (.slice_paths | type) != \"array\" then
+                \"slice_paths must be an array — got type: \(.slice_paths | type)\"
+              elif (.slice_paths | length) == 0 then
+                \"slice_paths must name at least one path\"
+              elif (.slice_paths | any(type != \"string\")) then
+                \"slice_paths entries must all be strings\"
+              elif (.slice_paths | any(. == \"\")) then
+                \"slice_paths entries must all be non-empty\"
+              else \"\" end)" "$sp_file" 2>/dev/null)" || slice_paths_defect="slice_paths could not be evaluated"
+            if [ -n "$slice_paths_defect" ]; then
+              fail "sources[$idx] ($id): $slice_paths_defect"
+              entries_ok=0
+            fi
             # The match must be a NON-SLICE entry. Every derived slice
             # carries `url: $m.url` -- the parent's own url -- so
             # excluding self alone lets two sibling slices satisfy this

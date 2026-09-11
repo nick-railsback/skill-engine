@@ -836,6 +836,123 @@ else
   pass "source-entries: control — the same two slices WITH their parent registered pass"
 fi
 
+# ----------------------------------------------------------------------------
+# Check 2 must validate the REGISTRY side of the slice contract too
+# ----------------------------------------------------------------------------
+# The slice gate validated exactly two things: that slice_of/slice_id/
+# slice_paths are present together, and that slice_of matches a registered
+# source. It never checked slice_id against the documented pattern, and
+# never checked slice_paths's type or non-emptiness.
+# source-paths.schema.json DOES constrain both, and its preamble calls
+# itself "the machine-readable transcription of the contract that verify.sh
+# Check 1 ... and Check 2 ... enforce at audit time" -- but ci-local points
+# check-jsonschema only at the template and the examples, never at a live
+# contextualizer's own registry, so neither gate ran on the file every
+# consumer reads. The asymmetry is the tell: the same two constraints ARE
+# enforced on the config side by the monorepo-config check. The engine
+# validated the file it derives FROM and not the registry it derives TO.
+# (PR #16 review, finding 11.)
+section "Check 2 -- slice_id pattern and slice_paths shape are enforced on the registry, not only on the config"
+
+registry_slice_case() {
+  # registry_slice_case <label> <extra-json-for-the-slice-entry> <expect: fail|pass>
+  local label="$1" extra="$2" expect="$3" root cache c2 sources
+  root="$WORK/check2-registry-$(printf '%s' "$label" | tr -c 'a-z0-9' '-' | cut -c1-36)-$RANDOM"
+  build_nav "$root"
+  sources="$( {
+    git_managed_source acme-reg "$parent_url"
+    git_managed_source acme-reg-slice "$parent_url" "$extra"
+  } | jq -s '.' )"
+  write_sources "$root" "$sources"
+  cache="$root-cache"
+  mkdir -p "$cache"
+  c2="$(check_section "$(run_verify "$root" "$cache")" 'Source entries')"
+  if [ "$expect" = "fail" ]; then
+    if printf '%s' "$c2" | grep -q '\[FAIL\]'; then
+      pass "$label"
+    else
+      fail "$label" "source-entries section: ${c2:-<empty>}"
+    fi
+  else
+    if printf '%s' "$c2" | grep -q '\[FAIL\]'; then
+      fail "$label" "source-entries section: ${c2:-<empty>}"
+    else
+      pass "$label"
+    fi
+  fi
+}
+
+registry_slice_case "slice_id failing the id pattern is rejected on the registry side" \
+  "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"Bad Slice/../../etc", slice_paths:["packages/billing/**"]}')" fail
+
+registry_slice_case "slice_id carrying _ is rejected on the registry side" \
+  "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"web_app", slice_paths:["apps/web/**"]}')" fail
+
+registry_slice_case "slice_paths as a bare string is rejected on the registry side" \
+  "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"billing", slice_paths:"packages/billing/**"}')" fail
+
+registry_slice_case "slice_paths as an empty array is rejected on the registry side" \
+  "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"billing", slice_paths:[]}')" fail
+
+registry_slice_case "slice_paths containing an empty string is rejected on the registry side" \
+  "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"billing", slice_paths:["packages/billing/**",""]}')" fail
+
+registry_slice_case "slice_paths containing a non-string is rejected on the registry side" \
+  "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"billing", slice_paths:[123]}')" fail
+
+registry_slice_case "control: a well-formed slice entry still passes" \
+  "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"billing", slice_paths:["packages/billing/**"]}')" pass
+
+# The combination the report reproduced as `Passed: 16, Failed: 0`: a bad
+# slice_id AND a string slice_paths in one entry, alongside a second slice
+# whose slice_paths is []. Both must surface.
+root_reg_multi="$WORK/check2-registry-multi"
+build_nav "$root_reg_multi"
+reg_multi_sources="$( {
+  git_managed_source acme-reg "$parent_url"
+  git_managed_source acme-reg-a "$parent_url" \
+    "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"Bad Slice/../../etc", slice_paths:"packages/billing/**"}')"
+  git_managed_source acme-reg-b "$parent_url" \
+    "$(jq -n --arg of "$parent_url" '{slice_of:$of, slice_id:"reports", slice_paths:[]}')"
+} | jq -s '.' )"
+write_sources "$root_reg_multi" "$reg_multi_sources"
+cache_reg_multi="$WORK/check2-registry-multi-cache"
+mkdir -p "$cache_reg_multi"
+c2_reg_multi="$(check_section "$(run_verify "$root_reg_multi" "$cache_reg_multi")" 'Source entries')"
+reg_multi_fails="$(printf '%s' "$c2_reg_multi" | grep -c '\[FAIL\]' || true)"
+if [ "$reg_multi_fails" -ge 2 ]; then
+  pass "source-entries: two independently malformed slice entries surface at least two failures, not one or none"
+else
+  fail "source-entries: two independently malformed slice entries surface at least two failures, not one or none" \
+    "saw $reg_multi_fails [FAIL] line(s) -- section: ${c2_reg_multi:-<empty>}"
+fi
+
+# The schema is the second gate, and it has to actually run on real
+# registries. ci-local pointed check-jsonschema at the template and
+# examples/ only, so this repo's own dogfood contextualizer's registry --
+# tracked in git, read by every /skill-engine:* invocation here -- was
+# validated by nothing. (PR #16 review, finding 11.)
+if [ "$HAVE_CJS" -eq 1 ]; then
+  cjs_expected=$(( 1 + $(git -C "$REPO_ROOT" ls-files -- '*/research/source-paths.json' | grep -c . || true) ))
+  cjs_line="$(cd "$REPO_ROOT" && bash scripts/ci-local.sh json 2>&1 | grep -E 'Validating [0-9]+ file' | head -1)"
+  cjs_count="$(printf '%s' "$cjs_line" | sed -E 's/[^0-9]*([0-9]+).*/\1/')"
+  if [ -n "$cjs_count" ] && [ "$cjs_count" -ge "$cjs_expected" ]; then
+    pass "ci-local validates every tracked research/source-paths.json against the schema, not only the examples"
+  else
+    fail "ci-local validates every tracked research/source-paths.json against the schema, not only the examples" \
+      "expected at least $cjs_expected target(s) (1 template + every tracked registry), saw: ${cjs_line:-<no line>}"
+  fi
+
+  # Non-vacuity: there IS a tracked registry outside examples/, so the
+  # count above is not satisfied by the examples alone.
+  if git -C "$REPO_ROOT" ls-files -- '*/research/source-paths.json' | grep -qv '^examples/'; then
+    pass "the schema-target inventory is non-vacuous — a tracked registry exists outside examples/"
+  else
+    fail "the schema-target inventory is non-vacuous — a tracked registry exists outside examples/" \
+      "every tracked registry is under examples/, so this assertion proves nothing"
+  fi
+fi
+
 # ============================================================================
 # Check 6 -- an uncited slice warns by slice id and parent; a cited one
 # does not
