@@ -450,7 +450,18 @@ being the slice's own derived id, not the parent's):
       "${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/<source_id>-<new_sha>" \
       --old <prior last_checked_sha for this slice> \
       --new <new_sha> \
-      --config "$CTX_ROOT/research/monorepo-config.json"
+      --config "$CTX_ROOT/research/monorepo-config.json" \
+      --slice-of <this entry's slice_of> \
+      --slice-id <this entry's slice_id>
+
+`--slice-of` and `--slice-id` are this registry entry's own fields, and
+passing both is what makes the returned array a one-element answer about
+*this* slice. Omit them and the script reports on every slice of every
+declared monorepo against this one clone — the other monorepos' slices
+match nothing here, so they take the `notice` arm and read
+`changed: false`, indistinguishable from genuinely unchanged. The same id
+may legally be declared in two different monorepos, so `slice_id` alone
+does not identify a slice.
 
 `--config` takes the same **resolved** path DISCOVER's pre-flight step 1.7
 resolves: `$CTX_ROOT/research/monorepo-config.json` when it exists, else

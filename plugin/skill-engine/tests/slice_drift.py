@@ -28,13 +28,25 @@ checkout does, because it is what the checkout does.
 
 Usage:
     python3 slice_drift.py <cache_dir> --old <sha> --new <sha> \
-      --config <monorepo-config.json>
+      --config <monorepo-config.json> \
+      [--slice-of <parent url>] [--slice-id <id>]
 
 <cache_dir> is a single clone's own working directory (the one holding
 .git) with both <old> and <new> resolvable in it. --config is a
-monorepo-config.json; every slice across every entry in its top-level
-`monorepos[]` array is reported on, flattened into one list (a slice_id
-repeated across entries keeps its first occurrence).
+monorepo-config.json.
+
+REFRESH invokes this once per slice, against that slice's own clone, and
+should pass `--slice-of` (the registry entry's `slice_of`, i.e. the parent
+monorepo's url) and `--slice-id` so the report covers exactly the slice
+being refreshed. Without them every slice of every monorepo is reported
+against the single cache directory given, which is wrong and not merely
+wasteful: another monorepo's slices match nothing in this clone, so they
+take the `notice` arm and read `changed: false` -- indistinguishable from
+genuinely unchanged. `--slice-id` alone is accepted when the id is
+declared in exactly one monorepo and refused, naming the ambiguity, when
+it is declared in more than one. Ids are deduplicated within a monorepo
+only: `monorepos[].slices[].id` is unique per monorepo, and the same id in
+two different monorepos is explicitly legal.
 
 Prints a bare JSON array to stdout, one object per slice:
 `{"slice_id": ..., "changed": <bool>, "changed_paths": [<sorted paths>]}`.
@@ -182,7 +194,23 @@ def _bad_config(message: str) -> None:
     sys.exit(1)
 
 
-def _collect_slices(config: dict) -> list[tuple[str, list[str]]]:
+def _collect_slices(config: dict, slice_of: str | None = None,
+                    slice_id: str | None = None) -> list[tuple[str, list[str]]]:
+    """The declared slices, optionally narrowed to ONE declaration.
+
+    REFRESH invokes this script once per slice, against that slice's own
+    clone, so reporting on every slice of every monorepo against the one
+    cache directory it was given is not merely wasteful -- monorepo B's
+    slices, diffed against monorepo A's clone, match nothing in either
+    tree and take the `notice` arm, which reads changed:false and is
+    indistinguishable from genuinely unchanged, forever.
+
+    --slice-of (the parent url, i.e. the `slice_of` field of the registry
+    entry being refreshed) and --slice-id together name exactly one
+    declaration. Deduplication is per monorepo, never across them:
+    verify.sh's monorepo-config check explicitly permits the same id in
+    two different monorepos, and collapsing them dropped one silently.
+    """
     if not isinstance(config, dict):
         _bad_config(f"config root must be a JSON object, got {type(config).__name__}")
     # Absent and null are both rejected, matching what verify.sh's
@@ -194,7 +222,7 @@ def _collect_slices(config: dict) -> list[tuple[str, list[str]]]:
         _bad_config(f"monorepos must be an array, got {type(monorepos).__name__}")
 
     slices: list[tuple[str, list[str]]] = []
-    seen: set[str] = set()
+    matched_urls: set[str] = set()
     for m_index, monorepo in enumerate(monorepos):
         if not isinstance(monorepo, dict):
             _bad_config(f"monorepos[{m_index}] must be an object, "
@@ -206,25 +234,44 @@ def _collect_slices(config: dict) -> list[tuple[str, list[str]]]:
         if not isinstance(declared, list):
             _bad_config(f"monorepos[{m_index}].slices must be an array, "
                         f"got {type(declared).__name__}")
+        m_url = monorepo.get("url")
+        if slice_of is not None and m_url != slice_of:
+            continue
+        if slice_of is not None:
+            matched_urls.add(slice_of)
+        # Per monorepo, not across: two monorepos may each declare
+        # `billing`, and they are different slices.
+        seen: set[str] = set()
         for s_index, slice_decl in enumerate(declared):
             where = f"monorepos[{m_index}].slices[{s_index}]"
             if not isinstance(slice_decl, dict):
                 _bad_config(f"{where} must be an object, "
                             f"got {type(slice_decl).__name__}")
-            slice_id = slice_decl.get("id")
-            if not isinstance(slice_id, str) or not slice_id:
-                _bad_config(f"{where} needs a non-empty string id, got {slice_id!r}")
+            decl_id = slice_decl.get("id")
+            if not isinstance(decl_id, str) or not decl_id:
+                _bad_config(f"{where} needs a non-empty string id, got {decl_id!r}")
             paths = slice_decl.get("paths")
             if not isinstance(paths, list) or not paths:
-                _bad_config(f"slice '{slice_id}': paths must be a non-empty array, "
+                _bad_config(f"slice '{decl_id}': paths must be a non-empty array, "
                             f"got {paths!r}")
             if not all(isinstance(entry, str) and entry for entry in paths):
-                _bad_config(f"slice '{slice_id}': every paths entry must be a "
+                _bad_config(f"slice '{decl_id}': every paths entry must be a "
                             f"non-empty string, got {paths!r}")
-            if slice_id in seen:
+            if decl_id in seen:
                 continue
-            seen.add(slice_id)
-            slices.append((slice_id, paths))
+            seen.add(decl_id)
+            if slice_id is not None and decl_id != slice_id:
+                continue
+            slices.append((decl_id, paths))
+
+    if slice_of is not None and not matched_urls:
+        _bad_config(f"--slice-of '{slice_of}' matches no monorepos[].url in the config")
+    if slice_id is not None and not slices:
+        where = f" of monorepo '{slice_of}'" if slice_of else ""
+        _bad_config(f"--slice-id '{slice_id}' names no declared slice{where}")
+    if slice_id is not None and slice_of is None and len(slices) > 1:
+        _bad_config(f"--slice-id '{slice_id}' is declared in {len(slices)} monorepos; "
+                    f"pass --slice-of <parent url> to say which one")
     return slices
 
 
@@ -269,6 +316,12 @@ def main() -> None:
     parser.add_argument("--old", required=True)
     parser.add_argument("--new", required=True)
     parser.add_argument("--config", required=True)
+    parser.add_argument("--slice-of", default=None,
+                        help="parent monorepo url; narrows the report to that "
+                             "monorepo's slices")
+    parser.add_argument("--slice-id", default=None,
+                        help="slice id; with --slice-of, names exactly one "
+                             "declaration")
     args = parser.parse_args()
 
     try:
@@ -278,7 +331,7 @@ def main() -> None:
         _bad_config(f"cannot read --config {args.config}: {exc.strerror or exc}")
     except json.JSONDecodeError as exc:
         _bad_config(f"--config {args.config} is not valid JSON: {exc}")
-    slices = _collect_slices(config)
+    slices = _collect_slices(config, args.slice_of, args.slice_id)
 
     # Check both before proceeding, so a simultaneously-bad --old and --new
     # still names one of them rather than crashing on the first subprocess

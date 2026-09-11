@@ -983,6 +983,150 @@ else
     "the promisor remote, from a script documented read-only against the cache."
 fi
 
+# ===========================================================================
+# The script's contract vs. how REFRESH actually invokes it. _collect_slices
+# flattened EVERY slice of EVERY monorepo into one list and reported on all
+# of them against the ONE cache_dir it was handed, while REFRESH invokes it
+# once per slice against that slice's own clone. Three consequences:
+#   1. With two monorepos declared, monorepo B's slices were diffed against
+#      monorepo A's clone. Their patterns match nothing in either tree, so
+#      they took the `notice` arm and read changed:false -- indistinguishable
+#      from genuinely unchanged, forever.
+#   2. S invocations x S slices reported each, where one object per
+#      invocation would do, and the prose gave no instruction to pick the
+#      matching slice_id out of the returned array.
+#   3. Ids were deduped ACROSS monorepos ("a slice_id repeated across
+#      entries keeps its first occurrence") while verify.sh's check
+#      explicitly permits them: "the same id in two DIFFERENT monorepos is
+#      not a violation". So B's billing was dropped and REFRESH against B's
+#      clone read A's verdict.
+# (PR #16 review, finding 14.)
+# ===========================================================================
+section "two monorepos: a slice is addressable by its own declaration, not by id alone"
+
+UP_TWO="$WORK/upstream-two"
+init_upstream "$UP_TWO"
+mkdir -p "$UP_TWO/packages/billing" "$UP_TWO/svc/billing"
+printf '1\n' > "$UP_TWO/packages/billing/a.py"
+printf '1\n' > "$UP_TWO/svc/billing/b.py"
+SHA_A_TWO="$(commit_all "$UP_TWO" "commit A")"
+
+CACHE_TWO="$WORK/cache-two"
+seed_shallow_cache "$UP_TWO" "$CACHE_TWO"
+
+printf '2\n' > "$UP_TWO/svc/billing/b.py"
+SHA_B_TWO="$(commit_all "$UP_TWO" "commit B")"
+advance_cache_inplace "$CACHE_TWO" "$UP_TWO" "$SHA_B_TWO"
+
+URL_A="https://example.com/acme/mono-a"
+URL_B="https://example.com/acme/mono-b"
+CONFIG_TWO="$WORK/monorepo-config-two.json"
+cat > "$CONFIG_TWO" <<EOF
+{
+  "version": "1.0",
+  "monorepos": [
+    {
+      "url": "$URL_A",
+      "type": "internal-repo",
+      "slices": [{"id": "billing", "paths": ["packages/billing/**"]}]
+    },
+    {
+      "url": "$URL_B",
+      "type": "internal-repo",
+      "slices": [{"id": "billing", "paths": ["svc/billing/**"]}]
+    }
+  ]
+}
+EOF
+
+# Unfiltered, both declarations must survive -- one object each. Dropping
+# one is what made REFRESH against B's clone read A's verdict.
+OUT_TWO="$(sd_out "$CACHE_TWO" --old "$SHA_A_TWO" --new "$SHA_B_TWO" --config "$CONFIG_TWO")"
+RC_TWO=$?
+if [ "$RC_TWO" -eq 0 ] && jq_check "$OUT_TWO" '(type=="array") and (length==2)'; then
+  pass "the same slice id in two DIFFERENT monorepos yields two objects, not one"
+else
+  fail "the same slice id in two DIFFERENT monorepos yields two objects, not one" \
+    "rc=$RC_TWO" "stdout: ${OUT_TWO:-<empty>}" \
+    "verify.sh's monorepo-config check explicitly permits this shape."
+fi
+
+# Scoped to B's declaration: exactly one object, carrying B's verdict --
+# svc/billing/b.py changed, packages/billing/a.py did not.
+OUT_TWO_B="$(sd_out "$CACHE_TWO" --old "$SHA_A_TWO" --new "$SHA_B_TWO" \
+  --config "$CONFIG_TWO" --slice-of "$URL_B" --slice-id billing)"
+RC_TWO_B=$?
+if [ "$RC_TWO_B" -eq 0 ] && jq_check "$OUT_TWO_B" '
+    (type=="array") and (length==1)
+    and (.[0].slice_id == "billing") and (.[0].changed == true)
+    and (.[0].changed_paths == ["svc/billing/b.py"])'; then
+  pass "--slice-of/--slice-id scopes to one declaration and reports ITS patterns"
+else
+  fail "--slice-of/--slice-id scopes to one declaration and reports ITS patterns" \
+    "rc=$RC_TWO_B" "stdout: ${OUT_TWO_B:-<empty>}"
+fi
+
+# Scoped to A's declaration against the same clone: the other verdict.
+OUT_TWO_A="$(sd_out "$CACHE_TWO" --old "$SHA_A_TWO" --new "$SHA_B_TWO" \
+  --config "$CONFIG_TWO" --slice-of "$URL_A" --slice-id billing)"
+RC_TWO_A=$?
+if [ "$RC_TWO_A" -eq 0 ] && jq_check "$OUT_TWO_A" '
+    (type=="array") and (length==1)
+    and (.[0].slice_id == "billing") and (.[0].changed == false)
+    and (.[0].changed_paths == [])'; then
+  pass "the sibling declaration with the same id reports its own, different verdict"
+else
+  fail "the sibling declaration with the same id reports its own, different verdict" \
+    "rc=$RC_TWO_A" "stdout: ${OUT_TWO_A:-<empty>}"
+fi
+
+# A --slice-of naming no declared monorepo is a caller error, not an empty
+# array: an empty array would read as "no slices moved".
+noexist_err="$(sd_err "$CACHE_TWO" --old "$SHA_A_TWO" --new "$SHA_B_TWO" \
+  --config "$CONFIG_TWO" --slice-of "https://example.com/acme/nope")"
+noexist_rc=$?
+if [ "$noexist_rc" -ne 0 ] && ! sd_is_traceback "$noexist_err" \
+   && printf '%s' "$noexist_err" | grep -qF 'nope'; then
+  pass "--slice-of naming no declared monorepo exits 1 naming the url"
+else
+  fail "--slice-of naming no declared monorepo exits 1 naming the url" \
+    "rc=$noexist_rc" "stderr: ${noexist_err:-<empty>}"
+fi
+
+nosuchid_err="$(sd_err "$CACHE_TWO" --old "$SHA_A_TWO" --new "$SHA_B_TWO" \
+  --config "$CONFIG_TWO" --slice-of "$URL_B" --slice-id ghost)"
+nosuchid_rc=$?
+if [ "$nosuchid_rc" -ne 0 ] && ! sd_is_traceback "$nosuchid_err" \
+   && printf '%s' "$nosuchid_err" | grep -qF 'ghost'; then
+  pass "--slice-id naming no slice in that monorepo exits 1 naming the id"
+else
+  fail "--slice-id naming no slice in that monorepo exits 1 naming the id" \
+    "rc=$nosuchid_rc" "stderr: ${nosuchid_err:-<empty>}"
+fi
+
+# --slice-id alone, when the id is declared in more than one monorepo, is
+# ambiguous and must say so rather than silently picking one.
+ambig_err="$(sd_err "$CACHE_TWO" --old "$SHA_A_TWO" --new "$SHA_B_TWO" \
+  --config "$CONFIG_TWO" --slice-id billing)"
+ambig_rc=$?
+if [ "$ambig_rc" -ne 0 ] && ! sd_is_traceback "$ambig_err" \
+   && printf '%s' "$ambig_err" | grep -qiE 'ambiguous|more than one|slice-of'; then
+  pass "--slice-id alone is refused when the id is declared in more than one monorepo"
+else
+  fail "--slice-id alone is refused when the id is declared in more than one monorepo" \
+    "rc=$ambig_rc" "stderr: ${ambig_err:-<empty>}"
+fi
+
+# Control: --slice-id alone IS enough when the id is unambiguous.
+OUT_UNAMBIG="$(sd_out "$CACHE_TWO" --old "$SHA_A_TWO" --new "$SHA_B_TWO" \
+  --config "$CONFIG_STAR" --slice-id widgets 2>/dev/null)"
+if jq_check "$OUT_UNAMBIG" '(type=="array") and (length==1) and (.[0].slice_id=="widgets")'; then
+  pass "control: --slice-id alone resolves when the id is declared once"
+else
+  fail "control: --slice-id alone resolves when the id is declared once" \
+    "stdout: ${OUT_UNAMBIG:-<empty>}"
+fi
+
 section "a slice whose patterns match nothing in either tree"
 
 OUT1G="$(sd_out "$CACHE1" --old "$SHA_A1" --new "$SHA_B1" --config "$CONFIG_3SLICE_PLUS_GHOST")"
@@ -1320,6 +1464,29 @@ fi
 # $CTX_PROPOSED -- resolves against the launch directory, and at the
 # engine-self-contextualizer location it does not resolve at all.
 # (PR #16 review, finding 12d.)
+# The invocation must scope to the slice being refreshed. Asserted against
+# the extracted command block rather than a proximity window: the block is
+# a backslash-continued shell invocation, which is exactly delimited, and a
+# character-window regex over this doc trips ugrep's complexity limit on
+# its multibyte punctuation. (PR #16 review, finding 14.)
+drift_invocation="$(awk '
+  /slice_drift\.py/ && /\\$/ { collecting = 1 }
+  collecting { print }
+  collecting && !/\\$/ { exit }
+' "$DRIFT_PHASES")"
+
+if [ -z "${drift_invocation//[$'\t\r\n ']/}" ]; then
+  fail "the invocation passes --slice-of and --slice-id so the report covers one slice" \
+    "no backslash-continued slice_drift.py invocation block found in $DRIFT_PHASES"
+elif printf '%s' "$drift_invocation" | grep -qF -- '--slice-of' \
+     && printf '%s' "$drift_invocation" | grep -qF -- '--slice-id'; then
+  pass "the invocation passes --slice-of and --slice-id so the report covers one slice"
+else
+  fail "the invocation passes --slice-of and --slice-id so the report covers one slice" \
+    "without them every slice of every monorepo is reported against this one clone" \
+    "block: $drift_invocation"
+fi
+
 if near_all "$DRIFT_TEXT" '\-\-config' 250 'CTX_ROOT'; then
   pass "the slice_drift.py invocation spells a CTX_ROOT-anchored --config path"
 else
