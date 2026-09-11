@@ -176,8 +176,18 @@ four components (no multi-column tables, no interactive menus):
    `REVIEW.md` -- never a separate proposal per slice. The Coverage report
    groups its findings by `slice_id` rather than by the parent's
    `source_id`, and records the SHA actually crawled for each slice in
-   that slice's own `.discover-cache.json` key (`enrichments.<slice_id>`,
-   independent of its parent's and its sibling slices').
+   that slice's own `.discover-cache.json` key (`enrichments.<source_id>`,
+   keyed on the slice's own derived id — `<parent id>-<slice id>`, the
+   same spelling `discover/references/cache-and-clone.md` § step 5 uses —
+   independent of its parent's and its sibling slices'). Never the bare
+   slice id: Cache GC enumerates the active set of
+   `source_id`s from `source-paths.json` on every DISCOVER and REFRESH and
+   drops every `enrichments.<source_id>` entry outside it
+   (`09-discover-config.md` § Cache GC). A bare `slice_id` is never a
+   `source_id`, so a key spelled that way is deleted by the next
+   invocation and the slice becomes a permanent cache miss — re-crawled in
+   full on every run, and silent, because a miss is indistinguishable from
+   a first run.
 2. **Skip-reasoning.** For both sources and references the model
    considered but skipped: "I skipped source Z because... I left
    reference X unchanged because..." Empty-skip case allowed.

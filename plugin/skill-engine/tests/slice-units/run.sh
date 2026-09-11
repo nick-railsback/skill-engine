@@ -821,6 +821,39 @@ else
     "expected .discover-cache.json documented near 'slice' and an own/independent/per-slice phrase"
 fi
 
+# DISCOVER writes the key and REFRESH writes it too; both must spell the
+# SAME key, and it must be the one Cache GC keeps. 09-discover-config.md's
+# GC enumerates the active set of source_ids from source-paths.json and
+# drops every enrichments.<source_id> entry not in it. A slice's slice_id
+# ("billing") is never a source_id ("bigmono-billing"), so a key spelled
+# enrichments.<slice_id> is deleted by the very next invocation's GC and
+# every slice becomes a permanent cache miss -- silent, because a miss is
+# indistinguishable from a first run. (PR #16 review, finding 4.)
+mechanics_text="$(norm_file "$PLUGIN_ROOT/skills/refresh/references/tool-and-output-mechanics.md")"
+
+for cache_key_file in "cache-and-clone.md:$PREFLIGHT_TEXT" "tool-and-output-mechanics.md:$mechanics_text"; do
+  ck_label="${cache_key_file%%:*}"
+  ck_text="${cache_key_file#*:}"
+  if printf '%s' "$ck_text" | grep -qF 'enrichments.<slice_id>'; then
+    fail "$ck_label keys a slice's .discover-cache.json entry on its source_id, not its slice_id" \
+      "found 'enrichments.<slice_id>' — Cache GC (09-discover-config.md) drops every enrichments key that is not an active source_id, and a slice_id never is one"
+  elif printf '%s' "$ck_text" | grep -qF 'enrichments.<source_id>'; then
+    pass "$ck_label keys a slice's .discover-cache.json entry on its source_id, not its slice_id"
+  else
+    fail "$ck_label keys a slice's .discover-cache.json entry on its source_id, not its slice_id" \
+      "neither 'enrichments.<source_id>' nor 'enrichments.<slice_id>' appears — the key must be stated"
+  fi
+done
+
+# And REFRESH must say which id that is, so "source_id" cannot be read as
+# the parent's.
+if near_all "$mechanics_text" 'enrichments\.<source_id>' 250 'slice' '(own derived|derived id|its own id|slice.s own)'; then
+  pass "tool-and-output-mechanics.md names the key as the slice's OWN derived id, not its parent's"
+else
+  fail "tool-and-output-mechanics.md names the key as the slice's OWN derived id, not its parent's" \
+    "expected enrichments.<source_id> documented near 'slice' and a derived/own-id phrase"
+fi
+
 # ===========================================================================
 # Section J — prose: the parent is excluded from whatever mechanism actually
 # re-reads/crawls a git-managed source, in BOTH DISCOVER and REFRESH, plus a
