@@ -400,6 +400,109 @@ else
 fi
 
 # ============================================================================
+# Malformed shapes: the pass condition must not be "jq printed nothing"
+# ============================================================================
+# Each rule filter used to be a `done < <(jq ... 2>/dev/null)` process
+# substitution. jq's stderr was discarded, its exit status is unobservable
+# through a process substitution (pipefail cannot see it), and empty output
+# WAS the pass condition -- so every config shape that made jq throw rather
+# than return was reported valid. Two shapes below additionally need no jq
+# error at all: `paths` as a string took `length` as a CHARACTER count, so
+# the zero-length arm never fired; and a slice with no `id` passed all five
+# rules, because the duplicate-id filter applied `select(. != "")` to the
+# whole id ARRAY (never equal to "") and the id-regex rule explicitly
+# exempted the empty string. Every one of these reached slice_drift.py as a
+# blessed config and raised there instead. (PR #16 review, finding 3.)
+section "monorepo-config.json -- shapes that make jq throw, or that slip past a rule, are rejected not blessed"
+
+run_cfg_case "slices as an array of strings is rejected (the id/paths filters throw on it)" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-g1","type":"internal-repo","slices":["billing","web"]}]}' \
+  fail ""
+
+run_cfg_case "slices as a bare string is rejected" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-g2","type":"internal-repo","slices":"oops"}]}' \
+  fail ""
+
+run_cfg_case "paths as a bare string is rejected (length on a string is a character count, not 0)" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-g3","type":"internal-repo","slices":[{"id":"billing","paths":"packages/billing/**"}]}]}' \
+  fail "billing"
+
+run_cfg_case "a slice with no id at all is rejected" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-g4","type":"internal-repo","slices":[{"paths":["x"]},{"paths":["y"]}]}]}' \
+  fail ""
+
+run_cfg_case "a slice whose id is null is rejected" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-g5","type":"internal-repo","slices":[{"id":null,"paths":["x"]}]}]}' \
+  fail ""
+
+run_cfg_case "a slice whose id is a number is rejected" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-g6","type":"internal-repo","slices":[{"id":7,"paths":["x"]}]}]}' \
+  fail ""
+
+run_cfg_case "a monorepos[] element that is not an object is rejected" \
+  '{"version":"1.0","monorepos":["https://example.com/acme/mono-g7"]}' \
+  fail ""
+
+run_cfg_case "monorepos: null is rejected" \
+  '{"version":"1.0","monorepos":null}' fail ""
+
+run_cfg_case "paths as an object is rejected" \
+  '{"version":"1.0","monorepos":[{"url":"https://example.com/acme/mono-g8","type":"internal-repo","slices":[{"id":"billing","paths":{"a":"b"}}]}]}' \
+  fail "billing"
+
+# The battery as one invariant: NONE of these may reach the [PASS] line. A
+# per-case `fail` expectation already asserts a [FAIL] appears, but a check
+# that emitted both would still be broken -- the PASS line is what a reader
+# and REVIEW.md act on.
+malformed_blessed=()
+mal_i=0
+while IFS= read -r mal_cfg; do
+  [ -n "$mal_cfg" ] || continue
+  mal_i=$((mal_i + 1))
+  root_mal="$WORK/cfg-malformed-$mal_i"
+  build_nav "$root_mal"
+  write_sources "$root_mal" '[]'
+  write_monorepo_config "$root_mal" research "$mal_cfg"
+  cache_mal="$root_mal-cache"
+  mkdir -p "$cache_mal"
+  mc_mal="$(check_section "$(run_verify "$root_mal" "$cache_mal")" '(monorepo-config)')"
+  if printf '%s' "$mc_mal" | grep -qF '[PASS] monorepo-config.json valid'; then
+    malformed_blessed+=("$mal_cfg -> $(printf '%s' "$mc_mal" | grep -F '[PASS]')")
+  fi
+done <<'MALFORMED'
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m1","slices":["billing","web"]}]}
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m2","slices":"oops"}]}
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m3","slices":[{"id":"billing","paths":"packages/billing/**"}]}]}
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m4","slices":[{"paths":["x"]},{"paths":["y"]}]}]}
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m5","slices":[{"id":null,"paths":["x"]}]}]}
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m6","slices":[{"id":7,"paths":["x"]}]}]}
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m7","slices":[{"id":"billing","paths":{"a":"b"}}]}]}
+{"version":"1.0","monorepos":[{"url":"https://example.com/acme/m8","slices":[{"id":"billing","paths":["ok"],"extra":[1,2]}]}, "not-an-object"]}
+{"version":"1.0","monorepos":null}
+MALFORMED
+
+if [ "${#malformed_blessed[@]}" -eq 0 ]; then
+  pass "no malformed config in the battery reaches the [PASS] monorepo-config.json valid line"
+else
+  fail "no malformed config in the battery reaches the [PASS] monorepo-config.json valid line" "${malformed_blessed[@]}"
+fi
+
+# Control: the battery is discriminating, not blanket-rejecting.
+root_mal_ok="$WORK/cfg-malformed-control"
+build_nav "$root_mal_ok"
+write_sources "$root_mal_ok" '[]'
+write_monorepo_config "$root_mal_ok" research "$valid_cfg"
+cache_mal_ok="$WORK/cfg-malformed-control-cache"
+mkdir -p "$cache_mal_ok"
+if check_section "$(run_verify "$root_mal_ok" "$cache_mal_ok")" '(monorepo-config)' \
+   | grep -qF '[PASS] monorepo-config.json valid'; then
+  pass "control: the valid three-slice config still reaches the [PASS] line"
+else
+  fail "control: the valid three-slice config still reaches the [PASS] line" \
+    "$(check_section "$(run_verify "$root_mal_ok" "$cache_mal_ok")" '(monorepo-config)')"
+fi
+
+# ============================================================================
 # No config file at either location -- one [N/A] line, everything else
 # preserved exactly (computed by hand from the unmodified checks, not from a
 # second live run of an old binary)

@@ -306,59 +306,123 @@ elif ! jq empty "$mc_file" >/dev/null 2>&1; then
 else
   mc_lines=()
 
-  mc_type="$(jq -r '.monorepos | type' "$mc_file" 2>/dev/null)"
-  if [ "$mc_type" != "array" ]; then
-    mc_lines+=("monorepos must be an array — got type: $mc_type")
+  # One jq emitting finished message lines, read through a COMMAND
+  # SUBSTITUTION rather than a `done < <(jq ...)` process substitution.
+  # That distinction is the whole point: a process substitution's exit
+  # status is unobservable (pipefail cannot see it), its stderr was being
+  # discarded, and empty output was the pass condition — so every config
+  # shape that made jq throw rather than return was reported valid. A
+  # command substitution's status IS $?, so a throw becomes a failure
+  # instead of a blessing.
+  #
+  # The filter is written so that no input shape can throw in the first
+  # place: every traversal is type-guarded, and a value of the wrong type
+  # is REPORTED at the position where it is wrong instead of being fed to
+  # an operator that dies on it. Both belts are deliberate — the guards
+  # are the contract, the observable status is the backstop for a guard
+  # this file got wrong.
+  #
+  # The rules are 07-monorepo-adapter.md §7.3's five, plus the shape
+  # premises each of them silently assumed.
+  mc_out="$(jq -r '
+    def loc: if (.url | type) == "string" and .url != "" then .url else "<no url>" end;
+
+    (.monorepos) as $mr
+    | [
+        # Premise: monorepos is an array of objects.
+        (if ($mr | type) != "array" then
+           "monorepos must be an array — got type: \($mr | type)"
+         else empty end),
+        (if ($mr | type) == "array" then
+           $mr | to_entries[] | select((.value | type) != "object")
+           | "monorepos[\(.key)] must be an object — got type: \(.value | type)"
+         else empty end),
+
+        # Rule: each monorepos[].url unique across the whole file.
+        (if ($mr | type) == "array" then
+           [$mr[] | select(type == "object") | .url | select(type == "string" and . != "")]
+           | group_by(.) | map(select(length > 1) | .[0]) | unique[]
+           | "monorepos[].url must be unique — duplicate: \(.)"
+         else empty end),
+
+        # Premise: slices, when present, is an array of objects.
+        (if ($mr | type) == "array" then
+           $mr[] | select(type == "object")
+           | select(has("slices") and (.slices | type) != "array")
+           | "monorepo \(loc): slices must be an array — got type: \(.slices | type)"
+         else empty end),
+        (if ($mr | type) == "array" then
+           $mr[] | select(type == "object") | loc as $u
+           | (.slices // []) | select(type == "array") | to_entries[]
+           | select((.value | type) != "object")
+           | "monorepo \($u): slices[\(.key)] must be an object — got type: \(.value | type)"
+         else empty end),
+
+        # Rule: slice id present, a non-empty string, matching
+        # ^[a-z][a-z0-9-]{0,30}$. That is NARROWER than a reference
+        # filename: a slice id becomes the tail of the derived source id
+        # "<parent id>-<slice_id>", which bin/cache-git.sh interpolates
+        # into a cache directory name behind a `*[!a-z0-9-]*` guard. An id
+        # carrying `_` would validate here, stage, apply, and then be
+        # refused on every clone attempt — never cached, never crawled,
+        # [N/A]-skipped by Checks 6 and 8 forever.
+        (if ($mr | type) == "array" then
+           $mr[] | select(type == "object") | loc as $u
+           | (.slices // []) | select(type == "array") | to_entries[]
+           | select((.value | type) == "object") | .key as $si | .value
+           | if (.id // null) == null then
+               "monorepo \($u): slices[\($si)] has no id — every slice needs one"
+             elif (.id | type) != "string" then
+               "monorepo \($u): slices[\($si)] id must be a string — got type: \(.id | type)"
+             elif .id == "" then
+               "monorepo \($u): slices[\($si)] id must not be empty"
+             elif (.id | test("^[a-z][a-z0-9-]{0,30}$") | not) then
+               "slice id \"\(.id)\" does not match ^[a-z][a-z0-9-]{0,30}$ (the derived source id <parent>-<slice id> becomes a cache path segment)"
+             else empty end
+         else empty end),
+
+        # Rule: each slice id unique within its own monorepo (the same id
+        # in two DIFFERENT monorepos is not a violation).
+        (if ($mr | type) == "array" then
+           $mr[] | select(type == "object")
+           | [(.slices // []) | select(type == "array") | .[]
+              | select(type == "object") | .id | select(type == "string" and . != "")]
+           | group_by(.) | map(select(length > 1) | .[0])[]
+           | "slice id must be unique within its monorepo — duplicate: \(.)"
+         else empty end),
+
+        # Rule: every slice has at least one path, and every path is a
+        # non-empty string. `paths` must be an ARRAY first: `length` on a
+        # string is a character count, so a bare-string paths silently
+        # scored non-zero and slipped through.
+        (if ($mr | type) == "array" then
+           $mr[] | select(type == "object")
+           | (.slices // []) | select(type == "array") | .[] | select(type == "object")
+           | (if (.id | type) == "string" and .id != "" then .id else "<no id>" end) as $id
+           | if (.paths // null) == null then
+               "slice \"\($id)\": paths is required — every slice needs at least one path"
+             elif (.paths | type) != "array" then
+               "slice \"\($id)\": paths must be an array — got type: \(.paths | type)"
+             elif (.paths | length) == 0 or (.paths | any(type != "string" or . == "")) then
+               "slice \"\($id)\": every slice needs at least one path, and every path must be a non-empty string"
+             else empty end
+         else empty end)
+      ]
+    | unique[]
+  ' "$mc_file" 2>/dev/null)"
+  mc_rc=$?
+
+  if [ "$mc_rc" -ne 0 ]; then
+    # Unreachable by design — every traversal above is type-guarded. If it
+    # fires, a shape got past the guards, and saying so beats the silent
+    # [PASS] that a swallowed error used to produce.
+    mc_lines+=("$mc_file could not be evaluated — the validation filter exited $mc_rc on this shape")
+  else
+    while IFS= read -r mc_line; do
+      [ -n "$mc_line" ] || continue
+      mc_lines+=("$mc_line")
+    done <<< "$mc_out"
   fi
-
-  # Rule: each monorepos[].url unique across the whole file.
-  while IFS= read -r dup_url; do
-    [ -n "$dup_url" ] || continue
-    mc_lines+=("monorepos[].url must be unique — duplicate: $dup_url")
-  done < <(jq -r '
-    [.monorepos[]? | .url // "" | select(. != "")]
-    | group_by(.) | map(select(length > 1) | .[0]) | unique[]
-  ' "$mc_file" 2>/dev/null)
-
-  # Rule: each slice id unique within its own monorepo's slices[] (the
-  # same id in two DIFFERENT monorepos is not a violation).
-  while IFS= read -r dup_id; do
-    [ -n "$dup_id" ] || continue
-    mc_lines+=("slice id must be unique within its monorepo — duplicate: $dup_id")
-  done < <(jq -r '
-    [.monorepos[]? | (.slices // []) | map(.id // "") | select(. != "")
-     | group_by(.) | map(select(length > 1) | .[0])]
-    | flatten | unique[]
-  ' "$mc_file" 2>/dev/null)
-
-  # Rule: every slice has at least one path, and every path is a
-  # non-empty string.
-  while IFS= read -r bad_id; do
-    [ -n "$bad_id" ] || continue
-    mc_lines+=("slice \"$bad_id\": every slice needs at least one path, and every path must be a non-empty string")
-  done < <(jq -r '
-    [.monorepos[]? | (.slices // [])[]?
-      | select(((.paths // []) | length) == 0
-               or ((.paths // []) | any(type != "string" or . == "")))
-      | (.id // "<no id>")
-    ] | unique[]
-  ' "$mc_file" 2>/dev/null)
-
-  # Rule: slice id matches ^[a-z][a-z0-9-]{0,30}$.  This is NARROWER
-  # than reference filenames: a slice id becomes the tail of the derived
-  # source id "<parent id>-<slice_id>", which bin/cache-git.sh
-  # interpolates into a cache directory name behind a
-  # `*[!a-z0-9-]*` guard. An id carrying `_` would validate here, stage,
-  # apply, and then be refused on every clone attempt -- never cached,
-  # never crawled, [N/A]-skipped by Checks 6 and 8 forever.
-  while IFS= read -r bad_id; do
-    [ -n "$bad_id" ] || continue
-    mc_lines+=("slice id \"$bad_id\" does not match ^[a-z][a-z0-9-]{0,30}\$ (the derived source id <parent>-<slice id> becomes a cache path segment)")
-  done < <(jq -r '
-    [.monorepos[]? | (.slices // [])[]? | (.id // "")
-      | select(. != "" and (test("^[a-z][a-z0-9-]{0,30}$") | not))
-    ] | unique[]
-  ' "$mc_file" 2>/dev/null)
 
   if [ "${#mc_lines[@]}" -eq 0 ]; then
     mc_count="$(jq -r '
