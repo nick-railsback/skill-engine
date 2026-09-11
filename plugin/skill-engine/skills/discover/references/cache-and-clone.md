@@ -334,6 +334,34 @@ When `/skill-engine:discover` is invoked:
    `ls-files`-vs-`-e` rationale as Step 2 applies here too — not repeated
    in full.
 
+   **On consent (git-managed, slice-scoped):** for a source entry carrying
+   `slice_of` and `slice_paths`, substitute the same recipe, fed from
+   `slice_paths` in place of `files_of_interest` -- the identical
+   sparse-checkout mechanism, activated from a second input:
+
+   <!-- doctrine:slice-sparse-checkout:start -->
+   ```bash
+   source_id="$1"
+   url="$2"
+   ref="$3"
+   shift 3
+   [ "${1:-}" = "--" ] && shift
+   "$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" sparse-clone "$source_id" "$url" "$ref" -- "$@"
+   ```
+   <!-- doctrine:slice-sparse-checkout:end -->
+
+   Slices sharing a parent may be checked out together into one sparse
+   tree whose pattern set is the union of their `slice_paths`, when the
+   model judges context budgets permit clustering them; run independently
+   (the common case), a slice's checkout never contains a file belonging
+   only to a sibling slice unless clustered. On success and on failure,
+   the same reporting as the `files_of_interest` recipe above applies.
+
+   A promoted slice may carry its own `CLAUDE.md`: opt-in context, a
+   reasonable one 30-100 lines, that the engine itself never reads --
+   Claude Code's native nested-context loading delivers it to a session
+   working in that subtree. See `07-monorepo-adapter.md` section 7.8.
+
    **On consent (web-doc):** execute the bootstrap Step 3.6 crawl
    procedure inline (sitemap fetch, page-budget enforcement, atomic
    rename into `~/.cache/skill-engine/web-doc/<source_id>-<snapshot>/`).

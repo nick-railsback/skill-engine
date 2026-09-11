@@ -201,6 +201,44 @@ git -C "$RCP_UPSTREAM" -c user.email=oracle@example.invalid -c user.name=oracle 
   commit -q -m "commit B"
 RCP_SHA_B="$(git -C "$RCP_UPSTREAM" rev-parse HEAD)"
 
+# is_positional_recipe_block <block-file> — true if the block reads its
+# arguments positionally ($1/$2/$3, the doctrine:slice-source-entries calling
+# convention) rather than the inline-placeholder-template convention every
+# other cache-writing recipe in these docs uses so far. Distinguished by the
+# absence of the <source_id> placeholder token: a template recipe always
+# carries it, a positional recipe never does.
+is_positional_recipe_block() {
+  ! grep -qF '<source_id>' "$1"
+}
+
+# run_candidate_recipe_positional <label> <block-file> <ctx-root> <home>
+#   <override-root> <expected-populated-dir> <positional-args...>
+# Like run_candidate_recipe below, but for a block that reads $1/$2/$3
+# instead of inline placeholder tokens: runs the block verbatim (no sed
+# substitution) with <positional-args...> appended to the invocation. Same
+# two outcome assertions.
+run_candidate_recipe_positional() {
+  local label="$1" block="$2" ctx_root="$3" home="$4" override_root="$5" expected_dir="$6"
+  shift 6
+  mkdir -p "$ctx_root"
+  local out rc
+  out="$(cd "$ctx_root" && env HOME="$home" SKILL_ENGINE_CACHE_ROOT="$override_root" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$block" "$@" 2>&1)"
+  rc=$?
+  if [ -d "$expected_dir/.git" ]; then
+    pass "$label: the overridden cache root ends up populated"
+  else
+    fail "$label: the overridden cache root ends up populated" \
+      "expected: $expected_dir/.git" "recipe exit: $rc" "recipe output: $out"
+  fi
+  if [ ! -e "$home/.cache/skill-engine" ]; then
+    pass "$label: nothing is written under the literal \$HOME cache path"
+  else
+    fail "$label: nothing is written under the literal \$HOME cache path" \
+      "found: $home/.cache/skill-engine"
+  fi
+}
+
 # run_candidate_recipe <label> <block-file> <ctx-root> <home> <override-root>
 #   <expected-populated-dir> <sed-args...>
 # Substitutes <sed-args...> into <block-file>, refuses to run (and fails
@@ -302,7 +340,13 @@ for idx in "${!RECIPE_BLOCKS[@]}"; do
   ctx="$TMPROOT/exec-ctx-$idx"
   mkdir -p "$home" "$ctx"
 
-  if grep -qF '<old_sha>' "$block" && grep -qF '<new_sha>' "$block"; then
+  if is_positional_recipe_block "$block"; then
+    # Positional-arg shaped (e.g. doctrine:slice-sparse-checkout): run
+    # verbatim with real args instead of substituting placeholder tokens.
+    run_candidate_recipe_positional "$label (fresh clone, positional)" "$block" "$ctx" "$home" "$override_root" \
+      "$override_root/git-managed/widget-src-$RCP_SHA_B" \
+      "widget-src" "file://$RCP_UPSTREAM" "HEAD" -- "docs/**"
+  elif grep -qF '<old_sha>' "$block" && grep -qF '<new_sha>' "$block"; then
     # In-place-advance shaped: needs a pre-existing clone under the
     # override root to advance, at the SHA the recipe is told is "old".
     mkdir -p "$override_root/git-managed"
