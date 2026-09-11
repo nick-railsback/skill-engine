@@ -4,14 +4,27 @@ own path patterns differs between two commits already resident in one cache
 directory — so REFRESH's Phase 1 can promote only the slices that actually
 moved instead of re-reading an entire monorepo on every run.
 
-Matching reuses git's own pathspec plumbing (`git diff --name-only`) rather
-than hand-rolling gitignore/sparse-checkout glob semantics in Python. Every
-slice pattern is passed with the `:(glob)` pathspec magic prefix: git's
-default (non-magic) pathspec matching does not distinguish a bare `*` from
-`**` the way `git sparse-checkout --no-cone` does, and this script's
-contract requires that distinction. `git diff` is used for every
-pattern-matching call — never `git ls-tree`, which rejects `:(glob)`
-outright.
+Matching reuses git's own gitignore plumbing (`git check-ignore`) rather
+than hand-rolling glob semantics in Python, and rather than pathspec
+matching, which answers a different question. `slice_paths` is fed to
+`git sparse-checkout set --no-cone`, which is GITIGNORE matching: a pattern
+that matches a directory pulls in that directory's whole subtree, a
+slashless pattern matches at any depth, and a `!` entry carves a subtree
+back out. Pathspec matching (`:(glob)`, fnmatch with FNM_PATHNAME) does
+none of those. Matching with the wrong engine does not merely miscount: a
+slice declaring `packages/billing/*` is checked out WITH its nested files
+and then reports `changed: false` when one of them changes, so it is
+crawled once and never refreshed again, silently.
+
+The engine consulted is `git sparse-checkout set --no-cone` ITSELF, run
+against a disposable scratch index holding the candidate paths, not a
+second implementation of its rules. `git check-ignore` is close but not
+equivalent: it enforces gitignore's "a file cannot be re-included when a
+parent directory is excluded" rule, which sparse-checkout does not, so a
+slice declaring `["packages/**", "!packages/vendor/**"]` would wrongly
+count packages/vendor/v.py as its own. Asking the real engine costs one
+`git init` plus one index write per slice and cannot drift from what the
+checkout does, because it is what the checkout does.
 
 Usage:
     python3 slice_drift.py <cache_dir> --old <sha> --new <sha> \
@@ -42,12 +55,87 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(args, capture_output=True, text=True, check=False)
+
+
+def _matched_subset(patterns: list[str], candidates: list[str]) -> list[str]:
+    """The subset of `candidates` a `--no-cone` checkout of `patterns` carries.
+
+    Asks git's own sparse-checkout machinery rather than reimplementing
+    it: a scratch repository is given an index holding exactly the
+    candidate paths (all pointing at one empty blob -- no content is
+    needed to answer a pattern question), the patterns are applied with
+    `sparse-checkout set --no-cone`, and the entries git did NOT mark
+    skip-worktree are the ones inside the slice.
+
+    Nothing here touches the cache. The scratch repository is disposable
+    and is the only thing written to.
+    """
+    if not candidates or not patterns:
+        return []
+    with tempfile.TemporaryDirectory(prefix="slice-drift-match-") as scratch:
+        init = _run(["git", "init", "-q", scratch])
+        if init.returncode != 0:
+            sys.stderr.write(init.stderr)
+            sys.exit(1)
+
+        blob = subprocess.run(
+            ["git", "-C", scratch, "hash-object", "-w", "-t", "blob", "--stdin"],
+            input=b"", capture_output=True, check=False,
+        )
+        if blob.returncode != 0:
+            sys.stderr.write(blob.stderr.decode(errors="replace"))
+            sys.exit(1)
+        empty_blob = blob.stdout.decode().strip()
+
+        # -z, so a path carrying a newline or a quote cannot desynchronize
+        # the record stream the way a line-oriented --index-info would.
+        index_info = b"".join(
+            f"100644 {empty_blob}\t{path}\0".encode() for path in candidates
+        )
+        add = subprocess.run(
+            ["git", "-C", scratch, "update-index", "-z", "--add", "--index-info"],
+            input=index_info, capture_output=True, check=False,
+        )
+        if add.returncode != 0:
+            sys.stderr.write(add.stderr.decode(errors="replace"))
+            sys.exit(1)
+
+        # --skip-checks suppresses the "this looks like a leading-slash
+        # mistake" advice on patterns the maintainer meant literally. It
+        # is git >= 2.36; without it the same call still works, so an
+        # older git falls back rather than failing.
+        applied = _run(["git", "-C", scratch, "sparse-checkout", "set",
+                        "--no-cone", "--skip-checks", *patterns])
+        if applied.returncode != 0:
+            applied = _run(["git", "-C", scratch, "sparse-checkout", "set",
+                            "--no-cone", *patterns])
+        if applied.returncode != 0:
+            sys.stderr.write(applied.stderr)
+            sys.exit(1)
+
+        listed = subprocess.run(
+            ["git", "-C", scratch, "ls-files", "-v", "-z"],
+            capture_output=True, check=False,
+        )
+        if listed.returncode != 0:
+            sys.stderr.write(listed.stderr.decode(errors="replace"))
+            sys.exit(1)
+        # Each record is "<tag> <path>". A tag of "S" is skip-worktree,
+        # i.e. outside the sparse patterns; everything else is inside.
+        inside = {
+            record[2:].decode(errors="replace")
+            for record in listed.stdout.split(b"\0")
+            if record and record[:1] != b"S"
+        }
+
+    return [path for path in candidates if path in inside]
 
 
 def _collect_slices(config: dict) -> list[tuple[str, list[str]]]:
@@ -71,8 +159,13 @@ def _resolvable(cache_dir: str, sha: str, flag: str) -> bool:
     return True
 
 
-def _diff_names(cache_dir: str, old: str, new: str, pathspecs: list[str]) -> list[str]:
-    result = _run(["git", "-C", cache_dir, "diff", "--name-only", "-z", old, new, "--", *pathspecs])
+def _diff_names(cache_dir: str, old: str, new: str) -> list[str]:
+    """Every path differing between two commits, unfiltered.
+
+    No pathspec: which of these paths belongs to a slice is decided by
+    `_matched_subset`, with the engine sparse-checkout itself uses.
+    """
+    result = _run(["git", "-C", cache_dir, "diff", "--name-only", "-z", old, new])
     if result.returncode != 0:
         sys.stderr.write(result.stderr)
         sys.exit(1)
@@ -99,12 +192,18 @@ def main() -> None:
     if not old_ok or not new_ok:
         sys.exit(1)
 
+    # The three path sets are the same for every slice -- only the pattern
+    # filter differs -- so they are computed once rather than once per
+    # slice.
+    all_old = _diff_names(args.cache_dir, EMPTY_TREE, args.old)
+    all_new = _diff_names(args.cache_dir, EMPTY_TREE, args.new)
+    all_changed = _diff_names(args.cache_dir, args.old, args.new)
+
     results = []
     for slice_id, paths in slices:
-        pathspecs = [":(glob)" + p for p in paths]
-        existed_old = bool(_diff_names(args.cache_dir, EMPTY_TREE, args.old, pathspecs))
-        existed_new = bool(_diff_names(args.cache_dir, EMPTY_TREE, args.new, pathspecs))
-        changed_paths = sorted(_diff_names(args.cache_dir, args.old, args.new, pathspecs))
+        existed_old = bool(_matched_subset(paths, all_old))
+        existed_new = bool(_matched_subset(paths, all_new))
+        changed_paths = sorted(_matched_subset(paths, all_changed))
         if not existed_old and not existed_new:
             results.append({
                 "slice_id": slice_id,

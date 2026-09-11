@@ -407,18 +407,31 @@ cat > "$CONFIG_PATHSPEC" <<'EOF'
 EOF
 
 # ===========================================================================
-# Fixture 4 — pathspec semantics: a slice pattern `packages/widgets/*` (bare
-# single star, one path segment) where the changed-file set includes one
-# file directly under that directory AND one file nested one level deeper
-# under a subdirectory of it. Per the frozen contract, a bare `*` matches
-# within a single path segment and does NOT cross a path separator the way
-# `**` does — only the direct child is a match.
-#   - an implementation that treats a single `*` the same as `**` (lets `*`
-#     cross directory separators, e.g. by translating the pattern to a
-#     regex that maps `*` to `.*` instead of `[^/]*`) would incorrectly
-#     ALSO match packages/widgets/inner/deep.py, growing changed_paths to
-#     two entries instead of one
-# Correct sparse-checkout pathspec semantics reports only the direct child.
+# Fixture 4 — sparse-checkout semantics: a slice pattern
+# `packages/widgets/*` (bare single star, one path segment) where the
+# changed-file set includes one file directly under that directory AND one
+# nested a level deeper under a subdirectory of it.
+#
+# RECALIBRATED (PR #16 review, finding 9). This fixture previously asserted
+# that only the direct child is a match, on the rationale that "a bare `*`
+# matches within a single path segment and does not cross a path separator
+# the way `**` does". That is true of git PATHSPEC matching (`:(glob)`,
+# fnmatch with FNM_PATHNAME) and false of the engine that actually decides
+# what is in a slice. `slice_paths` is fed to
+# `git sparse-checkout set --no-cone`, which is GITIGNORE matching: a
+# pattern matching a directory pulls in that directory's whole subtree.
+# Verified directly — `git sparse-checkout set --no-cone
+# 'packages/widgets/*'` materializes packages/widgets/inner/deep.py.
+#
+# So the two engines disagreed, and the oracle was calibrated against the
+# one that does not decide anything. The consequence was not a cosmetic
+# count: a slice declaring a single-star pattern was checked out by
+# DISCOVER and then reported changed:false forever, because the file that
+# changed was inside the checkout but outside the pathspec — never
+# refreshed again, silently.
+#
+# The assertion below is now: whatever sparse-checkout would materialize is
+# what counts as drift. Both files.
 # ===========================================================================
 UP4="$WORK/upstream4"
 init_upstream "$UP4"
@@ -446,6 +459,84 @@ cat > "$CONFIG_STAR" <<'EOF'
       "type": "internal-repo",
       "slices": [
         {"id": "widgets", "paths": ["packages/widgets/*"]}
+      ]
+    }
+  ]
+}
+EOF
+
+# ===========================================================================
+# Fixture 4B — a SLASHLESS pattern. gitignore (and therefore
+# sparse-checkout --no-cone) matches `*.proto` at any depth; :(glob)
+# pathspec matching applies it only at the repo root. Verified against a
+# real checkout. (PR #16 review, finding 9.)
+# ===========================================================================
+UP4B="$WORK/upstream4b"
+init_upstream "$UP4B"
+mkdir -p "$UP4B/proto/sub"
+printf '1\n' > "$UP4B/top.proto"
+printf '1\n' > "$UP4B/proto/sub/deep.proto"
+printf '1\n' > "$UP4B/unrelated.txt"
+SHA_A4B="$(commit_all "$UP4B" "commit A")"
+
+CACHE4B="$WORK/cache4b"
+seed_shallow_cache "$UP4B" "$CACHE4B"
+
+printf '2\n' > "$UP4B/top.proto"
+printf '2\n' > "$UP4B/proto/sub/deep.proto"
+printf '2\n' > "$UP4B/unrelated.txt"
+SHA_B4B="$(commit_all "$UP4B" "commit B")"
+
+advance_cache_inplace "$CACHE4B" "$UP4B" "$SHA_B4B"
+
+CONFIG_SLASHLESS="$WORK/monorepo-config-slashless.json"
+cat > "$CONFIG_SLASHLESS" <<'EOF'
+{
+  "version": "1.0",
+  "monorepos": [
+    {
+      "url": "https://example.com/acme/mono-slashless",
+      "type": "internal-repo",
+      "slices": [
+        {"id": "schemas", "paths": ["*.proto"]}
+      ]
+    }
+  ]
+}
+EOF
+
+# ===========================================================================
+# Fixture 4C — a NEGATION. sparse-checkout --no-cone applies gitignore's
+# later-pattern-wins rule, so a `!` entry carves a subtree back out of the
+# checkout. Nothing in §7.3's validation rules forbids the shape, so the
+# matcher has to honour it. (PR #16 review, finding 9.)
+# ===========================================================================
+UP4C="$WORK/upstream4c"
+init_upstream "$UP4C"
+mkdir -p "$UP4C/packages/keep" "$UP4C/packages/vendor"
+printf '1\n' > "$UP4C/packages/keep/k.py"
+printf '1\n' > "$UP4C/packages/vendor/v.py"
+SHA_A4C="$(commit_all "$UP4C" "commit A")"
+
+CACHE4C="$WORK/cache4c"
+seed_shallow_cache "$UP4C" "$CACHE4C"
+
+printf '2\n' > "$UP4C/packages/keep/k.py"
+printf '2\n' > "$UP4C/packages/vendor/v.py"
+SHA_B4C="$(commit_all "$UP4C" "commit B")"
+
+advance_cache_inplace "$CACHE4C" "$UP4C" "$SHA_B4C"
+
+CONFIG_NEGATED="$WORK/monorepo-config-negated.json"
+cat > "$CONFIG_NEGATED" <<'EOF'
+{
+  "version": "1.0",
+  "monorepos": [
+    {
+      "url": "https://example.com/acme/mono-negated",
+      "type": "internal-repo",
+      "slices": [
+        {"id": "libs", "paths": ["packages/**", "!packages/vendor/**"]}
       ]
     }
   ]
@@ -575,7 +666,7 @@ else
     "a naive string-prefix match would additionally include packages/billing-legacy/b.py"
 fi
 
-section "pathspec semantics: a bare single * matches one path segment and does not cross a path separator the way ** does"
+section "sparse-checkout semantics: a bare single * pulls in the matched directory's whole subtree, exactly as the checkout does"
 
 OUT4="$(sd_out "$CACHE4" --old "$SHA_A4" --new "$SHA_B4" --config "$CONFIG_STAR")"
 RC4=$?
@@ -584,15 +675,56 @@ if [ "$RC4" -eq 0 ] && jq_check "$OUT4" '
     (type=="array") and (length==1)
     and (.[0].slice_id == "widgets")
     and (.[0].changed == true)
-    and (.[0].changed_paths == ["packages/widgets/top.py"])
+    and (.[0].changed_paths == ["packages/widgets/inner/deep.py", "packages/widgets/top.py"])
   '; then
-  pass "pathspec_single_star_does_not_cross_a_path_separator"
+  pass "single_star_matches_what_sparse_checkout_materializes"
 else
-  fail "pathspec_single_star_does_not_cross_a_path_separator" \
+  fail "single_star_matches_what_sparse_checkout_materializes" \
     "rc=$RC4" "stdout: $OUT4" \
-    "an implementation that treats a single * the same as ** (letting * cross" \
-    "a path separator) would additionally include packages/widgets/inner/deep.py" \
-    "in changed_paths alongside packages/widgets/top.py"
+    "git sparse-checkout set --no-cone 'packages/widgets/*' materializes BOTH" \
+    "packages/widgets/top.py and packages/widgets/inner/deep.py (gitignore" \
+    "semantics: a pattern matching a directory pulls in its whole subtree)," \
+    "so both must count as drift. An implementation matching with :(glob)" \
+    "pathspec semantics reports only the direct child, and the slice is then" \
+    "checked out once and never refreshed again."
+fi
+
+# The same divergence, second shape: a slashless pattern. gitignore matches
+# a bare `*.proto` at ANY depth; `:(glob)` only at the repo root.
+OUT4B="$(sd_out "$CACHE4B" --old "$SHA_A4B" --new "$SHA_B4B" --config "$CONFIG_SLASHLESS")"
+RC4B=$?
+
+if [ "$RC4B" -eq 0 ] && jq_check "$OUT4B" '
+    (type=="array") and (length==1)
+    and (.[0].slice_id == "schemas")
+    and (.[0].changed == true)
+    and (.[0].changed_paths == ["proto/sub/deep.proto", "top.proto"])
+  '; then
+  pass "slashless_pattern_matches_at_any_depth_like_the_checkout"
+else
+  fail "slashless_pattern_matches_at_any_depth_like_the_checkout" \
+    "rc=$RC4B" "stdout: $OUT4B" \
+    "git sparse-checkout set --no-cone '*.proto' materializes both top.proto" \
+    "and proto/sub/deep.proto; :(glob)*.proto matches only at the repo root."
+fi
+
+# Third shape: a negation. gitignore's later-pattern-wins rule is what
+# sparse-checkout applies, so !vendor/** carves vendor back out.
+OUT4C="$(sd_out "$CACHE4C" --old "$SHA_A4C" --new "$SHA_B4C" --config "$CONFIG_NEGATED")"
+RC4C=$?
+
+if [ "$RC4C" -eq 0 ] && jq_check "$OUT4C" '
+    (type=="array") and (length==1)
+    and (.[0].slice_id == "libs")
+    and (.[0].changed == true)
+    and (.[0].changed_paths == ["packages/keep/k.py"])
+  '; then
+  pass "negation_pattern_carves_out_like_the_checkout"
+else
+  fail "negation_pattern_carves_out_like_the_checkout" \
+    "rc=$RC4C" "stdout: $OUT4C" \
+    "patterns [packages/**, !packages/vendor/**] materialize packages/keep/k.py" \
+    "and NOT packages/vendor/v.py, so only the former counts as drift."
 fi
 
 section "a slice whose patterns match nothing in either tree"
@@ -657,8 +789,8 @@ section "git verbs limited to the read-only allow-list"
 
 # See design decision 9 in the header for why this is a bespoke scan
 # rather than tests/lib/git_verb_scan.sh.
-if [ -f "$SLICE_DRIFT_PY" ]; then
-  verb_result="$(python3 - "$SLICE_DRIFT_PY" <<'PYEOF'
+VERB_SCAN="$WORK/verb_scan.py"
+cat > "$VERB_SCAN" <<'PYEOF'
 import ast, re, sys
 path = sys.argv[1]
 src = open(path, encoding="utf-8").read()
@@ -666,6 +798,16 @@ tree = ast.parse(src, filename=path)
 
 READONLY = {"diff", "status", "log", "show", "clone", "ls-remote",
             "ls-tree", "ls-files", "rev-parse", "cat-file"}
+# Verbs that DO write, permitted only against the disposable scratch
+# repository the pattern matcher builds -- never against the cache. The
+# contract this check defends is read-only AGAINST THE CACHE, and asking
+# the real sparse-checkout machinery what a pattern set selects means
+# building a throwaway index to ask it about. A call is scratch-scoped
+# only when a scratch-derived expression appears in its argv and no
+# cache-derived one does, so `git -C cache_dir gc` is still a violation
+# and so is a bare `git update-index` with no scoping at all.
+# (PR #16 review, finding 9.)
+SCRATCH_ONLY = {"init", "hash-object", "update-index", "sparse-checkout"}
 INVOKERS = {"run", "call", "check_output", "check_call", "Popen", "system", "popen"}
 
 bad = []
@@ -684,12 +826,26 @@ def verb_from_tokens(toks):
         return t
     return None
 
-def note(verb, where):
+def note(verb, where, scratch=False, cache=False):
     if verb is None:
         return
     seen[0] = True
-    if verb not in READONLY:
-        bad.append(verb + " (" + where + ")")
+    if verb in READONLY:
+        return
+    if verb in SCRATCH_ONLY and scratch and not cache:
+        return
+    bad.append(verb + " (" + where + ")")
+
+
+def scope_of(nodes):
+    texts = []
+    for n in nodes:
+        try:
+            texts.append(ast.unparse(n))
+        except Exception:
+            texts.append("")
+    joined = " ".join(texts)
+    return ("scratch" in joined, "cache_dir" in joined)
 
 class V(ast.NodeVisitor):
     def _seq(self, node):
@@ -707,7 +863,8 @@ class V(ast.NodeVisitor):
             toks = [e.value if (isinstance(e, ast.Constant) and isinstance(e.value, str))
                     else "<expr>"
                     for e in elts[1:]]
-            note(verb_from_tokens(toks), "argv")
+            is_scratch, is_cache = scope_of(elts[1:])
+            note(verb_from_tokens(toks), "argv", is_scratch, is_cache)
 
     def visit_List(self, node):
         self._seq(node)
@@ -742,7 +899,9 @@ elif seen[0]:
 else:
     print("NONE")
 PYEOF
-)"
+
+if [ -f "$SLICE_DRIFT_PY" ]; then
+  verb_result="$(python3 "$VERB_SCAN" "$SLICE_DRIFT_PY")"
   case "$verb_result" in
     BAD:*)
       fail "git_verbs_limited_to_read_only_allow_list" \
@@ -752,8 +911,39 @@ PYEOF
     *)
       fail "git_verbs_limited_to_read_only_allow_list" "scanner produced unexpected output: $verb_result" ;;
   esac
+
+  # Negative control for the scope rule. The allow-list now admits four
+  # writing verbs when they are scoped to the scratch repository, which
+  # only means anything if the same verbs aimed at the cache still fail --
+  # and if an unscoped one does too. Both mutants are synthetic; neither
+  # is ever executed.
+  cat > "$WORK/mutant-cache-write.py" <<'MUTEOF'
+import subprocess
+def go(cache_dir):
+    subprocess.run(["git", "-C", cache_dir, "update-index", "--refresh"])
+MUTEOF
+  cat > "$WORK/mutant-unscoped-write.py" <<'MUTEOF'
+import subprocess
+def go():
+    subprocess.run(["git", "update-index", "--refresh"])
+MUTEOF
+  mutant_ok=1
+  mutant_detail=()
+  for mutant in mutant-cache-write mutant-unscoped-write; do
+    mutant_verdict="$(python3 "$VERB_SCAN" "$WORK/$mutant.py")"
+    case "$mutant_verdict" in
+      BAD:*) ;;
+      *) mutant_ok=0; mutant_detail+=("$mutant scanned as '$mutant_verdict', expected BAD:") ;;
+    esac
+  done
+  if [ "$mutant_ok" -eq 1 ]; then
+    pass "git_verb_scope_rule_still_rejects_a_cache_write_and_an_unscoped_write"
+  else
+    fail "git_verb_scope_rule_still_rejects_a_cache_write_and_an_unscoped_write" "${mutant_detail[@]}"
+  fi
 else
   pass "git_verbs_limited_to_read_only_allow_list (vacuous: slice_drift.py does not exist yet, so it invokes no git verb)"
+  pass "git_verb_scope_rule_still_rejects_a_cache_write_and_an_unscoped_write (vacuous: slice_drift.py does not exist yet)"
 fi
 
 section "read-only against the cache"
