@@ -341,25 +341,44 @@ def main() -> None:
     if not old_ok or not new_ok:
         sys.exit(1)
 
-    # The three path sets are the same for every slice -- only the pattern
-    # filter differs -- so they are computed once rather than once per
-    # slice.
-    empty_tree = _empty_tree(args.cache_dir)
-    all_old = _diff_names(args.cache_dir, empty_tree, args.old)
-    all_new = _diff_names(args.cache_dir, empty_tree, args.new)
+    # The changed set is the same for every slice -- only the pattern
+    # filter differs -- so it is computed once rather than once per slice.
     all_changed = _diff_names(args.cache_dir, args.old, args.new)
+
+    # The two whole-tree probes exist only to tell "nothing under this
+    # slice moved" apart from "this slice's patterns match nothing at
+    # all", so they are needed only when a slice's changed set comes back
+    # empty -- and then only once per invocation, not once per slice.
+    # Running them eagerly spent two whole-tree enumerations, each one now
+    # a scratch index holding every path in the commit, to compute two
+    # booleans the changed:true path never reads.
+    tree_listings: list[list[bytes]] | None = None
 
     results = []
     for slice_id, paths in slices:
-        existed_old = bool(_matched_subset(paths, all_old))
-        existed_new = bool(_matched_subset(paths, all_new))
         # Decoded once, here, at the JSON boundary -- never before
         # matching, so a lossy replacement can never affect a verdict.
         changed_paths = sorted(
             raw.decode("utf-8", errors="replace")
             for raw in _matched_subset(paths, all_changed)
         )
-        if not existed_old and not existed_new:
+        if changed_paths:
+            results.append({
+                "slice_id": slice_id,
+                "changed": True,
+                "changed_paths": changed_paths,
+            })
+            continue
+
+        if tree_listings is None:
+            empty_tree = _empty_tree(args.cache_dir)
+            tree_listings = [
+                _diff_names(args.cache_dir, empty_tree, args.old),
+                _diff_names(args.cache_dir, empty_tree, args.new),
+            ]
+        all_old, all_new = tree_listings
+
+        if not _matched_subset(paths, all_old) and not _matched_subset(paths, all_new):
             results.append({
                 "slice_id": slice_id,
                 "changed": False,
@@ -369,8 +388,8 @@ def main() -> None:
         else:
             results.append({
                 "slice_id": slice_id,
-                "changed": bool(changed_paths),
-                "changed_paths": changed_paths,
+                "changed": False,
+                "changed_paths": [],
             })
 
     print(json.dumps(results))

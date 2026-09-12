@@ -1127,6 +1127,49 @@ else
     "stdout: ${OUT_UNAMBIG:-<empty>}"
 fi
 
+# ===========================================================================
+# The two whole-tree probes are consulted only when changed_paths is empty
+# -- they exist to tell "nothing under this slice moved" apart from "this
+# slice's patterns match nothing at all". Running them unconditionally, and
+# FIRST, spends two full-tree enumerations per invocation to compute two
+# booleans the changed:true path never reads. That cost grew when matching
+# moved to the sparse-checkout engine: each probe now builds a scratch
+# index holding every path in the commit. On a large monorepo that is two
+# whole-tree index builds per REFRESH per slice, for nothing.
+# (PR #16 review, finding 14, second half.)
+# ===========================================================================
+section "the whole-tree probes are skipped when the slice already has changes"
+
+sd_trace_diff_count() {
+  # sd_trace_diff_count <args...> -- how many `git diff` invocations the
+  # script makes. GIT_TRACE must go to a FILE: the script captures its
+  # subprocesses' stderr, so trace output on stderr would be swallowed.
+  local trace
+  trace="$(mktemp "$WORK/git-trace-XXXXXX")"
+  GIT_TRACE="$trace" python3 "$SLICE_DRIFT_PY" "$@" >/dev/null 2>&1
+  grep -c 'built-in: git diff' "$trace" 2>/dev/null || printf '0\n'
+}
+
+probe_changed="$(sd_trace_diff_count "$CACHE4" --old "$SHA_A4" --new "$SHA_B4" --config "$CONFIG_STAR")"
+if [ "${probe_changed:-0}" -eq 1 ]; then
+  pass "a slice with changes costs exactly one git diff, not three"
+else
+  fail "a slice with changes costs exactly one git diff, not three" \
+    "saw ${probe_changed:-0} diff invocation(s); the two whole-tree probes are only" \
+    "needed when changed_paths comes back empty"
+fi
+
+# The probes must still run when they are actually needed, or the `notice`
+# outcome disappears and a broken slice reads as a quiet one.
+probe_unchanged="$(sd_trace_diff_count "$CACHE1" --old "$SHA_A1" --new "$SHA_B1" \
+  --config "$CONFIG_3SLICE_PLUS_GHOST")"
+if [ "${probe_unchanged:-0}" -ge 2 ]; then
+  pass "a slice with no changes still costs the probes that distinguish unchanged from unmatched"
+else
+  fail "a slice with no changes still costs the probes that distinguish unchanged from unmatched" \
+    "saw ${probe_unchanged:-0} diff invocation(s); the notice outcome needs both probes"
+fi
+
 section "a slice whose patterns match nothing in either tree"
 
 OUT1G="$(sd_out "$CACHE1" --old "$SHA_A1" --new "$SHA_B1" --config "$CONFIG_3SLICE_PLUS_GHOST")"
