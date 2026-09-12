@@ -8,24 +8,25 @@ The review is in three steps. Fill Step 1 first, save, then re-run `/skill-engin
 
 Write your predictions before scrolling. The point is to surface your model of what this contextualizer should be, then let the disagreement set in Step 2 show you where the engine's draft diverges from your intent. If you read the diff first, Step 2 has nothing to teach.
 
-- *"This skill is for the app owner and agents gaining context of the project during feature development"* (carried forward from the 2026-09-09 v0.9.0 review at the maintainer's direction — no new predictions were offered for this re-pin)
-- *"This skill should NOT make false claims."* (carried forward)
-- *"The reference I'd cut: none, looks good"* (carried forward)
+- *"This skill is for me, the app owner"*
+- *"This skill should NOT lie"*
+- *"The reference I'd cut: none, looks good."*
 
 <!-- Do not scroll past this line until the three blanks above are filled. -->
 
 ## Step 2 — Disagreement set
 
 Paragraph→permalink density: 99.4% (report-only; not one of the disagreements below).
-Re-emit candidates: 5 of 9 references cite changed paths (16 changed paths uncited).
+Re-emit candidates: 9 of 9 references cite changed paths (43 changed paths uncited).
+Re-pinned: 198 of 216 citations moved mechanically; 18 read by hand.
 
-- [X] accept  [ ] reject   Your "for the app owner and agents gaining context during feature development" names a consumer audience, and this proposal changes nothing that audience reads — zero references added or cut, no coverage moved — while rewriting all nine files, so its whole blast radius (215 permalinks, ten files `modified`) is maintenance a reader only notices when a permalink is followed.
-- [X] accept  [ ] reject   Your "should NOT make false claims" is why two sentences were deleted rather than rewritten: they said the doctrine chapters "still" described archival as user-set and "still" called this "the four-phase probe", true at the previous pin and false at this one, and the fix is silence plus four citations — a call made on your behalf that the corpus should not narrate the engine's own doc corrections.
-- [X] accept  [ ] reject   The `archived` paragraph in `artifact-contract.md` now ends in a four-citation Source list (two skill files, two doctrine chapters) for one behavior, one cycle after you accepted a disagreement that this exact paragraph carried too much engine-maintenance trivia — the trivia is gone, but the citation count went up.
-- [X] accept  [ ] reject   `discover-refresh.md` keeps "the half-numbered first phase is the seam where v0.9.0 added archival detection ahead of a probe order that was already fixed" — engine history of the same kind this run removed two sentences later, left in because it explains the 0.5 numbering rather than describing drift, a line you may not draw where I did.
-- [X] accept  [ ] reject   The pin advanced to `f772c0d`, an ordinary CI-script commit, rather than to a release commit as the previous refresh deliberately chose; the corpus is true at HEAD today and is re-staled by the next commit to any of its 50 cited paths, and nothing in the references says which commit they describe beyond the SHA inside every URL.
-- [X] accept  [ ] reject   46 line ranges shifted and 9 overlapped the doc-correction hunks; the shifted ranges were checked by byte comparison of the cited text and the 9 overlaps by reading old against new, but the visible `L<a>-L<b>` in link text was machine-synced, so the evidence that every citation still points where its sentence claims is structural (215/215 resolve, one SHA) rather than editorial.
-- [X] accept  [ ] reject   Zero references added or cut matches "none, looks good" exactly, and the 16 uncited changed paths — the contextualizer's own files, the `/release` command, `ci-local.sh`, one test — stay uncited on the judgment that this corpus should not describe the repo's own CI loop, even though `versioning.md` already describes the doctrine checks CI runs.
+- [ ] accept  [ ] reject   You predicted this skill is for you, the app owner, but the corpus is written for a *consumer* of skill-engine applying it to their own domain — the maintainer-facing surfaces you actually operate (the six version surfaces `/release` moves, `ci-local`'s three-workflow residual, this corpus's own tag-pinning discipline) appear as engine behaviour rather than as your procedure.
+- [ ] accept  [ ] reject   This refresh expanded coverage twice rather than only correcting it — three `slice_*` rows added to artifact-contract's field table and a `monorepo-config` row to invariants' check table — on the argument that v0.10.0 made both tables incomplete; if your model is "REFRESH keeps the corpus true, DISCOVER grows it", that boundary was crossed and wants ratifying.
+- [ ] accept  [ ] reject   "Should NOT lie" holds claim-by-claim but not by omission: the corpus now documents the slice *fields* and the slice-aware *checks* while carrying no section on how slices actually work, so a reader asking v0.10.0's headline question gets silence — I deferred that section to DISCOVER.
+- [ ] accept  [ ] reject   The 14 label/href disagreements this run repaired have no guard behind them, so "not lying" currently means "true as of this apply" rather than "structurally prevented from drifting" — the next range-remapping refresh can reintroduce the same defect silently.
+- [ ] accept  [ ] reject   `monorepo.md`'s three rewritten claims are version-stamped in prose ("as of v0.10.0"), which is precise now but opens a fresh staleness surface at every adapter change; stating current behaviour unstamped and letting the pin carry the "as of" would age better.
+- [ ] accept  [ ] reject   `versioning.md`'s CHANGELOG paragraph enumerates the 0.10.0 entries by feature, making it the highest-churn sentence in the corpus — guaranteed stale at the next release, where a structural phrasing would not be.
+- [ ] accept  [ ] reject   You would cut nothing and nothing was cut — the set stands at 9 — but `evaluation-and-audit.md` and `principles.md` moved on the pin alone with zero prose change, so if you expected this cycle to touch them substantively, it did not.
 
 ## Step 3 — Sign-off
 

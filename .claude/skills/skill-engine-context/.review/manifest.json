@@ -52,56 +52,56 @@
     {
       "path": "references/nick-railsback-skill-engine-artifact-contract.md",
       "status": "modified",
-      "sha_before": "3cbccdf",
-      "sha_after": "830e330"
+      "sha_before": "830e330",
+      "sha_after": "453c253"
     },
     {
       "path": "references/nick-railsback-skill-engine-discover-refresh.md",
       "status": "modified",
-      "sha_before": "9bd75ed",
-      "sha_after": "c9116d3"
+      "sha_before": "c9116d3",
+      "sha_after": "ea68178"
     },
     {
       "path": "references/nick-railsback-skill-engine-evaluation-and-audit.md",
       "status": "modified",
-      "sha_before": "575a315",
-      "sha_after": "505ac2c"
+      "sha_before": "505ac2c",
+      "sha_after": "e39bda9"
     },
     {
       "path": "references/nick-railsback-skill-engine-invariants.md",
       "status": "modified",
-      "sha_before": "87f2343",
-      "sha_after": "35445fa"
+      "sha_before": "35445fa",
+      "sha_after": "dcf780e"
     },
     {
       "path": "references/nick-railsback-skill-engine-monorepo.md",
       "status": "modified",
-      "sha_before": "a03e4d0",
-      "sha_after": "cae5d51"
+      "sha_before": "cae5d51",
+      "sha_after": "523989d"
     },
     {
       "path": "references/nick-railsback-skill-engine-overview.md",
       "status": "modified",
-      "sha_before": "ab1f574",
-      "sha_after": "53b0e99"
+      "sha_before": "53b0e99",
+      "sha_after": "093bf72"
     },
     {
       "path": "references/nick-railsback-skill-engine-principles.md",
       "status": "modified",
-      "sha_before": "19658ab",
-      "sha_after": "a35fa33"
+      "sha_before": "a35fa33",
+      "sha_after": "abeb293"
     },
     {
       "path": "references/nick-railsback-skill-engine-versioning.md",
       "status": "modified",
-      "sha_before": "011f9a1",
-      "sha_after": "38c0e4b"
+      "sha_before": "38c0e4b",
+      "sha_after": "03dcb60"
     },
     {
       "path": "references/nick-railsback-skill-engine-workflows.md",
       "status": "modified",
-      "sha_before": "5254932",
-      "sha_after": "04c8a8b"
+      "sha_before": "04c8a8b",
+      "sha_after": "8ff3475"
     },
     {
       "path": "research/.research-state.json",
@@ -112,13 +112,13 @@
     {
       "path": "research/source-paths.json",
       "status": "modified",
-      "sha_before": "d3f0b7b",
-      "sha_after": "e894fca"
+      "sha_before": "e894fca",
+      "sha_after": "e53d337"
     },
     {
       "path": "verify.sh",
-      "status": "modified",
-      "sha_before": "3e0a68e",
+      "status": "unchanged",
+      "sha_before": "3cf0573",
       "sha_after": "3cf0573"
     }
   ]

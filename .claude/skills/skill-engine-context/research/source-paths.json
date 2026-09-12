@@ -9,8 +9,8 @@
       "archived": false,
       "lifecycle": {
         "state": "reachable",
-        "last_checked": "2026-09-09",
-        "last_checked_sha": "f772c0d95d409ed0a85e93f0b8a4b31bbb329d9a",
+        "last_checked": "2026-09-12",
+        "last_checked_sha": "4c8f83dbe525ca7c1b045ee86d9755c328dd686f",
         "proposed_url": null
       },
       "discovered_via": null
