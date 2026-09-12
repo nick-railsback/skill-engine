@@ -79,10 +79,23 @@ run_json() {
   fi
   echo "Meta-validating the schema"
   check-jsonschema --check-metaschema "$schema"
+  # Every tracked registry, not just the examples'. source-paths.schema.json
+  # calls itself "the machine-readable transcription of the contract that
+  # verify.sh Check 1 ... and Check 2 ... enforce at audit time", but it was
+  # only ever pointed at the template and examples/ — never at a live
+  # contextualizer's own registry, including this repo's own dogfood one.
+  # So the constraints the schema expresses and verify.sh did not (slice_id's
+  # pattern, slice_paths's shape) ran on no real file at all (PR #16 review,
+  # finding 11; Check 2 now enforces them too, and this is the second gate).
+  #
+  # git ls-files, not a glob: a CI checkout and a local working copy must
+  # agree on the inventory, and a glob would hand check-jsonschema a
+  # gitignored local file that CI never sees.
   local targets=( "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template" )
-  for f in examples/*/research/source-paths.json; do
-    [ -f "$f" ] && targets+=( "$f" )
-  done
+  local f
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] && targets+=( "$f" )
+  done < <(git ls-files -- '*/research/source-paths.json' | LC_ALL=C sort)
   echo "Validating ${#targets[@]} file(s) against the schema in one pass"
   check-jsonschema --schemafile "$schema" "${targets[@]}"
 

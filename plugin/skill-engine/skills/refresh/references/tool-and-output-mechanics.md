@@ -171,6 +171,23 @@ four components (no multi-column tables, no interactive menus):
    When `probe_budget` capped this session, include the
    skip line documented in Phase 1 ("Promotion and ordering") as part of
    this report.
+   **Sliced sources:** every promoted slice's findings land in the one
+   `$CTX_PROPOSED` tree this run produces -- one `manifest.json`, one
+   `REVIEW.md` -- never a separate proposal per slice. The Coverage report
+   groups its findings by `slice_id` rather than by the parent's
+   `source_id`, and records the SHA actually crawled for each slice in
+   that slice's own `.discover-cache.json` key (`enrichments.<source_id>`,
+   keyed on the slice's own derived id — `<parent id>-<slice id>`, the
+   same spelling `discover/references/cache-and-clone.md` § step 5 uses —
+   independent of its parent's and its sibling slices'). Never the bare
+   slice id: Cache GC enumerates the active set of
+   `source_id`s from `source-paths.json` on every DISCOVER and REFRESH and
+   drops every `enrichments.<source_id>` entry outside it
+   (`09-discover-config.md` § Cache GC). A bare `slice_id` is never a
+   `source_id`, so a key spelled that way is deleted by the next
+   invocation and the slice becomes a permanent cache miss — re-crawled in
+   full on every run, and silent, because a miss is indistinguishable from
+   a first run.
 2. **Skip-reasoning.** For both sources and references the model
    considered but skipped: "I skipped source Z because... I left
    reference X unchanged because..." Empty-skip case allowed.

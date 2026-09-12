@@ -163,7 +163,29 @@ When `/skill-engine:refresh` is invoked:
      surfaces for user accept but is not crawled until the URL is
      updated),
    - `status ∈ {confirmed, proposed}` (rejected companions don't
-     refresh).
+     refresh),
+   and it is not excluded by the parent rule below.
+
+   **The parent rule** is a rule about parents, not a fourth criterion a
+   source must satisfy to be in scope: **a source whose `slice_of` is
+   absent, and whose `url` is named as `slice_of` by at least one
+   `sources[]` entry that is itself in-scope by the three criteria above,
+   is excluded from re-read.** Nothing else is excluded by it. A slice is
+   *never* excluded by it — a slice has `slice_of` set, so the rule does
+   not reach it, and each slice is in scope in its own right regardless of
+   sharing the parent's `url`. The promotion-ordering recipe below spells
+   the same rule as a disjunction (`.slice_of != null or (...)`) for
+   exactly this reason. Stated instead as a conjunct in the list above
+   ("the source is not itself a slice, and ..."), it would read as
+   *in-scope implies `slice_of` absent*, which excludes every slice — the
+   opposite of the feature.
+
+   A slice that is `archived: true`, `lifecycle.state: "removed"` or
+   `status: "rejected"` covers nothing and never excludes its parent: it
+   is not crawled either, so counting it would drop the whole monorepo out
+   of REFRESH permanently, and silently, since an excluded source prints
+   no line. Render one line in the pre-flight summary for each excluded
+   parent: `Parent <id> excluded from crawling — <N> slice(s) applied.`
 
 5. **`--lifecycle-only` flag.** If passed, perform only the lifecycle
    state-check pass below; skip drift detection and reference re-emit.
@@ -319,15 +341,38 @@ so never-probed sources sort to the front); further ties are broken by
 ascending source `id`. The ordering recipe:
 
 ```jq
-.sources
-| map(select(
-    (.archived // false) == false
-    and (.lifecycle.state // "") != "removed"
-    and (.status == "confirmed" or .status == "proposed")
-    and .kind == "git-managed"))
+def in_scope:
+  (.archived // false) == false
+  and (.lifecycle.state // "") != "removed"
+  and (.status == "confirmed" or .status == "proposed")
+  and .kind == "git-managed";
+
+.sources as $all
+| [$all[] | select(in_scope and .slice_of != null) | .slice_of] as $covered
+| $all
+| map(select(in_scope
+    and (.slice_of != null or (([.url] - $covered) == [.url]))))
 | sort_by([-(.importance // 3), (.lifecycle.last_checked // "1970-01-01T00:00:00Z"), .id])
 | .[].id
 ```
+
+The added clause excludes a source whose `url` is named as `slice_of` by an
+**in-scope** entry — i.e., it is a monorepo parent that one or more live
+slice entries already cover, per Pre-flight step 4's new bullet above. A
+slice entry itself is never excluded by this clause (`.slice_of != null`
+short-circuits it), even though a derived slice inherits its parent's `url`
+— the exclusion targets the parent, not every entry sharing that `url`.
+
+`$covered` is built from the **filtered** slices, not from `.sources`
+wholesale, and that is load-bearing rather than tidiness. The only
+justification for excluding a parent is that its slices cover it now; a
+slice that is `archived: true`, `lifecycle.state: "removed"` or
+`status: "rejected"` covers nothing and is never crawled either. Computing
+the exclusion set over the unfiltered array lets one dead slice drop its
+entire monorepo out of REFRESH permanently — silently, since an excluded
+source prints no line and its `lifecycle.last_checked_sha` simply stops
+advancing. Bind the predicate once and use it for both the membership set
+and the `map(select(...))`, so the two can never drift apart.
 
 The `select` is Pre-flight step 4's in-scope filter plus `kind ==
 "git-managed"`, which is as far as the registry alone can narrow the set:
@@ -356,6 +401,80 @@ dropped — render once, in the post-run summary's Coverage report:
 
 No skip line is printed absent `probe_budget`: every promoted source
 proceeds, in the order above.
+
+### Slice drift (git-managed monorepo slices only)
+
+See `07-monorepo-adapter.md` section 7.3, 7.5. For an in-scope source
+carrying `slice_of`: `slice_drift.py` reports, for a slice's parent, whether
+anything under that slice's own paths changed; unchanged means skip Re-read
+scoping and Phase 2 this run for that slice_id. **Three outcomes, not
+two**, though — reading only the first two is what makes a broken slice
+indistinguishable from a quiet one:
+
+1. A `changed: true` object proceeds to Re-read scoping below, scoped to its
+   `changed_paths`.
+2. A `changed: false` object with **no** `notice` key means skip Re-read
+   scoping and Phase 2 this run for that slice_id -- whatever else changed
+   elsewhere in the parent monorepo, between the previously recorded SHA and
+   this run's newly probed SHA. Nothing to report: this is the ordinary
+   quiet slice.
+3. A `changed: false` object **carrying a `notice`** means the slice's
+   declared `slice_paths` match no path in either commit. That is not "the
+   slice did not change" — it is "this slice's configuration no longer
+   describes anything", the shape a monorepo renaming `packages/billing/`
+   to `services/billing/` produces, and the shape a typo in `slice_paths`
+   produces on the day it is written. Skip Re-read scoping for it as in
+   case 2, and **surface the `notice` verbatim** in the post-run summary's
+   Coverage report, one line per affected slice id, so the maintainer is
+   told their config needs fixing:
+
+   ```
+   Slice <slice_id>: <notice> — update slice_paths in monorepo-config.json, or remove the slice.
+   ```
+
+   Without that line the slice is skipped on every REFRESH, its references
+   decay indefinitely, STATUS still renders it fresh under its parent, and
+   the only artifact that knows is a JSON key nothing reads.
+
+If `slice_drift.py` exits **non-zero**, do not treat the slice as
+unchanged: the run produced no verdict for it at all. Surface the script's
+stderr in the Coverage report as a skip-reason naming the slice id, and
+leave that slice's `lifecycle.last_checked_sha` unadvanced so the next
+REFRESH retries it rather than recording a check that never happened.
+
+Invoke it against the slice's own advanced cache directory
+(`$SKILL_ENGINE_CACHE_ROOT/git-managed/<source_id>-<new_sha>`, `source_id`
+being the slice's own derived id, not the parent's):
+
+    python3 "$CLAUDE_PLUGIN_ROOT/tests/slice_drift.py" \
+      "${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/<source_id>-<new_sha>" \
+      --old <prior last_checked_sha for this slice> \
+      --new <new_sha> \
+      --config "$CTX_ROOT/research/monorepo-config.json" \
+      --slice-of <this entry's slice_of> \
+      --slice-id <this entry's slice_id>
+
+`--slice-of` and `--slice-id` are this registry entry's own fields, and
+passing both is what makes the returned array a one-element answer about
+*this* slice. Omit them and the script reports on every slice of every
+declared monorepo against this one clone — the other monorepos' slices
+match nothing here, so they take the `notice` arm and read
+`changed: false`, indistinguishable from genuinely unchanged. The same id
+may legally be declared in two different monorepos, so `slice_id` alone
+does not identify a slice.
+
+`--config` takes the same **resolved** path DISCOVER's pre-flight step 1.7
+resolves: `$CTX_ROOT/research/monorepo-config.json` when it exists, else
+`$CTX_ROOT/monorepo-config.json`, which is the engine-self-contextualizer
+location §7.3 documents and `verify.sh`'s monorepo-config check inspects.
+Spelled as the bare relative `research/monorepo-config.json` — the only
+relative path in a file whose every other block spells `$CTX_ROOT` /
+`$CTX_PROPOSED` — it resolves against whatever directory the run was
+launched from, and at the second location it does not resolve at all.
+
+GitHub's `gh api commits?path=` form (section 7.5) is an optional,
+forge-specific fast path; `slice_drift.py` above works from the cache alone
+and is what every forge, GitHub or otherwise, can rely on.
 
 ### Re-read scoping (git-managed)
 

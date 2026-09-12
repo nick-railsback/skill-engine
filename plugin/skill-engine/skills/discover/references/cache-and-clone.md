@@ -43,12 +43,153 @@ When `/skill-engine:discover` is invoked:
    run. DISCOVER MUST NOT write directly to `$CTX_ROOT/verify.sh` — every
    re-stamp flows through the staging gate.
 
+1.7. **Monorepo slice derivation.** Read `$CTX_ROOT/research/monorepo-config.json`
+   if present, falling back to `$CTX_ROOT/monorepo-config.json` when it is
+   not — the two documented locations, with the same precedence
+   `verify.sh`'s monorepo-config check applies (07-monorepo-adapter.md
+   §7.3; `research/` is the canonical contextualizer location, the bare
+   root is the engine-self-contextualizer special case). Resolving only
+   the first would hand a root-config contextualizer a green verify, a
+   validated config naming its slices, and a run that stages none of
+   them, because the absent-file branch below is a silent no-op.
+   For every declared slice whose parent `monorepos[].url`
+   matches a registered source's `url`, derive a `sources[]` entry
+   carrying `slice_of` (the parent's `url`), `slice_id`, `slice_paths`
+   (copied verbatim from the slice's `paths`), an `id` of `<parent
+   source_id>-<slice_id>`, and the parent's `kind` and `branch`. Stage
+   every entry derived from `monorepo-config.json` into
+   `$CTX_PROPOSED/research/source-paths.json` (seeding it as a
+   copy-on-write of the live file first, same recipe as "Lifecycle
+   handling" below); the manifest records `source-paths.json` as
+   `modified` — naming the staged slice entries — whenever one or more
+   are staged this run. A `monorepo-config.json` entry whose
+   `monorepos[].url` matches no registered source halts pre-flight
+   entirely with an error naming the offending url; this is a must-reject
+   input, not a per-monorepo skip.
+
+   The derivation itself:
+
+   <!-- doctrine:slice-source-entries:start -->
+   ```bash
+   config_path="$1"
+   sources_path="$2"
+
+   if [ ! -f "$config_path" ]; then
+     printf '[]\n'
+     exit 0
+   fi
+
+   if ! jq empty "$config_path" 2>/dev/null; then
+     echo "skill-engine: monorepo-config.json is not valid JSON: $config_path" >&2
+     exit 1
+   fi
+
+   monorepo_count=$(jq '(.monorepos // []) | length' "$config_path")
+   if [ "$monorepo_count" -eq 0 ]; then
+     printf '[]\n'
+     exit 0
+   fi
+
+   dangling_url=$(jq -s -r '
+     (.[1].sources // []) as $sources
+     | ($sources | map(.url // "")) as $known
+     | (.[0].monorepos // [])
+     | map(select(.url as $u | ($u // "") == "" or (($known | index($u)) == null)))
+     | (.[0] // empty)
+     | if (.url // "") == "" then "<no url declared>" else .url end
+   ' "$config_path" "$sources_path")
+
+   if [ -n "$dangling_url" ]; then
+     echo "skill-engine: monorepo-config.json names a monorepo url with no matching registered source: $dangling_url" >&2
+     exit 1
+   fi
+
+   jq -s '
+     (.[1].sources // []) as $sources
+     | ($sources | map(.id // "")) as $live_ids
+     | [
+         (.[0].monorepos // [])[] as $m
+         | (($sources
+             | map(select(.url == $m.url and (.slice_of // null) == null))
+             | first) // empty) as $parent
+         | $m.slices[] as $s
+         | ($parent.id + "-" + $s.id) as $derived_id
+         | select(($live_ids | index($derived_id)) == null)
+         | {
+             id: $derived_id,
+             slice_of: $m.url,
+             slice_id: $s.id,
+             slice_paths: $s.paths,
+             kind: $parent.kind,
+             branch: ($parent.branch // null),
+             url: $m.url,
+             status: "confirmed",
+             lifecycle: { state: "unknown" }
+           }
+       ]
+   ' "$config_path" "$sources_path"
+   ```
+   <!-- doctrine:slice-source-entries:end -->
+
+   Run this against the resolved `monorepo-config.json` and
+   `research/source-paths.json` (or, if this run has already
+   copy-on-write-seeded `$CTX_PROPOSED/research/source-paths.json`, that
+   file — it carries the same live entries plus anything staged so far).
+   Its stdout is a JSON array of the derived entries only (not a merged
+   `source-paths.json`); merge them into the proposed file's `sources[]`
+   array using the existing copy-on-write recipe. Exit 0 with `[]` when
+   the config is absent or declares no monorepos — the pre-adapter
+   behavior, unchanged.
+
+   Two properties of the derivation matter on every run after the first,
+   because by then the registry it reads back also holds the slices a
+   previous `/skill-engine:apply` promoted — each carrying the parent's
+   own `url`, since the derivation stamps `url: $m.url` onto every entry.
+   The parent resolution is therefore a **lookup, not a generator**: it
+   takes the `first` registered source that matches the monorepo's url
+   *and* is not itself a slice (`slice_of` absent). Written as
+   `$sources[] | select(.url == $m.url)`, it would instead bind once per
+   matching entry and emit `matches × slices` entries — exact duplicates
+   of the live slices plus phantoms like `<parent>-billing-reports`,
+   compounding on every subsequent run, and nothing downstream enforces
+   `sources[].id` uniqueness. And a slice whose derived id is already
+   live is **skipped**: the block emits new entries only, so re-running
+   DISCOVER over an applied registry stages nothing rather than
+   re-proposing what is already there. `status: "confirmed"` reflects that the
+   maintainer already declared the slice explicitly in
+   `monorepo-config.json` (this is not a companion suggestion needing a
+   separate accept); `lifecycle.state: "unknown"` reflects that a freshly
+   derived entry has no prior probe on record.
+
 2. **Identify in-scope sources.** A source is in-scope if:
    - `archived: false` (or field absent — defaults to false),
    - `lifecycle.state ∈ {reachable, unknown}` (`removed` is skipped;
      `moved` surfaces for user accept but is not crawled until the URL
      is updated),
-   - `status ∈ {intake, proposed, confirmed}` (rejected is skipped).
+   - `status ∈ {intake, proposed, confirmed}` (rejected is skipped),
+   and it is not excluded by the parent rule below.
+
+   **The parent rule** is a rule about parents, not a fourth criterion a
+   source must satisfy to be in scope: **a source whose `slice_of` is
+   absent, and whose `url` is named as `slice_of` by at least one
+   already-applied `sources[]` entry that is itself in-scope by the three
+   criteria above, is excluded from crawling.** Nothing else is excluded
+   by it. In particular a slice is *never* excluded by it — a slice has
+   `slice_of` set, so the rule does not reach it, and each slice is in
+   scope in its own right regardless of sharing the parent's `url`. Stated
+   the other way round, as a conjunct in the list above ("the source is not
+   itself a slice, and ..."), it would read as *in-scope implies `slice_of`
+   absent*, which excludes every slice — the opposite of the feature.
+
+   Render one line in the pre-flight summary for each excluded parent:
+   `Parent <id> excluded from crawling — <N> slice(s) applied.` A slice
+   entry staged by *this run's* step 1.7 does not yet count — nothing is
+   applied until `/skill-engine:apply` promotes the proposal; only entries
+   already live in `research/source-paths.json` trigger the exclusion. Nor
+   does a slice that is `archived: true`, `lifecycle.state: "removed"` or
+   `status: "rejected"`: it covers nothing and is not crawled either, so
+   counting it would drop the whole monorepo out of DISCOVER permanently,
+   and silently, since an excluded source prints no line.
 
 3. **Targeted invocation.** If a positional argument matches a
    registered source id (e.g., `/skill-engine:discover vitejs-vite`),
@@ -68,7 +209,19 @@ When `/skill-engine:discover` is invoked:
    supplied this run, summarize "no work to do" in the post-run summary
    and exit cleanly. Repeated DISCOVER invocations against an unchanged
    corpus should not churn. (A hint always overrides the gate — it
-   signals the author wants a re-look at fixed inputs.)
+   signals the author wants a re-look at fixed inputs.) Each staged or
+   already-applied slice entry is an in-scope unit like any other source: it
+   carries its own `.discover-cache.json` key (`enrichments.<source_id>`,
+   keyed on the slice's own derived `id`), independent of its parent's and
+   its sibling slices' — a SHA match or mismatch on one slice never affects
+   another.
+
+   This per-slice SHA comparison is deliberately coarse — a slice shares its
+   parent's `url`, so its SHA changes on any commit anywhere in the
+   monorepo, not only under the slice's own paths. REFRESH layers a
+   finer-grained, path-scoped decision on top of this same comparison before
+   actually re-reading a slice; see
+   `refresh/references/drift-detection-and-phases.md` § Slice drift.
 
 6. **Cache-miss offer (per in-scope source, kind-aware).** For each
    in-scope source, probe the cache location that matches its `kind`:
@@ -224,6 +377,34 @@ When `/skill-engine:discover` is invoked:
    complete report, no extra summary line, same reasoning as Step 2. Same
    `ls-files`-vs-`-e` rationale as Step 2 applies here too — not repeated
    in full.
+
+   **On consent (git-managed, slice-scoped):** for a source entry carrying
+   `slice_of` and `slice_paths`, substitute the same recipe, fed from
+   `slice_paths` in place of `files_of_interest` -- the identical
+   sparse-checkout mechanism, activated from a second input:
+
+   <!-- doctrine:slice-sparse-checkout:start -->
+   ```bash
+   source_id="$1"
+   url="$2"
+   ref="$3"
+   shift 3
+   [ "${1:-}" = "--" ] && shift
+   "$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" sparse-clone "$source_id" "$url" "$ref" -- "$@"
+   ```
+   <!-- doctrine:slice-sparse-checkout:end -->
+
+   Slices sharing a parent may be checked out together into one sparse
+   tree whose pattern set is the union of their `slice_paths`, when the
+   model judges context budgets permit clustering them; run independently
+   (the common case), a slice's checkout never contains a file belonging
+   only to a sibling slice unless clustered. On success and on failure,
+   the same reporting as the `files_of_interest` recipe above applies.
+
+   A promoted slice may carry its own `CLAUDE.md`: opt-in context, a
+   reasonable one 30-100 lines, that the engine itself never reads --
+   Claude Code's native nested-context loading delivers it to a session
+   working in that subtree. See `07-monorepo-adapter.md` section 7.8.
 
    **On consent (web-doc):** execute the bootstrap Step 3.6 crawl
    procedure inline (sitemap fetch, page-budget enforcement, atomic

@@ -46,7 +46,7 @@ DISCOVER, REFRESH, and `new-reference` do not write into the live `<slug>-contex
 
 ## The navigator (SKILL.md)
 
-### Frontmatter - exactly two fields
+### Frontmatter fields
 
 ```yaml
 ---
@@ -55,7 +55,9 @@ description: Answers questions about the <area-domain> ecosystem. Use when worki
 ---
 ```
 
-No `version`, no `tags`, no `tools`, no `disable-model-invocation`. See [01-principles.md](01-principles.md) for the rationale; in short - non-standard fields produce platform-divergent behavior, and `disable-model-invocation` is broken for plugin-distributed skills.
+No `version`, no `tags`, no `tools`, no `disable-model-invocation`. See [01-principles.md](01-principles.md) for the rationale; in short - non-standard fields produce platform-divergent behavior, and `disable-model-invocation` is broken for plugin-distributed skills — not re-checked against plugin-distributed skills as of 2026-09-03, so the ban stands on Issue #22345's evidence; revisit at the next release boundary.
+
+**2026-09-03:** `paths:` is admitted as an optional third frontmatter field. Claude Code now documents `paths:` support for scoping a skill to a set of file globs — the platform fact that supersedes the divergence rationale above, which predates it. Value shape: at least one glob, omitted by default; intended use is scoping nested or per-slice contextualizers to their file subset. All three spellings are accepted, matching what the platform documents ("a comma-separated string or a YAML list") plus the block form — `paths:` followed by `  - <glob>` lines, `paths: [<glob>, <glob>]`, and `paths: <glob>, <glob>`. What Check 3 rejects is emptiness (`paths: []`, a `paths:` key with no entries, a value that is only separators), not a spelling the platform accepts; `verify.sh` Check 3 accepts `paths:` as this third key and still rejects any other third key.
 
 ### Description quality is part of the contract
 
@@ -223,6 +225,34 @@ all nine roots — so absences are not reported per root and the density
 floor runs against the fetched corpus. See
 [`07-monorepo-adapter.md`](07-monorepo-adapter.md) for the heuristics'
 cache-tree resolution.
+
+**`slice_of`** — optional. Marks this source as a slice of the monorepo
+source whose `url` equals this value. Pairs with `slice_id` and
+`slice_paths` — `verify.sh`'s `source-entries` check enforces all three
+present together or none of them; the schema does not, since that is a
+cross-entry rule a single-document JSON Schema validator cannot express
+against sibling array elements. See
+[`07-monorepo-adapter.md`](07-monorepo-adapter.md).
+
+**`slice_id`** — optional. Short stable identifier for the slice within
+its parent monorepo, matching `^[a-z][a-z0-9-]{0,30}$` — *narrower* than a
+reference filename, which admits `_`. The derived source id is
+`<parent id>-<slice_id>`, and `bin/cache-git.sh` interpolates that into a
+cache directory name behind a guard admitting `[a-z0-9-]` only, so a
+slice id carrying an underscore would validate, stage and apply, and then
+be refused on every clone attempt. Pairs with `slice_of` and
+`slice_paths`.
+
+**`slice_paths`** — optional. A non-empty list of git path patterns
+(`git sparse-checkout` glob syntax) this slice covers. Feeds `verify.sh`'s
+`monorepo-coverage` (Check 6) heuristic the same way `workspace_roots`
+does for a non-sliced source, resolved against the slice's **own** sparse
+cache tree — the one `cache-git.sh sparse-clone` installs at
+`git-managed/<slice source_id>-<sha>/`. Not the parent's: every sibling
+slice inherits the parent's `url`, so a lookup keyed on that url is
+decided by `sources[]` array order, and an applied parent is excluded
+from crawling, so its own directory is never advanced again. Pairs with
+`slice_of` and `slice_id`.
 
 **`probe_budget`** — optional, document-root (not per-entry). A JSON
 integer ≥ 1. Absent, every promoted source proceeds to re-read; REFRESH

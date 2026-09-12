@@ -89,6 +89,18 @@ section of [`maintenance-agent.md.template`](../../engine-bootstrap-templates/ma
 The freshness categories (fresh, stale, critical) and their default thresholds
 are documented in chapter [`05-invariants.md`](../../docs/05-invariants.md).
 
+## Slice grouping
+
+A source carrying `slice_of` (a monorepo slice, per
+[`07-monorepo-adapter.md`](../../docs/07-monorepo-adapter.md)) renders
+grouped under its parent in the freshness listing: the parent's row
+first, then each of its slices nested immediately beneath it, each shown
+by its own `slice_id` and its own freshness (fresh / stale / critical,
+computed the same way as any other source — see
+[`05-invariants.md`](../../docs/05-invariants.md) for the thresholds).
+This is purely additive — a contextualizer with zero `slice_of` entries
+renders exactly as it does today.
+
 ## Cadence
 
 Quick read; run anytime. STATUS does not write, so it is a safe first step on
@@ -177,9 +189,15 @@ projected effect:
 ```python
 import json
 data = json.load(open('research/source-paths.json'))
-sources = [s for s in data.get('sources', [])
-           if not s.get('archived') and s.get('status') in ('confirmed', 'proposed')
-           and s.get('lifecycle', {}).get('state') != 'removed']
+in_scope = [s for s in data.get('sources', [])
+            if not s.get('archived') and s.get('status') in ('confirmed', 'proposed')
+            and (s.get('lifecycle') or {}).get('state') != 'removed']
+# A monorepo parent covered by a LIVE slice is excluded, the same way
+# REFRESH's pre-flight excludes it — otherwise the projected skip count
+# disagrees with what REFRESH will actually do, by one per sliced monorepo.
+covered = {s['slice_of'] for s in in_scope if s.get('slice_of')}
+sources = [s for s in in_scope
+           if s.get('slice_of') is not None or s.get('url') not in covered]
 print('| id | importance |')
 print('|---|---|')
 for s in sorted(sources, key=lambda s: s['id']):
@@ -224,7 +242,8 @@ python3 "$CLAUDE_PLUGIN_ROOT/tests/status_probe.py" research/source-paths.json
 
 For each in-scope `git-managed` source (the same filter REFRESH's own
 pre-flight uses: `status` confirmed or proposed, not archived, upstream
-lifecycle state not removed), render one line from the script's JSON:
+lifecycle state not removed, and not a monorepo parent already covered by
+a live slice), render one line from the script's JSON:
 
 - **current** — the live SHA matches the recorded `last_checked_sha`.
 - **mismatch** — the live SHA differs; show both the recorded SHA and

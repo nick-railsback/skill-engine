@@ -102,6 +102,21 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "description": "Optional. Non-empty list of top-level directory names that verify.sh's monorepo-coverage (Check 6) and catalog-density (Check 8) heuristics treat as workspace roots for this source, replacing (not augmenting) the default list `packages apps libs crates services modules cmd internal pkg`. Set it when a source's monorepo layout does not match the default roots (e.g. a workspace tool with its own top-level convention). See 07-monorepo-adapter.md."
+        },
+        "slice_of": {
+          "type": ["string", "null"],
+          "description": "Optional. Marks this source as a slice of the monorepo source whose url equals this value. Pairs with slice_id and slice_paths (verify.sh Check 2 enforces all-or-nothing; the schema does not, since that is a cross-entry rule the schema layer cannot express against additionalProperties:true siblings). See 07-monorepo-adapter.md."
+        },
+        "slice_id": {
+          "type": ["string", "null"],
+          "pattern": "^[a-z][a-z0-9-]{0,30}$",
+          "description": "Optional. Short stable identifier for the slice within its parent monorepo. Narrower than a reference filename: the derived source id is \"<parent id>-<slice_id>\", which is interpolated into a filesystem path, so the same ^[a-z0-9][a-z0-9-]*$ constraint the id property documents applies here too — no underscore. Pairs with slice_of and slice_paths."
+        },
+        "slice_paths": {
+          "type": ["array", "null"],
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "description": "Optional. Non-empty list of git path patterns (git sparse-checkout glob syntax) this slice covers. Feeds Check 6's monorepo-coverage heuristic the same way workspace_roots does for a non-sliced source. Pairs with slice_of and slice_id."
         }
       },
       "allOf": [
