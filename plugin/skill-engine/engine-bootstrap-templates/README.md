@@ -9,7 +9,7 @@ This directory holds the templates the `engine-bootstrap` workflow stamps into a
 | File | Purpose |
 |---|---|
 | `navigator.md.template` | Single-source-root navigator skeleton (one `## Catalog` block, one `## Cross-reference map`) |
-| `navigator-multi-domain.md.template` | Multi-source-root navigator skeleton (per-source `## Catalog: <slug>` blocks, `## Cross-source map`) |
+| `navigator-multi-domain.md.template` | Multi-source-root navigator skeleton (per-source `## Catalog: <slug>` blocks, `## Catalog: <slug>/<slice-id>` for a sliced monorepo's slices, `## Cross-source map`) |
 | `maintenance-agent.md.template` | System prompt for the hand-rolled (non-plugin) install path documented in `docs/03-engine.md` — **not** stamped by engine-bootstrap |
 | `monorepo-config.json.template` | Slice-config skeleton for monorepo adapters ([07-monorepo-adapter.md](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/07-monorepo-adapter.md)) |
 | `bootstrap-monorepo-config.sh.template` | Interactive generator for the monorepo slice config |

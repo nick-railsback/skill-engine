@@ -402,7 +402,7 @@ The navigator is a router, not a knowledge base. If your navigator's standing in
 
 ### Multi-domain navigators
 
-A navigator that routes across multiple domains — one `<area-domain>-context` skill cataloging more than one domain — is contractually equivalent to a single-domain navigator: same two-field frontmatter, same first-5K standing-instructions budget (with the catalog-as-TOC carve-out, which lets a sectioned catalog grow as needed), same six prescribed reference sections, same bijection invariant extended to per-section bijection across the sectioned catalog.
+A navigator that routes across multiple domains — one `<area-domain>-context` skill cataloging more than one domain — is contractually equivalent to a single-domain navigator: same frontmatter contract (see [Frontmatter fields](#frontmatter-fields) — `name` and `description`, plus the optional `paths:` a nested or per-slice navigator carries), same first-5K standing-instructions budget (with the catalog-as-TOC carve-out, which lets a sectioned catalog grow as needed), same six prescribed reference sections, same bijection invariant extended to per-section bijection across the sectioned catalog.
 
 The engine is scope-agnostic. Multi-domain navigators are first-class — covered by their own template `navigator-multi-domain.md.template` (find at `plugin/skill-engine/engine-bootstrap-templates/navigator-multi-domain.md.template` in your installed plugin, or at <https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/engine-bootstrap-templates/navigator-multi-domain.md.template>) — not a special case of the single-domain shape. The trade-offs around when to pick one shape over the other live in [04-delivery.md](04-delivery.md).
 
