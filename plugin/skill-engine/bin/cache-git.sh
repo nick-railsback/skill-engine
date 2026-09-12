@@ -209,6 +209,28 @@ cmd_advance() {
     exit 1
   fi
 
+  # Checked here for the same reason, and against the same window. <inv_file>
+  # is used as given, so its destination depends on the caller's working
+  # directory -- and this used to `mkdir -p "$(dirname "$inv_file")"` right
+  # before the write, which turned a caller standing in the wrong place into a
+  # freshly-manufactured directory tree there rather than an error. On
+  # 2026-09-12 that wrote a REFRESH's inventory to the repo root while the
+  # contextualizer's own copy stayed a cycle behind; `research/` is gitignored,
+  # so `git status` never mentioned the stray, and the re-emit candidate set
+  # computed from the stale copy was wrong and entirely plausible.
+  #
+  # Requiring the parent to exist already, rather than refusing a relative
+  # path, is deliberate: it also catches an empty $CTX_ROOT expanding to
+  # "/research/..." (absolute, and a spelling rule would wave it through), and
+  # it never breaks a caller who passes a relative path from the right place.
+  # The test is for a wrong destination, not a wrong spelling. Every real
+  # contextualizer root has research/ -- it holds source-paths.json.
+  if [ ! -d "$(dirname "$inv_file")" ]; then
+    printf 'skill-engine: advance cannot write %s -- its parent directory does not exist (pass the inventory path rooted at the contextualizer, not bare-relative); nothing fetched, %s-%s untouched\n' \
+      "$inv_file" "$source_id" "$old_sha" >&2
+    exit 1
+  fi
+
   if ! git -C "${SKILL_ENGINE_CACHE_ROOT:-$HOME/.cache/skill-engine}/git-managed/${source_id}-${old_sha}" fetch --depth=1 origin "$new_sha"; then
     printf 'skill-engine: failed to fetch %s for %s -- advance aborted, %s-%s left intact\n' \
       "$new_sha" "$source_id" "$source_id" "$old_sha" >&2
@@ -252,7 +274,6 @@ cmd_advance() {
   # the identical advance again just works. The caller used to own this
   # write and ran it after the helper had already renamed, which is what
   # opened that window.
-  mkdir -p "$(dirname "$inv_file")"
   local existing="{}"
   [ -f "$inv_file" ] && existing="$(cat "$inv_file")"
   printf '%s' "$existing" \

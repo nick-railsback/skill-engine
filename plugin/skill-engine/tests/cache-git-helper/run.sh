@@ -220,10 +220,13 @@ is_positional_recipe_block() {
 run_candidate_recipe_positional() {
   local label="$1" block="$2" ctx_root="$3" home="$4" override_root="$5" expected_dir="$6"
   shift 6
-  mkdir -p "$ctx_root"
+  # research/ as well as the root itself: a real contextualizer root carries
+  # one, and the advance helper requires the inventory's parent to exist
+  # rather than manufacturing it wherever the caller happens to stand.
+  mkdir -p "$ctx_root/research"
   local out rc
   out="$(cd "$ctx_root" && env HOME="$home" SKILL_ENGINE_CACHE_ROOT="$override_root" \
-    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$block" "$@" 2>&1)"
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" CTX_ROOT="$ctx_root" bash "$block" "$@" 2>&1)"
   rc=$?
   if [ -d "$expected_dir/.git" ]; then
     pass "$label: the overridden cache root ends up populated"
@@ -267,10 +270,13 @@ run_candidate_recipe() {
       "cannot evaluate — substitution left unknown placeholders (see above)"
     return
   fi
-  mkdir -p "$ctx_root"
+  # research/ as well as the root itself: a real contextualizer root carries
+  # one, and the advance helper requires the inventory's parent to exist
+  # rather than manufacturing it wherever the caller happens to stand.
+  mkdir -p "$ctx_root/research"
   local out rc
   out="$(cd "$ctx_root" && env HOME="$home" SKILL_ENGINE_CACHE_ROOT="$override_root" \
-    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$script" 2>&1)"
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" CTX_ROOT="$ctx_root" bash "$script" 2>&1)"
   rc=$?
   if [ -d "$expected_dir/.git" ]; then
     pass "$label: the overridden cache root ends up populated"
@@ -666,7 +672,14 @@ run_since_check_pipeline() {
     return
   fi
   mkdir -p "$ctx_root" "$home"
-  out="$(cd "$ctx_root" && env HOME="$home" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$script" 2>&1)"
+  # CTX_ROOT alongside the other two: this helper cd's to $ctx_root and
+  # reads $ctx_root/research/.discover-inventory.json back, so a fence that
+  # writes through $CTX_ROOT -- as the advance recipe now does -- needs it
+  # supplied here too. Dormant for that recipe today (find_since_check_block
+  # matches only a fence carrying --name-status and from_sha), so this is a
+  # guard against the day one of these fences gains those tokens.
+  out="$(cd "$ctx_root" && env HOME="$home" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+    CTX_ROOT="$ctx_root" bash "$script" 2>&1)"
   rc=$?
   # The since-computation's result lands one of two ways depending on which
   # recipe this is: printed as the trailing line of stdout (the

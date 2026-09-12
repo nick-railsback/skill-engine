@@ -40,24 +40,34 @@
 # scratch cache root can only be reached by relocating HOME itself.
 # CLAUDE_PLUGIN_ROOT is handed through unchanged (not relocated) because it
 # names the real, already-installed discover_inventory.py, which a recipe
-# is free to shell out to. HOME and CLAUDE_PLUGIN_ROOT are the only
-# genuinely-environment-variable values in this contract — every other
-# reference doc in scope follows the identical split.
+# is free to shell out to. CTX_ROOT is handed through as the scratch
+# contextualizer root the inventory belongs under. Those three are the
+# genuinely-environment-variable values in this contract;
+# refresh-probe-budget/run.sh:427 already runs a refresh reference fence
+# with CTX_ROOT supplied the same way.
 #
-# The recipe owns writing the bare relative path
-# `research/.discover-inventory.json` — no `$CTX_PROPOSED` (or
-# `$CTX_ROOT`) prefix: cache-and-clone.md step 7 documents this file as
-# gitignored runtime state, "not a reference artifact, and not subject to
-# any verify.sh check", re-derived and fully overwritten every run — unlike
-# `source-paths.json`, it is never copy-on-write staged, and every mention
-# of it anywhere in this codebase uses the same bare relative form. So
-# this harness runs the recipe with its current working directory at a
-# scratch contextualizer root and reads the file back from
-# `<that root>/research/.discover-inventory.json` — there is no staging
-# layer for this file to route around. The recipe is expected to
-# `mkdir -p research` itself, same as the lifecycle-transition example
-# already in cache-and-clone.md does for its own (genuinely staged)
-# write. The file's content is asserted only by outcome, in the shape
+# The recipe owns writing `$CTX_ROOT/research/.discover-inventory.json`.
+# cache-and-clone.md step 7 documents this file as gitignored runtime state,
+# "not a reference artifact, and not subject to any verify.sh check",
+# re-derived and fully overwritten every run — so unlike
+# `source-paths.json` it is never copy-on-write staged, and there is no
+# `$CTX_PROPOSED` layer for it to route around. It does not follow that the
+# path may be written bare-relative, which is what this comment asserted
+# until 2026-09-12 on the grounds that "every mention of it anywhere in this
+# codebase uses the same bare relative form": review/SKILL.md:71 already
+# read it as `<install>/<name>-context/research/...`, so the two routes
+# disagreed, and the bare form silently resolved against whatever working
+# directory the caller had. Being gitignored is what made that dangerous
+# rather than harmless — `git status` never mentions a stray copy, and the
+# inventory a reader consumes is a *consumed input*, not an artifact, so a
+# stale one yields a wrong and plausible re-emit candidate count.
+#
+# So this harness hands the recipe CTX_ROOT, runs it from a working
+# directory that is deliberately not that root, and reads the file back from
+# `$CTX_ROOT/research/.discover-inventory.json`. The helper now requires
+# that parent directory to exist rather than manufacturing it, so each
+# fixture below creates `research/` the way a real contextualizer root
+# already carries it. The file's content is asserted only by outcome, in the shape
 # already frozen elsewhere and already emitted by this repo's
 # discover_inventory.py: a top-level object keyed by
 # source_id, each value carrying a `since_last_check` of
@@ -151,6 +161,13 @@ cleanup() {
   rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
+
+# Every recipe runs from here: a directory that is no contextualizer root and
+# has no research/ of its own, so a recipe that depended on its caller's
+# working directory would write somewhere visible to the assertions as a
+# miss rather than silently land on its feet. See run_recipe below.
+NEUTRAL_CWD="$TMPROOT/neutral-cwd"
+mkdir -p "$NEUTRAL_CWD"
 
 # ---- generic helpers --------------------------------------------------
 
@@ -288,18 +305,28 @@ substitute_placeholders() {
       "$template" > "$out"
 }
 
-# run_recipe <template> <home> <source_id> <old_sha> <new_sha> <cwd_root>
+# run_recipe <template> <home> <source_id> <old_sha> <new_sha> <ctx_root>
 # — the frozen invocation contract: substitute the prose placeholders with
-# this call's concrete values, then run the result with its current
-# working directory at <cwd_root> (a scratch stand-in for the
-# contextualizer root a real invocation runs from — where the recipe's
-# bare-relative-path `research/.discover-inventory.json` write actually
-# lands) and only HOME and CLAUDE_PLUGIN_ROOT as real environment
-# variables. Sets RUN_OUT (combined stdout+stderr) and RUN_RC (exit code).
+# this call's concrete values, then run the result with HOME,
+# CLAUDE_PLUGIN_ROOT and CTX_ROOT as real environment variables, from a
+# working directory that is deliberately NOT <ctx_root>.
+#
+# The neutral CWD is the whole point. This harness used to `cd "$ctx_root"`
+# first, which made every recipe-driven assertion below pass under a
+# precondition the harness itself supplied and the published recipe never
+# stated — so a caller who followed the recipe from anywhere else was
+# following it correctly and still wrote the inventory to the wrong place,
+# with the suite green. The contract under test was strictly stronger than
+# the contract as published, which is exactly the configuration in which a
+# suite cannot catch that class of bug. Running from NEUTRAL_CWD asks the
+# same question a real caller does: given only these three variables, does
+# the inventory land under the contextualizer?
+#
+# Sets RUN_OUT (combined stdout+stderr) and RUN_RC (exit code).
 RUN_OUT=""
 RUN_RC=0
 run_recipe() {
-  local template="$1" home="$2" source_id="$3" old_sha="$4" new_sha="$5" cwd_root="$6"
+  local template="$1" home="$2" source_id="$3" old_sha="$4" new_sha="$5" ctx_root="$6"
   local invocation
   # No trailing suffix after the X's: BSD mktemp (macOS) only recognizes a
   # trailing-X template, so "invoke-XXXXXX.sh" creates the literal,
@@ -307,8 +334,8 @@ run_recipe() {
   # later call. Bash does not need a .sh extension to execute the file.
   invocation="$(mktemp "$TMPROOT/invoke-XXXXXX")"
   substitute_placeholders "$template" "$invocation" "$source_id" "$old_sha" "$new_sha"
-  RUN_OUT="$(cd "$cwd_root" && env HOME="$home" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
-    bash "$invocation" 2>&1)"
+  RUN_OUT="$(cd "$NEUTRAL_CWD" && env HOME="$home" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+    CTX_ROOT="$ctx_root" bash "$invocation" 2>&1)"
   RUN_RC=$?
 }
 
@@ -489,12 +516,13 @@ else
   else
     SHA_B1="$(upstream_add_commit_b "$UPSTREAM1")"
     WANT_PATHS1="$(git -C "$UPSTREAM1" diff --name-only "$SHA_A1" "$SHA_B1" | LC_ALL=C sort -u)"
-    # A scratch stand-in for the contextualizer root the recipe actually
-    # runs from — where its bare-relative-path `research/...` write lands.
-    # Not a staging directory: research/.discover-inventory.json is never
-    # copy-on-write staged, unlike source-paths.json.
+    # A scratch stand-in for the contextualizer root, handed to the recipe
+    # as CTX_ROOT — where its `$CTX_ROOT/research/...` write lands. Not a staging directory: research/.discover-inventory.json is
+    # never copy-on-write staged, unlike source-paths.json. research/ is
+    # created here because a real contextualizer root already has one and the
+    # helper no longer manufactures a missing parent.
     CTX_ROOT1="$FX1/ctxroot"
-    mkdir -p "$CTX_ROOT1"
+    mkdir -p "$CTX_ROOT1/research"
     plant_gc_markers "$CACHE_GM1" "$HOME1" "$FX1"
 
     run_recipe "$RECIPE_TEMPLATE" "$HOME1" "$SOURCE_ID1" "$SHA_A1" "$SHA_B1" "$CTX_ROOT1"
@@ -683,10 +711,10 @@ else
     git -C "$old_dir2" remote set-url origin "file://$FX2/no-such-upstream" >/dev/null 2>&1
 
     plant_gc_markers "$CACHE_GM2" "$HOME2" "$FX2"
-    # A scratch stand-in for the contextualizer root the recipe runs from
+    # A scratch stand-in for the contextualizer root handed to the recipe
     # — see CTX_ROOT1 above for why this is not a staging directory.
     CTX_ROOT2="$FX2/ctxroot"
-    mkdir -p "$CTX_ROOT2"
+    mkdir -p "$CTX_ROOT2/research"
 
     run_recipe "$RECIPE_TEMPLATE" "$HOME2" "$SOURCE_ID2" "$SHA_A2" "$SHA_B2" "$CTX_ROOT2"
 
@@ -880,7 +908,7 @@ else
 
   guard_out="$(cd "$CTX_ROOT6" && env -u CLAUDE_PLUGIN_ROOT HOME="$HOME6" \
     bash "$CACHE_GIT_SH" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
-    "research/.discover-inventory.json" 2>&1)"
+    "$CTX_ROOT6/research/.discover-inventory.json" 2>&1)"
   guard_rc=$?
 
   if [ "$guard_rc" -ne 0 ]; then
@@ -895,6 +923,47 @@ else
   else
     fail "advance names CLAUDE_PLUGIN_ROOT in a diagnostic of its own, rather than aborting on an unbound variable" \
       "output: ${guard_out:-<empty>}"
+  fi
+
+  # The same guard, for the other precondition the recipe cannot verify for
+  # itself: an inventory path whose parent does not exist. The helper used to
+  # `mkdir -p` it, so a caller standing in the wrong place got a freshly
+  # manufactured directory tree there instead of an error, and — research/
+  # being gitignored — no `git status` line either. Asserted from
+  # NEUTRAL_CWD with a bare-relative path, which is exactly the shape the
+  # published recipe carried until 2026-09-12.
+  parent_out="$(cd "$NEUTRAL_CWD" && env HOME="$HOME6" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+    bash "$CACHE_GIT_SH" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
+    "research/.discover-inventory.json" 2>&1)"
+  parent_rc=$?
+
+  if [ "$parent_rc" -ne 0 ]; then
+    pass "advance exits non-zero when the inventory path's parent directory does not exist"
+  else
+    fail "advance exits non-zero when the inventory path's parent directory does not exist" \
+      "exit: $parent_rc" "$parent_out"
+  fi
+
+  if printf '%s' "$parent_out" | grep -qF 'parent directory does not exist'; then
+    pass "advance says which precondition failed rather than writing somewhere it was not asked to"
+  else
+    fail "advance says which precondition failed rather than writing somewhere it was not asked to" \
+      "output: ${parent_out:-<empty>}"
+  fi
+
+  if [ ! -e "$NEUTRAL_CWD/research" ]; then
+    pass "no research/ tree was manufactured under the caller's working directory"
+  else
+    fail "no research/ tree was manufactured under the caller's working directory" \
+      "found: $(find "$NEUTRAL_CWD/research" 2>/dev/null | head -5)"
+  fi
+
+  head6_parent="$(git -C "$old_dir6" rev-parse HEAD 2>/dev/null || echo '<no such directory>')"
+  if [ "$head6_parent" = "$SHA_A6" ]; then
+    pass "that refusal also came before the fetch — the cached checkout is still at the old SHA"
+  else
+    fail "that refusal also came before the fetch — the cached checkout is still at the old SHA" \
+      "HEAD of $old_dir6: $head6_parent (expected $SHA_A6)"
   fi
 
   head6="$(git -C "$old_dir6" rev-parse HEAD 2>/dev/null || echo '<no such directory>')"
@@ -922,7 +991,7 @@ else
   mkdir -p "$LEAK_TMPDIR" "$BOGUS_ROOT"
   leak_out="$(cd "$CTX_ROOT6" && env HOME="$HOME6" CLAUDE_PLUGIN_ROOT="$BOGUS_ROOT" \
     TMPDIR="$LEAK_TMPDIR" bash "$CACHE_GIT_SH" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
-    "research/.discover-inventory.json" 2>&1)"
+    "$CTX_ROOT6/research/.discover-inventory.json" 2>&1)"
   leak_rc=$?
 
   if [ "$leak_rc" -ne 0 ]; then
@@ -958,7 +1027,7 @@ else
   else
     ( cd "$CTX_ROOT6" && env HOME="$HOME6" CLAUDE_PLUGIN_ROOT="$BOGUS_ROOT" \
       TMPDIR="$CALIB_TMPDIR" bash "$CALIB_HELPER" advance "$SOURCE_ID6" "$SHA_A6" "$SHA_B6" \
-      "research/.discover-inventory.json" >/dev/null 2>&1 ) || true
+      "$CTX_ROOT6/research/.discover-inventory.json" >/dev/null 2>&1 ) || true
     if [ -n "$(find "$CALIB_TMPDIR" -mindepth 1 2>/dev/null)" ]; then
       pass "calibration: the same abort without the cleanup trap does leave a temp file, so the check above is watching the right directory"
     else
@@ -1036,7 +1105,7 @@ else
     printf 'superseded api checkout\n' > "$STALE_OWN7/marker.txt"
 
     CTX_ROOT7="$FX7/ctxroot"
-    mkdir -p "$CTX_ROOT7"
+    mkdir -p "$CTX_ROOT7/research"
 
     run_recipe "$RECIPE_TEMPLATE" "$HOME7" "$SOURCE_ID7" "$SHA_A7" "$SHA_B7" "$CTX_ROOT7"
 

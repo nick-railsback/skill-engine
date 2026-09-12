@@ -37,10 +37,27 @@ advance and is left alone (counted under "other").
 
 The grammar is permalink_density.py's per-forge, path-capturing one — the
 same extraction cited_paths.py and the density lint use — so what counts as
-a citation is decided in one place. Line fragments are read in the
-`#L<start>-L<end>`, `#L<start>-<end>`, `#L<start>` and bare `#<start>-<end>`
-spellings; a fragment in any other shape is treated as "no range", which
-degrades to whole-file handling rather than guessing.
+a citation is decided in one place. citation_labels.build_labeled_res widens
+that grammar's *span* to admit an optional enclosing `[label](` prefix,
+without changing what it considers a citation. Line fragments are read in
+the `#L<start>-L<end>`, `#L<start>-<end>`, `#L<start>` and bare
+`#<start>-<end>` spellings; a fragment in any other shape is treated as "no
+range", which degrades to whole-file handling rather than guessing.
+
+Labels. A citation can render its line range twice — once in the fragment,
+once in the markdown link label a human actually reads. In the
+`remapped_range` bucket, and only there, the label is renumbered alongside
+the fragment, spelling preserved; this tool repairs what it moved and
+nothing else. Every label on a citation pinned to this source's advance
+that arrived disagreeing with its own fragment is reported under
+`label_disagreements` whether or not this run repaired it, because a refresh
+that silently normalized one would erase the only evidence the two had
+drifted. A citation at some other SHA is not this advance and is not
+label-checked here; the corpus-wide gate covers it. A label rendering two
+range tokens is not guessed at: the citation goes to needs review with the
+fragment left where it is, so label and URL stay in agreement by moving
+neither. The agreement itself is gated corpus-wide, independently of this
+tool, by `tests/citation-labels/run.sh`.
 
 Output: one JSON object on stdout with corpus-wide counts, per-reference
 counts, and the needs-review list. With --out-dir, every reference whose
@@ -51,7 +68,7 @@ is a dry report.
 
 Read-only over the repository: `git diff`, `git show` and `git cat-file`
 only, no network I/O, no checkout. Stdlib only, aside from the sibling
-permalink_density import.
+citation_labels and permalink_density imports.
 
 Usage:
     python3 repin_citations.py <references_dir> --repo <clone> \\
@@ -73,17 +90,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-from permalink_density import accepted_hosts, build_path_capturing_res
+from citation_labels import (
+    AMBIGUOUS,
+    agree,
+    build_labeled_res,
+    label_range,
+    parse_fragment,
+    rewrite_fragment,
+    rewrite_label,
+)
+from permalink_density import accepted_hosts
 
 # Trailing characters that end a sentence or a markdown span but cannot end
 # a repository path. Mirrors cited_paths._clean_path's trailer set so the two
 # scripts agree on where a cited path stops.
 _PATH_TRAILERS = ",.;:!?'\"`*_>"
-
-# `#L12-L20` (GitHub), `#L12-20` (GitLab), `#L12`, and Bitbucket Server's
-# bare `#12-20`. Anchored at the end of the raw path so a `?plain=1` query
-# between path and fragment is not mistaken for part of the path.
-_FRAGMENT_RE = re.compile(r"#(L?)(\d+)(?:(-L?)(\d+))?$")
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
@@ -173,24 +194,6 @@ def _clean_path(raw: str) -> str:
     return path.rstrip(_PATH_TRAILERS).strip("/")
 
 
-def _parse_fragment(raw: str) -> tuple[int, int] | None:
-    m = _FRAGMENT_RE.search(raw)
-    if not m:
-        return None
-    start = int(m.group(2))
-    end = int(m.group(4)) if m.group(4) is not None else start
-    return (start, end) if start <= end else None
-
-
-def _rewrite_fragment(raw: str, start: int, end: int) -> str:
-    """The raw path with its fragment's numbers replaced, spelling kept."""
-    def sub(m: re.Match[str]) -> str:
-        if m.group(4) is None:
-            return f"#{m.group(1)}{start}"
-        return f"#{m.group(1)}{start}{m.group(3)}{end}"
-    return _FRAGMENT_RE.sub(sub, raw)
-
-
 def _affected(path: str, changed: dict[str, str]) -> str | None:
     """The status of the change touching <path> or anything under it, or
     None when nothing did. A directory citation is affected by any change
@@ -214,6 +217,11 @@ class Repinner:
         self.needs_review: list[dict] = []
         self.counts = {"unchanged_file": 0, "remapped_range": 0, "needs_review": 0, "other": 0}
         self.per_reference: dict[str, dict[str, int]] = {}
+        # Label bookkeeping, kept beside the four buckets rather than inside
+        # them: a label is a property of a citation, not a fifth outcome, and
+        # the bucket names are a frozen contract.
+        self.label_rewritten = 0
+        self.label_disagreements: list[dict] = []
 
     def _hunks_for(self, path: str) -> list[tuple[int, int, int, int]]:
         if path not in self._hunks:
@@ -236,47 +244,88 @@ class Repinner:
             "reason": reason,
         })
 
-    def rewrite_citation(self, ref: str, url: str, raw_path: str) -> str:
-        """The citation text to write in place of <url>, which may be <url>
-        itself. Tallies the outcome."""
+    def _emit(self, label: str | None, url: str) -> str:
+        """The replacement text for a whole matched span. build_labeled_res's
+        span stops short of the closing paren, so neither does this."""
+        return url if label is None else f"[{label}]({url}"
+
+    def _label_check(self, ref: str, path: str, label: str | None,
+                     rng: tuple[int, int] | None):
+        """The label's rendered range, having first recorded any disagreement
+        it arrived with.
+
+        Every input disagreement is reported, including one this run is about
+        to repair. The repair is the output and the report is the record; a
+        reader wants both, and a refresh that silently normalized the label
+        would erase the only evidence that the two had drifted apart."""
+        got = label_range(label)
+        if got is None or got is AMBIGUOUS or rng is None:
+            return got
+        lstart, lend, _m = got
+        if not agree(lstart, lend, rng):
+            self.label_disagreements.append({
+                "reference": ref,
+                "path": path,
+                "label": label,
+                "label_range": [lstart, lend],
+                "fragment_range": list(rng),
+            })
+        return got
+
+    def rewrite_citation(self, ref: str, label: str | None, url: str, raw_path: str) -> str:
+        """The citation text to write in place of the whole matched span,
+        which may be that span itself. Tallies the outcome."""
         if self.old_sha not in url:
             self._tally(ref, "other")
-            return url
+            return self._emit(label, url)
         path = _clean_path(raw_path)
-        rng = _parse_fragment(raw_path)
+        rng = parse_fragment(raw_path)
+        got = self._label_check(ref, path, label, rng)
         status = _affected(path, self.changed)
 
         if status is None:
             self._tally(ref, "unchanged_file")
-            return url.replace(self.old_sha, self.new_sha)
+            return self._emit(label, url.replace(self.old_sha, self.new_sha))
         if status == "D" and path in self.changed:
             self._defer(ref, path, rng, f"path deleted at {self.new_sha[:12]}")
-            return url
+            return self._emit(label, url)
         if rng is None:
             what = "directory" if path not in self.changed else "whole file"
             self._defer(ref, path, None, f"{what} citation and its target changed")
-            return url
+            return self._emit(label, url)
+        if got is AMBIGUOUS:
+            # Two range tokens in one label: renumbering one of them is how a
+            # tool invents a fact. The fragment is left where it is too, so
+            # label and URL stay in agreement by moving neither.
+            self._defer(ref, path, rng, "label renders more than one line range")
+            return self._emit(label, url)
 
         remapped = remap_range(rng[0], rng[1], self._hunks_for(path))
         if isinstance(remapped, str):
             self._defer(ref, path, rng, remapped)
-            return url
+            return self._emit(label, url)
         old_lines = _lines_at(self.repo, self.old_sha, path, rng[0], rng[1])
         new_lines = _lines_at(self.repo, self.new_sha, path, remapped[0], remapped[1])
         if old_lines is None or new_lines is None or old_lines != new_lines:
             self._defer(ref, path, rng,
                         f"cited text differs at the remapped range L{remapped[0]}-L{remapped[1]}")
-            return url
+            return self._emit(label, url)
 
         self._tally(ref, "remapped_range")
-        new_raw = _rewrite_fragment(raw_path, remapped[0], remapped[1])
-        return url.replace(self.old_sha, self.new_sha).replace(raw_path, new_raw, 1)
+        new_raw = rewrite_fragment(raw_path, remapped[0], remapped[1])
+        new_url = url.replace(self.old_sha, self.new_sha).replace(raw_path, new_raw, 1)
+        new_label = label
+        if got is not None:
+            new_label = rewrite_label(label, remapped[0], remapped[1])
+            if new_label != label:
+                self.label_rewritten += 1
+        return self._emit(new_label, new_url)
 
 
 def repin_corpus(references_dir: Path, repinner: Repinner) -> dict[str, str]:
     """{relative reference path: rewritten text} for every reference whose
     text changed. References are never modified in place."""
-    patterns = build_path_capturing_res(accepted_hosts(references_dir))
+    patterns = build_labeled_res(accepted_hosts(references_dir))
     rewritten: dict[str, str] = {}
     for md in sorted(references_dir.rglob("*.md")):
         rel = md.relative_to(references_dir).as_posix()
@@ -285,6 +334,7 @@ def repin_corpus(references_dir: Path, repinner: Repinner) -> dict[str, str]:
         for _forge, pattern in patterns:
             def sub(m: re.Match[str], _rel: str = rel) -> str:
                 raw_path = m.groupdict().get("path")
+                label = m.groupdict().get("label")
                 if not raw_path:
                     # A repo-wide pin with no path (Azure DevOps without
                     # ?path=): nothing to compare, so a reader decides.
@@ -293,7 +343,11 @@ def repin_corpus(references_dir: Path, repinner: Repinner) -> dict[str, str]:
                     else:
                         repinner._tally(_rel, "other")
                     return m.group(0)
-                return repinner.rewrite_citation(_rel, m.group(0), raw_path)
+                # m.group(0) carries the `[label](` prefix when there is one,
+                # so the url is the rest of the span -- not the whole match.
+                # `[` + label + `](` is exactly len(label) + 3 characters.
+                url = m.group(0) if label is None else m.group(0)[len(label) + 3:]
+                return repinner.rewrite_citation(_rel, label, url, raw_path)
             updated = pattern.sub(sub, updated)
         if updated != text:
             rewritten[rel] = updated
@@ -349,6 +403,8 @@ def main(argv: list[str]) -> int:
         "repinned": repinned,
         "counts": repinner.counts,
         "all_repinned": repinner.counts["needs_review"] == 0,
+        "label_rewritten": repinner.label_rewritten,
+        "label_disagreements": repinner.label_disagreements,
         "per_reference": repinner.per_reference,
         "needs_review": repinner.needs_review,
         "rewritten": sorted(rewritten),

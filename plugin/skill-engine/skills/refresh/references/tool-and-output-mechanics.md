@@ -83,6 +83,17 @@ the directory and removes any now-superseded sibling. A source with no local
 cache directory is unaffected — REFRESH never clones on its own; there is
 nothing here to advance.
 
+The inventory path is written `$CTX_ROOT/...`, not bare-relative, and the
+recipe refuses to run with `CTX_ROOT` unset. The helper resolves that
+argument as given, so a bare-relative path would land wherever the caller
+happened to be standing — and since `research/` is gitignored runtime state,
+a copy written under the wrong root is invisible to `git status` while the
+real one silently stays a cycle behind. That inventory is a consumed input,
+not an artifact: `cited_paths.py --changed` reads it to compute the re-emit
+candidate set, so a stale copy yields a wrong and entirely plausible
+candidate count. Every other path in this skill is written `$CTX_ROOT/…` or
+`$CTX_PROPOSED/…` for the same reason.
+
 The rename is deliberately last, and the inventory write is deliberately
 inside the helper rather than after it. The rename is the one step that
 changes what the next session sees: after it, `<id>-<old_sha>/` is gone
@@ -95,16 +106,19 @@ identical advance can simply be run again.
 
 <!-- doctrine:cache-advance-recipe:start -->
 ```bash
+: "${CTX_ROOT:?advance needs CTX_ROOT — the contextualizer root the locator block resolved}"
+
 if [ "<old_sha>" = "<new_sha>" ]; then
   exit 0
 fi
 
 "$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" advance \
-  "<source_id>" "<old_sha>" "<new_sha>" "research/.discover-inventory.json" || exit $?
+  "<source_id>" "<old_sha>" "<new_sha>" \
+  "$CTX_ROOT/research/.discover-inventory.json" || exit $?
 ```
 <!-- doctrine:cache-advance-recipe:end -->
 
-The changed-path list lands in `research/.discover-inventory.json` (the
+The changed-path list lands in `$CTX_ROOT/research/.discover-inventory.json` (the
 same gitignored, never-staged runtime file `cache-and-clone.md` step 7
 writes to) via `discover_inventory.py`'s existing `--since-json` flag —
 the recipe never touches that script's internals. `git diff --name-status`
@@ -168,6 +182,11 @@ four components (no multi-column tables, no interactive menus):
    § Re-read scoping): `Re-pinned: <repinned> of <citations> citations
    moved mechanically (<unchanged_file> into unchanged files,
    <remapped_range> by line-range remap); <needs_review> read by hand.`
+   When that report's `label_disagreements` is non-empty, one further line
+   per advanced source: `Labels: <label_rewritten> renumbered with their
+   fragment; <len(label_disagreements)> arrived disagreeing and were read
+   by hand.` Omit the line entirely when both are zero — the same
+   empty-bucket convention the rest of this report uses.
    When `probe_budget` capped this session, include the
    skip line documented in Phase 1 ("Promotion and ordering") as part of
    this report.

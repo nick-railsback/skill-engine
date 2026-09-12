@@ -24,6 +24,9 @@
 #                  "needs_review": n, "other": n}
 #       "citations", "repinned", "all_repinned"
 #       "needs_review": [{"reference", "path", "start", "end", "reason"}]
+#       "label_rewritten": n
+#       "label_disagreements": [{"reference", "path", "label",
+#                                "label_range", "fragment_range"}]
 #       "rewritten": [<relative reference paths whose text changed>]
 #       "written":   [<the subset actually written under --out-dir>]
 #
@@ -39,6 +42,14 @@
 #                        deleted path, a whole-file or directory citation
 #                        whose target changed.
 #     A citation at any other SHA is "other" and untouched.
+#
+#     A citation's line range can be rendered twice: in the URL fragment and
+#     in the markdown link label. Only remapped_range moves it, and there the
+#     label is renumbered with the fragment, spelling preserved -- the
+#     separator the author used, an in-label `#`, and whether a second `L`
+#     was written. label_disagreements reports every label that arrived
+#     disagreeing with its own fragment, repaired or not; a label rendering
+#     two range tokens is never guessed at and goes to needs_review instead.
 #
 #     The input directory is never written to. With --out-dir, each
 #     reference whose text changed is written there at its own relative
@@ -345,6 +356,120 @@ if [ "$(hash_refs)" = "$BEFORE" ]; then
   pass "the input references are byte-for-byte untouched after a write — only --out-dir received anything"
 else
   fail "the input references are byte-for-byte untouched after a write — only --out-dir received anything"
+fi
+
+# ---------------------------------------------------------------------------
+# Labels. A citation can render its line range twice: in the fragment, where
+# this tool reads it, and in the markdown link label, where a human reads it.
+# Until 2026-09-12 only the fragment moved, so a remapped citation displayed
+# one range and resolved to another and every gate stayed green.
+#
+# A second corpus over the same repo rather than more citations in the one
+# above: the counts asserted there are a frozen contract, and widening the
+# fixture would have meant restating all nine of them to test something they
+# do not speak to.
+# ---------------------------------------------------------------------------
+
+section "a remapped citation's label moves with its fragment"
+
+LREFS="$WORK/references-labeled"
+mkdir -p "$LREFS"
+BLOB="https://github.com/example/fixture/blob"
+{
+  printf 'Hyphen: [`shifted.md` L4-L6](%s/%s/shifted.md#L4-L6).\n\n' "$BLOB" "$OLD"
+  printf 'En dash: [`shifted.md` L4–L6](%s/%s/shifted.md#L4-L6).\n\n' "$BLOB" "$OLD"
+  printf 'In-label fragment: [`shifted.md#L4-L6`](%s/%s/shifted.md#L4-L6).\n\n' "$BLOB" "$OLD"
+  printf 'Trailing symbol: [`shifted.md` L4-L6 `s3`](%s/%s/shifted.md#L4-L6).\n\n' "$BLOB" "$OLD"
+  printf 'No second L: [`shifted.md` L4-6](%s/%s/shifted.md#L4-L6).\n\n' "$BLOB" "$OLD"
+  printf 'Label renders no range: [`shifted.md` § Section](%s/%s/shifted.md#L4-L6).\n\n' "$BLOB" "$OLD"
+  printf 'Unchanged file: [`unchanged.md` L1-L3](%s/%s/unchanged.md#L1-L3).\n\n' "$BLOB" "$OLD"
+  printf 'Arrived disagreeing: [`unchanged.md` L9-L9](%s/%s/unchanged.md#L1-L3).\n\n' "$BLOB" "$OLD"
+  printf 'Two range tokens: [`shifted.md` L4-L6 and L1-L2](%s/%s/shifted.md#L4-L6).\n' "$BLOB" "$OLD"
+} > "$LREFS/labels.md"
+
+LOUT="$WORK/proposed-labeled"
+lout="$(python3 "$REPIN_PY" "$LREFS" --repo "$REPO" --old-sha "$OLD" --new-sha "$NEW" \
+  --out-dir "$LOUT" 2>/dev/null || printf '')"
+written_labels="$(cat "$LOUT/labels.md" 2>/dev/null || printf '')"
+
+if [ "$(json_field "$lout" '.citations')" = "9" ]; then
+  pass "labeled fixture: all nine planted citations are found (non-vacuous)"
+else
+  fail "labeled fixture: all nine planted citations are found (non-vacuous)" \
+    "counts: $(json_field "$lout" '.counts')"
+fi
+
+# Each spelling asserted whole, label and href together: an assertion on the
+# href alone is exactly the blind spot that let this defect ship.
+for spelling in \
+  '[`shifted.md` L6-L8]('"$BLOB"'/'"$NEW"'/shifted.md#L6-L8)' \
+  '[`shifted.md` L6–L8]('"$BLOB"'/'"$NEW"'/shifted.md#L6-L8)' \
+  '[`shifted.md#L6-L8`]('"$BLOB"'/'"$NEW"'/shifted.md#L6-L8)' \
+  '[`shifted.md` L6-L8 `s3`]('"$BLOB"'/'"$NEW"'/shifted.md#L6-L8)' \
+  '[`shifted.md` L6-8]('"$BLOB"'/'"$NEW"'/shifted.md#L6-L8)'
+do
+  short="${spelling%%](*}]"
+  if printf '%s' "$written_labels" | grep -Fq "$spelling"; then
+    pass "remapped with its spelling preserved: $short"
+  else
+    fail "remapped with its spelling preserved: $short" "$written_labels"
+  fi
+done
+
+if [ "$(json_field "$lout" '.label_rewritten')" = "5" ]; then
+  pass "exactly the five range-rendering labels were rewritten"
+else
+  fail "exactly the five range-rendering labels were rewritten" \
+    "label_rewritten: $(json_field "$lout" '.label_rewritten')"
+fi
+
+if printf '%s' "$written_labels" | grep -Fq '[`shifted.md` § Section]('"$BLOB"'/'"$NEW"'/shifted.md#L6-L8)'; then
+  pass "a label rendering no range is left alone while its fragment moves"
+else
+  fail "a label rendering no range is left alone while its fragment moves" "$written_labels"
+fi
+
+if printf '%s' "$written_labels" | grep -Fq '[`unchanged.md` L1-L3]('"$BLOB"'/'"$NEW"'/unchanged.md#L1-L3)'; then
+  pass "an unchanged file's label is not touched by the SHA swap"
+else
+  fail "an unchanged file's label is not touched by the SHA swap" "$written_labels"
+fi
+
+# ---------------------------------------------------------------------------
+section "a label that arrived disagreeing is reported, not normalized"
+
+if printf '%s' "$written_labels" | grep -Fq '[`unchanged.md` L9-L9]('"$BLOB"'/'"$NEW"'/unchanged.md#L1-L3)'; then
+  pass "a pre-existing disagreement survives the re-pin — the tool repairs what it moved, not what it found"
+else
+  fail "a pre-existing disagreement survives the re-pin — the tool repairs what it moved, not what it found" \
+    "$written_labels"
+fi
+
+if [ "$(json_field "$lout" '.label_disagreements | length')" = "1" ] \
+   && [ "$(json_field "$lout" '.label_disagreements[0].path')" = "unchanged.md" ]; then
+  pass "it is reported under label_disagreements, so the evidence is not lost"
+else
+  fail "it is reported under label_disagreements, so the evidence is not lost" \
+    "label_disagreements: $(json_field "$lout" '.label_disagreements')"
+fi
+
+# ---------------------------------------------------------------------------
+section "a label rendering two ranges is deferred, never guessed at"
+
+if printf '%s' "$written_labels" | grep -Fq '[`shifted.md` L4-L6 and L1-L2]('"$BLOB"'/'"$OLD"'/shifted.md#L4-L6)'; then
+  pass "both the label and the fragment stay at the old SHA — agreement kept by moving neither"
+else
+  fail "both the label and the fragment stay at the old SHA — agreement kept by moving neither" \
+    "$written_labels"
+fi
+
+if printf '%s' "$lout" | jq -e \
+  '[.needs_review[] | select(.reason == "label renders more than one line range")] | length == 1' \
+  >/dev/null 2>&1; then
+  pass "it lands on the needs-review worklist with a reason a reader can act on"
+else
+  fail "it lands on the needs-review worklist with a reason a reader can act on" \
+    "needs_review: $(json_field "$lout" '.needs_review')"
 fi
 
 # ---------------------------------------------------------------------------

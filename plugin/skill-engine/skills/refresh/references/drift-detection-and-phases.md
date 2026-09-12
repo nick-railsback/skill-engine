@@ -513,11 +513,23 @@ holds both commits. The counts (`repinned`, `counts.unchanged_file`,
 summary's Coverage report — see `tool-and-output-mechanics.md` § Post-run
 summary.
 
+A citation can render its line range twice — in the URL fragment and in the
+markdown link label a reader actually sees — and only the `remapped_range`
+class moves it. The re-pin rewrites both, preserving the label's spelling,
+and reports under `label_disagreements` every label that arrived disagreeing
+with its own fragment, repaired or not. Those entries are hand-authored
+drift, not this run's doing: read each one, and report both counts on the
+Coverage report's `Labels:` line (`tool-and-output-mechanics.md` § Post-run
+summary). Agreement across the whole corpus is gated separately by
+`tests/citation_labels.py`, which holds for any writer rather than only for
+this step.
+
 Then, before re-reading or re-emitting any reference, read the re-emit
 candidate set `cited_paths.py` prints:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/tests/cited_paths.py" <references-dir> --changed research/.discover-inventory.json
+python3 "$CLAUDE_PLUGIN_ROOT/tests/cited_paths.py" <references-dir> \
+  --changed "$CTX_ROOT/research/.discover-inventory.json"
 ```
 
 Scope the re-read to the candidate references the output names plus the
@@ -527,9 +539,9 @@ non-candidate reference anyway, state a reason for it in the post-run
 summary.
 
 Skip this step — there is no candidate set to read — when
-`research/.discover-inventory.json` does not exist or carries no source's
-`since_last_check`: no git-managed source's cache advanced this run, so
-there is no changed-path signal to scope against.
+`$CTX_ROOT/research/.discover-inventory.json` does not exist or carries no
+source's `since_last_check`: no git-managed source's cache advanced this
+run, so there is no changed-path signal to scope against.
 
 ### Phase 2 — Decay check (web-doc only)
 

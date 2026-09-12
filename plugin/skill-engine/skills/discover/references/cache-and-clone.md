@@ -511,12 +511,18 @@ When `/skill-engine:discover` is invoked:
      not abort the run.
 
    Merge every source's JSON object into one file keyed by `source_id`
-   and write it to `research/.discover-inventory.json`, fully
+   and write it to `$CTX_ROOT/research/.discover-inventory.json`, fully
    overwriting any prior run's copy — re-derived every run, never
    merged with an earlier one, so a source whose tree changed since the
    last run never reads a stale inventory. This file is gitignored runtime state, the same status `research/.discover-cache.json`
    already has above — not a reference artifact, and not subject to any
    `verify.sh` check or the four reference invariants.
+
+   Write it through `$CTX_ROOT`, never bare-relative. Being gitignored is
+   exactly what makes a misplaced copy dangerous rather than harmless: a
+   bare-relative write lands under whatever directory the caller happens to
+   be standing in, `git status` never mentions it, and the inventory the
+   next reader consumes silently stays a cycle behind.
 
    This step never prompts the user and never writes to
    `~/.cache/skill-engine/...` itself; it only reads step 6's cache
