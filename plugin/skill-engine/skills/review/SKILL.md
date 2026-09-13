@@ -17,7 +17,7 @@ The `<name>` argument is the contextualizer slug *without* the `-context` suffix
 
 Bare invocation (no argument) works when exactly one `*-context.proposed/` directory exists under `<install>`. When zero match, surface `no proposed staging dir found under <install>` and exit cleanly. When two or more match, surface the list and ask which one (mirrors the resolution order in `discover/references/staging-and-contextualizer-model.md` § Selecting a contextualizer).
 
-Resolve `<install>` from the live contextualizer location. The proposed directory always sits as a sibling of the live `<name>-context/` directory; `<install>` is whichever level the live skill is installed at (`~/.claude/skills/`, `~/.claude/local/skills/`, or `<repo>/.claude/skills/`). Iterate the same three roots `using-skill-engine`'s router walks (the locator script every engine skill runs, in `shared/locator-block.md`); the first match wins.
+Resolve `<install>` from the live contextualizer location. The proposed directory always sits as a sibling of the live `<name>-context/` directory. Run the script in [`shared/locator-block.md`](../../shared/locator-block.md) to resolve the live contextualizer root; `<install>` is that root's parent directory. This skill carries no root set of its own — that script is the engine's one definition of where a contextualizer can be installed, and it decides which match wins.
 
 ## First pass — manifest and diff command
 

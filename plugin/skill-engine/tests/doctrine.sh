@@ -487,28 +487,31 @@ if [ -n "$flat_cache_refs" ]; then
 fi
 
 # 10. The contextualizer-locator script lives in exactly one shared file;
-# none of the five locator skills inlines it, and each links to it instead.
-# Doctrine: discover, refresh, status, self-audit, and new-reference used to
-# carry a byte-identical copy of one root-resolution bash block, which this
-# check enforced with a byte-compare across all five (plus a sentinel-
-# balance guard so an unterminated fence couldn't blind that compare). The
-# block now lives in exactly one tracked file — shared/locator-block.md —
-# so there is nothing left for five copies to diverge from, and the
-# byte-compare and its guard are retired outright rather than reworked into
-# a no-op. What a single shared copy still needs enforced: the shared file
-# must exist and actually carry the locator script, not a stub or an empty
-# placeholder (grepped for two literal strings pulled from the script's own
-# error paths, so a bad move or a truncation fails loud rather than passing
-# vacuously); none of the five skills' SKILL.md may still carry the block
-# inline — its fenced sentinels or its literal script text surviving in a
-# SKILL.md would mean the move was a copy, not a move; and each of the five
-# skills' SKILL.md must link to the shared file instead of inlining it.
+# no skill that resolves a contextualizer root inlines it, and each links to
+# it instead. Doctrine: discover, refresh, status, self-audit, and
+# new-reference used to carry a byte-identical copy of one root-resolution
+# bash block, which this check enforced with a byte-compare across all five
+# (plus a sentinel-balance guard so an unterminated fence couldn't blind
+# that compare). The block now lives in exactly one tracked file —
+# shared/locator-block.md — so there is nothing left for copies to diverge
+# from, and the byte-compare and its guard are retired outright rather than
+# reworked into a no-op. What a single shared copy still needs enforced: the
+# shared file must exist and actually carry the locator script, not a stub
+# or an empty placeholder (grepped for two literal strings pulled from the
+# script's own error paths, so a bad move or a truncation fails loud rather
+# than passing vacuously); no listed skill's SKILL.md may still carry the
+# block inline — its fenced sentinels or its literal script text surviving
+# in a SKILL.md would mean the move was a copy, not a move; and each listed
+# skill's SKILL.md must link to the shared file instead of inlining it.
 # Whether that link actually resolves to a real file on disk is check 15's
 # job — a Markdown link target beginning `../../` already matches this
 # pointer's shape — so link resolution is not re-checked here.
+# The list below is the set of skills that resolve a root, not a fixed
+# count: `review` and `using-skill-engine` joined it when they stopped
+# naming a root set of their own and started running the shared block.
 locator_shared="$PLUGIN_ROOT/shared/locator-block.md"
-locator_sentence_1='No contextualizer named ${name}-context under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Rerun with no name to list what is installed.'
-locator_sentence_2='No contextualizer found under any of ~/.claude/skills/, ~/.claude/local/skills/, or .claude/skills/. Run /skill-engine:engine-bootstrap first.'
+locator_sentence_1='No contextualizer named ${name}-context under ~/.claude/skills/, ~/.claude/local/skills/, or any .claude/skills/ in this repository. Rerun with no name to list what is installed.'
+locator_sentence_2='No contextualizer found under ~/.claude/skills/, ~/.claude/local/skills/, or any .claude/skills/ in this repository. Run /skill-engine:engine-bootstrap first.'
 
 if [ ! -f "$locator_shared" ]; then
   echo "FAIL: shared/locator-block.md is missing — the locator script has no single shared home."
@@ -518,7 +521,7 @@ elif ! grep -qF -- "$locator_sentence_1" "$locator_shared" || ! grep -qF -- "$lo
   fail=1
 fi
 
-for locator_skill in discover refresh status self-audit new-reference; do
+for locator_skill in discover refresh status self-audit new-reference review using-skill-engine; do
   skill_md="$PLUGIN_ROOT/skills/$locator_skill/SKILL.md"
   locator_inline_line=$(grep -nF \
     -e '<!-- doctrine:locator-block:start -->' \

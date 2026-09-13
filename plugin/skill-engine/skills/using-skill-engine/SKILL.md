@@ -12,35 +12,49 @@ workflow.
 ## Routing
 
 When invoked, do the following in order. A contextualizer is installed at
-one of three install levels (`~/.claude/skills/`, `~/.claude/local/skills/`,
-or `<repo>/.claude/skills/`); its `research/.research-state.json` is
+one of three install levels: `~/.claude/skills/`, `~/.claude/local/skills/`,
+or `<repo>/.claude/skills/` at the project level. The project level is not
+only the directory sitting at the repository root — it reaches any nested
+`.claude/skills/` below it, so a contextualizer can live beside the slice of
+the code it describes. A contextualizer's `research/.research-state.json` is
 the canonical setup-state marker.
 
-Locate the contextualizer root by searching all three install levels:
+Resolve what is installed with the script in
+[`shared/locator-block.md`](../../shared/locator-block.md), the engine's one
+root-resolution definition — this skill does not carry a root list of its
+own. The script exits on both the nothing-found and the several-found-and-
+none-named paths, so it leaves no count behind in a variable; run it with
+its enumeration flag and read its stdout instead:
 
 ```bash
-ctx_roots=$(
-  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
-    [ -d "$root" ] || continue
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context' 2>/dev/null
-  done
-)
-# `|| true`: grep -c prints 0 but exits 1 on zero matches — without the
-# guard a pipefail/errexit shell dies here instead of reaching case 1.
-ctx_count=$(printf '%s\n' "$ctx_roots" | grep -c . || true)
+ctx_all=$(bash -s -- --all <<'LOCATOR'
+# …the fenced script from shared/locator-block.md, verbatim, with its
+# name="<name>" line substituted to name="" …
+LOCATOR
+) && ctx_count=$(printf '%s\n' "$ctx_all" | grep -c '^/' || true) || ctx_count=0
+[ "$ctx_count" -gt 0 ] || ctx_all=""
+ctx_root=$(printf '%s\n' "$ctx_all" | head -n1)
 ```
+
+Exit 0 means the enumeration printed one absolute path per line, and
+`ctx_count` is that line count. Any non-zero exit means none was found, so
+`ctx_count` is 0 and what landed on stdout is the script's own diagnostic
+sentence rather than a path — which is why `ctx_all` is cleared on that
+branch before anything reads it.
 
 ### Pending-proposal pre-step (runs before case dispatch)
 
 Before dispatching to a workflow, check for pending proposals — any
-`*-context.proposed/` directory that DISCOVER or REFRESH left behind
-under the same three install roots:
+`*-context.proposed/` directory that DISCOVER or REFRESH left behind. A
+proposal is always staged as a sibling of the live contextualizer it was
+derived from, so the enumeration above is the input this needs and no
+second search is required:
 
 ```bash
 proposed_dirs=$(
-  for root in "$HOME/.claude/skills" "$HOME/.claude/local/skills" "$PWD/.claude/skills"; do
-    [ -d "$root" ] || continue
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name '*-context.proposed' 2>/dev/null
+  printf '%s\n' "$ctx_all" | while IFS= read -r ctx; do
+    [ -n "$ctx" ] || continue
+    ls -d "${ctx%/*}"/*-context.proposed 2>/dev/null
   done
 )
 ```
@@ -92,8 +106,9 @@ live tree, not through the staging model.
    triggers on files-present, so a corrupt marker cannot bypass it).
 
 3. **Multiple contextualizer roots present.** `ctx_count > 1` ⇒ surface
-   the list and ask the user which contextualizer to operate on. Do not
-   guess.
+   the list and ask the user which contextualizer to operate on, or — when
+   the request applies to all of them — rerun the locator with `--all` and
+   operate on every path it enumerates. Do not guess which one was meant.
 
 4. **State file present and parses.** Route to the workflow named in the user's
    invocation context. The five plugin-surfaced maintenance workflows are:
