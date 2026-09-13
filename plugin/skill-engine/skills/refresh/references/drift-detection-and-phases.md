@@ -319,6 +319,12 @@ For `git-managed` probes, the tool-choice guidance in "Tool preference
 for git-managed sources" below (gh/git CLI over WebFetch; how to pick
 `<ref>` when `branch` is present vs. absent) applies.
 
+`git-managed` probes in this phase may run concurrently, up to ten at a
+time. Concurrency leaves the promotion order unchanged and leaves
+per-source isolation intact: a failing source still affects only itself,
+exactly as when probes run one at a time. The `web-doc` HTTP HEAD path
+is unaffected and is not run concurrently.
+
 When the newly-probed SHA differs from the source's previously-recorded
 `last_checked_sha` **and** a local cache directory already exists for that
 source, run the in-place advance recipe in "Tool preference for

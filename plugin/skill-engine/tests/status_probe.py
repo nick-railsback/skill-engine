@@ -32,9 +32,11 @@ import argparse
 import json
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 IN_SCOPE_STATUSES = {"confirmed", "proposed"}
+MAX_WORKERS = 10
 
 
 def is_in_scope(source: dict) -> bool:
@@ -105,6 +107,19 @@ def probe(source: dict) -> dict:
     }
 
 
+def probe_isolated(source: dict) -> dict:
+    try:
+        return probe(source)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "source_id": source.get("id"),
+            "state": "error",
+            "recorded_sha": (source.get("lifecycle") or {}).get("last_checked_sha"),
+            "live_sha": None,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source_paths", type=Path)
@@ -114,12 +129,14 @@ def main(argv: list[str]) -> int:
     sources = data.get("sources", [])
 
     covered = covered_parent_urls(sources)
-    results = [
-        probe(s)
+    in_scope = [
+        s
         for s in sources
         if is_in_scope(s)
         and (s.get("slice_of") is not None or s.get("url") not in covered)
     ]
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        results = list(pool.map(probe_isolated, in_scope))
     json.dump(results, sys.stdout)
     sys.stdout.write("\n")
     return 0
