@@ -63,11 +63,60 @@ if grep -qF "${_PLACEHOLDER}" "$0"; then
 fi
 unset _ph_a _ph_b _PLACEHOLDER
 
+# --installed-set is a second ENTRY SOURCE, not a second harness: it changes
+# where entries come from and what is recorded alongside them, and leaves
+# every code path the default invocation reaches exactly as it was. Pull the
+# flag out of the argument list first, so $1 and $2 keep the meaning they
+# have without it.
+#
+# In installed-set mode $1 (the eval-set path) is ignored — the roots supply
+# the corpora — and $2 is still the results path. Pass one: the default
+# lands an evals/ directory under whatever directory the fleet invocation
+# was run from.
+INSTALLED_SET_MODE=0
+INSTALLED_SET_ARG=""
+_argc=$#
+_seen=0
+while [ "$_seen" -lt "$_argc" ]; do
+  _arg="$1"
+  shift
+  _seen=$((_seen + 1))
+  case "$_arg" in
+    --installed-set)
+      if [ "$_seen" -ge "$_argc" ]; then
+        echo "ERROR: --installed-set requires a roots file, or - to read the list from stdin." >&2
+        exit 64
+      fi
+      INSTALLED_SET_MODE=1
+      INSTALLED_SET_ARG="$1"
+      shift
+      _seen=$((_seen + 1))
+      ;;
+    # Every other argument rotates to the end of the list. After $_argc
+    # iterations the non-flag arguments are back in their original order and
+    # the flag is gone — rotation rather than an array because this template
+    # stays inside the POSIX-flavoured bash subset the rest of the file uses.
+    *) set -- "$@" "$_arg" ;;
+  esac
+done
+unset _argc _seen _arg
+
 EVALS_PATH="${1:-evals/evals.json}"
 RESULTS_PATH="${2:-evals/results-$(date -u +%Y%m%dT%H%M%SZ)-$$.json}"
 RUNS_PER_QUERY=3
 
-if [ ! -f "$EVALS_PATH" ]; then
+# The header's "navigator" field names one navigator, which installed-set
+# mode does not have. The sentinel keeps it a non-empty string, which every
+# consumer of a results file (including the engine's own corpus validator)
+# requires.
+NAVIGATOR="skill-engine-context"
+if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
+  NAVIGATOR="installed-set"
+fi
+
+# Skipped in installed-set mode: the roots carry the corpora, and the
+# default evals/evals.json does not exist in a fleet invocation.
+if [ "$INSTALLED_SET_MODE" -eq 0 ] && [ ! -f "$EVALS_PATH" ]; then
   echo "ERROR: evals file not found at $EVALS_PATH" >&2
   exit 65
 fi
@@ -85,23 +134,36 @@ fi
 # Strict integer schema_version check.
 # Extracts the top-level "schema_version" field; rejects strings, floats,
 # null, and boolean. Absent field defaults to v1.
-schema_version_raw=$(grep -E '^[[:space:]]*"schema_version"[[:space:]]*:' "$EVALS_PATH" \
-  | head -n 1 \
-  | sed -E 's/^[[:space:]]*"schema_version"[[:space:]]*:[[:space:]]*//; s/[[:space:]]*,?[[:space:]]*$//' \
-  || true)
+#
+# A function because installed-set mode reads up to two corpus files per
+# root: one silently unchecked corpus is exactly the hole this check exists
+# to close. The offending file is named, since the caller may have handed it
+# several.
+check_schema_version() {
+  local file="$1"
+  local schema_version_raw schema_version
+  schema_version_raw=$(grep -E '^[[:space:]]*"schema_version"[[:space:]]*:' "$file" \
+    | head -n 1 \
+    | sed -E 's/^[[:space:]]*"schema_version"[[:space:]]*:[[:space:]]*//; s/[[:space:]]*,?[[:space:]]*$//' \
+    || true)
 
-if [ -z "${schema_version_raw:-}" ]; then
-  schema_version=1
-elif printf '%s' "$schema_version_raw" | grep -qE '^[1-9][0-9]*$'; then
-  schema_version=$schema_version_raw
-else
-  echo "ERROR: schema_version must be a JSON integer >= 1; got: $schema_version_raw" >&2
-  exit 65
-fi
+  if [ -z "${schema_version_raw:-}" ]; then
+    schema_version=1
+  elif printf '%s' "$schema_version_raw" | grep -qE '^[1-9][0-9]*$'; then
+    schema_version=$schema_version_raw
+  else
+    echo "ERROR: schema_version must be a JSON integer >= 1; got: $schema_version_raw ($file)" >&2
+    exit 65
+  fi
 
-if [ "$schema_version" != "1" ]; then
-  echo "ERROR: this harness understands schema_version 1; got: $schema_version" >&2
-  exit 65
+  if [ "$schema_version" != "1" ]; then
+    echo "ERROR: this harness understands schema_version 1; got: $schema_version ($file)" >&2
+    exit 65
+  fi
+}
+
+if [ "$INSTALLED_SET_MODE" -eq 0 ]; then
+  check_schema_version "$EVALS_PATH"
 fi
 
 # Field separator for the entries record stream: ASCII Unit Separator (US,
@@ -133,6 +195,12 @@ US=$(printf '\037')
 #
 # The maintainer can override this function (e.g., to assert against catalog
 # row text, or to use a different CLI) by editing the body below.
+#
+# When RUN_ONE_READS names a file, run_one also writes that run's Read file
+# paths there, one per line — the raw material installed-set mode derives its
+# fired set from, and empty for a run that produced no transcript. The
+# default path leaves the variable empty and nothing is written.
+RUN_ONE_READS=""
 run_one() {
   local query="$1"
   local expected="$2"
@@ -149,6 +217,7 @@ run_one() {
     echo "  claude exited $rc for query: $query" >&2
     sed 's/^/    stderr: /' "$err_tmp" | tail -n 3 >&2
     rm -f "$err_tmp"
+    if [ -n "$RUN_ONE_READS" ]; then : > "$RUN_ONE_READS"; fi
     echo "error"
     return 0
   fi
@@ -165,6 +234,7 @@ run_one() {
               | .message.content[]?
               | select(.type == "tool_use" and .name == "Read")
               | (.input.file_path // empty)' 2>/dev/null) || read_paths=""
+  if [ -n "$RUN_ONE_READS" ]; then printf '%s\n' "$read_paths" > "$RUN_ONE_READS"; fi
   hits=$(printf '%s\n' "$read_paths" \
     | grep -cE "(^|/)references/${exp_re}\\.md\$") || true
   if [ "${hits:-0}" -gt 0 ]; then
@@ -216,6 +286,143 @@ emit_entries() {
   ' "$1"
 }
 
+# --- installed-set mode -----------------------------------------------------
+#
+# Everything below is reached only when --installed-set was supplied.
+# emit_entries above is called, never edited: the fleet path unions its
+# output across roots and tags each line with the owning contextualizer.
+
+# The corpus files a root contributes: the union of evals-train.json and
+# evals-test.json when either exists, else evals.json. A root carrying none
+# contributes nothing and is not an error. Basenames only, so a caller can
+# iterate them with an unquoted for.
+fleet_corpus_bases() {
+  local root="$1"
+  if [ -f "$root/evals/evals-train.json" ] || [ -f "$root/evals/evals-test.json" ]; then
+    [ -f "$root/evals/evals-train.json" ] && printf 'evals-train.json\n'
+    [ -f "$root/evals/evals-test.json" ] && printf 'evals-test.json\n'
+  elif [ -f "$root/evals/evals.json" ]; then
+    printf 'evals.json\n'
+  fi
+  return 0
+}
+
+# Schema-check every corpus the fleet contributes, here in the main shell.
+# emit_fleet_entries runs inside the process substitution that feeds the
+# entry loop, where check_schema_version's exit 65 would kill only that
+# subshell and leave the harness running against a silently truncated
+# entry stream.
+validate_fleet_corpora() {
+  local roots_file="$1" root base
+  while IFS= read -r root; do
+    root=${root%/}
+    [ -n "$root" ] || continue
+    # shellcheck disable=SC2046 # word-split is intended: these are basenames, never paths
+    for base in $(fleet_corpus_bases "$root"); do
+      check_schema_version "$root/evals/$base"
+    done
+  done < "$roots_file"
+}
+
+# The fleet entry stream: query US expected US persona US owning-slug. An
+# entry survives only when its expected resolves to a real reference under
+# the root it came from — the in-scope filter, which is what makes a
+# cross-fleet run measure confusion rather than coverage.
+emit_fleet_entries() {
+  local roots_file="$1"
+  local root slug base query expected persona
+  while IFS= read -r root; do
+    root=${root%/}
+    [ -n "$root" ] || continue
+    slug=${root##*/}
+    slug=${slug%-context}
+    # shellcheck disable=SC2046 # word-split is intended: these are basenames, never paths
+    for base in $(fleet_corpus_bases "$root"); do
+      while IFS="$US" read -r query expected persona; do
+        [ -z "$query" ] && continue
+        [ -f "$root/references/$expected.md" ] || continue
+        printf '%s%s%s%s%s%s%s\n' "$query" "$US" "$expected" "$US" "$persona" "$US" "$slug"
+      done < <(emit_entries "$root/evals/$base")
+    done
+  done < "$roots_file"
+}
+
+# The installed slugs that fired on one run. A navigator has fired when the
+# run's transcript carries a Read of a reference under that navigator's own
+# references/ directory; the slug is regex-escaped and the path end-anchored
+# the same way run_one escapes and anchors `expected`. INSTALLED_SLUGS is
+# already sorted, so the emitted array is too.
+fired_slugs() {
+  local reads_file="$1"
+  local slug slug_re out=""
+  # shellcheck disable=SC2086 # word-split is intended: one slug per line
+  for slug in $INSTALLED_SLUGS; do
+    slug_re=$(printf '%s' "$slug" | sed -e 's/[][\.*^$+?(){}|\\\/]/\\&/g')
+    if grep -qE "/${slug_re}-context/references/[^/]*\\.md\$" "$reads_file"; then
+      if [ -n "$out" ]; then out="$out, \"$slug\""; else out="\"$slug\""; fi
+    fi
+  done
+  printf '%s' "$out"
+}
+
+# The entry stream the loop below consumes. Installed-set mode unions every
+# root's corpus and tags each line with its owning slug; the default path
+# emits exactly what it always has.
+emit_run_entries() {
+  if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
+    emit_fleet_entries "$ROOTS_FILE"
+  else
+    emit_entries "$EVALS_PATH"
+  fi
+}
+
+ROOTS_FILE=""
+READS_TMP=""
+INSTALLED_SLUGS=""
+INSTALLED_SET_JSON=""
+if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
+  # Consume the root list ONCE, into a file, before the entry loop exists.
+  # That loop reads from a process substitution and run_one redirects the
+  # CLI's stdin from /dev/null precisely so nothing else can eat that
+  # stream; a second stdin reader running inside or after the loop makes the
+  # harness silently process one entry.
+  ROOTS_FILE=$(mktemp "${TMPDIR:-/tmp}/run-eval-roots.XXXXXX")
+  READS_TMP=$(mktemp "${TMPDIR:-/tmp}/run-eval-reads.XXXXXX")
+  # `grep .` drops blank lines: the locator's --all enumeration ends with a
+  # newline, and a trailing empty line would become an empty slug.
+  if [ "$INSTALLED_SET_ARG" = "-" ]; then
+    grep . > "$ROOTS_FILE" || true
+  elif [ -f "$INSTALLED_SET_ARG" ]; then
+    grep . "$INSTALLED_SET_ARG" > "$ROOTS_FILE" || true
+  else
+    rm -f "$ROOTS_FILE" "$READS_TMP"
+    echo "ERROR: installed-set roots file not found at $INSTALLED_SET_ARG" >&2
+    exit 65
+  fi
+  if [ ! -s "$ROOTS_FILE" ]; then
+    rm -f "$ROOTS_FILE" "$READS_TMP"
+    echo "ERROR: --installed-set was supplied no contextualizer roots." >&2
+    exit 65
+  fi
+
+  # The installed set: every supplied root's bare slug, sorted, regardless
+  # of the order they arrived in. A root that owns no in-scope query is in
+  # here too — it still gets a column in the confusion table.
+  INSTALLED_SLUGS=$(while IFS= read -r _root; do
+      _root=${_root%/}
+      _base=${_root##*/}
+      printf '%s\n' "${_base%-context}"
+    done < "$ROOTS_FILE" | LC_ALL=C sort -u)
+  unset _root _base
+  INSTALLED_SET_JSON=$(printf '%s\n' "$INSTALLED_SLUGS" | awk '
+    NF { s = $0; gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s)
+         printf "%s\"%s\"", (n++ ? ", " : ""), s }')
+
+  validate_fleet_corpora "$ROOTS_FILE"
+fi
+
+# --- end installed-set mode -------------------------------------------------
+
 mkdir -p "$(dirname "$RESULTS_PATH")"
 TMP_RESULTS="${RESULTS_PATH}.tmp"
 # Don't strand the half-written .tmp on Ctrl-C / kill; normal completion
@@ -223,13 +430,16 @@ TMP_RESULTS="${RESULTS_PATH}.tmp"
 # without it bash resumes the script after the trap, the >> appends
 # recreate the deleted file without its JSON header or earlier entries,
 # and the final mv publishes the corrupt results file with exit 0.
-trap 'rm -f "$TMP_RESULTS"; exit 130' INT TERM
+trap 'rm -f "$TMP_RESULTS" ${ROOTS_FILE:+"$ROOTS_FILE"} ${READS_TMP:+"$READS_TMP"}; exit 130' INT TERM
 
 start_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 {
   printf '{\n'
-  printf '  "navigator": "skill-engine-context",\n'
+  printf '  "navigator": "%s",\n' "$NAVIGATOR"
   printf '  "schema_version": 1,\n'
+  if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
+    printf '  "installed_set": [%s],\n' "$INSTALLED_SET_JSON"
+  fi
   printf '  "started_at": "%s",\n' "$start_iso"
   printf '  "runs_per_query": %d,\n' "$RUNS_PER_QUERY"
   printf '  "entries": [\n'
@@ -238,14 +448,23 @@ start_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 first=1
 total_runs=0
 error_runs=0
-while IFS="$US" read -r query expected persona; do
+# `owner` is empty on a default-mode line, which carries three fields; one
+# loop serves both modes. RUN_ONE_READS is empty in default mode too, so
+# run_one records nothing and `fired` stays unbuilt.
+while IFS="$US" read -r query expected persona owner; do
   [ -z "$query" ] && continue
   echo "running: $query (expected: $expected, persona: $persona)" >&2
   runs=""
+  fired=""
   i=1
   while [ "$i" -le "$RUNS_PER_QUERY" ]; do
+    RUN_ONE_READS="$READS_TMP"
     outcome=$(run_one "$query" "$expected")
     if [ -n "$runs" ]; then runs="$runs, \"$outcome\""; else runs="\"$outcome\""; fi
+    if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
+      fired_run=$(fired_slugs "$READS_TMP")
+      if [ -n "$fired" ]; then fired="$fired, [$fired_run]"; else fired="[$fired_run]"; fi
+    fi
     total_runs=$((total_runs + 1))
     [ "$outcome" = "error" ] && error_runs=$((error_runs + 1))
     i=$((i + 1))
@@ -260,9 +479,21 @@ while IFS="$US" read -r query expected persona; do
   esc_expected=$(printf '%s' "$expected" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
   esc_persona=$(printf '%s' "$persona" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
 
-  printf '    {"query": "%s", "expected": "%s", "persona": "%s", "runs": [%s]}' \
-    "$esc_query" "$esc_expected" "$esc_persona" "$runs" >> "$TMP_RESULTS"
-done < <(emit_entries "$EVALS_PATH")
+  # "owner" and "fired" are written BEFORE the runs array so that `"runs": [`
+  # stays the last occurrence of that token on the line: the renderer anchors
+  # on it greedily, and it being the final field written is what that anchor
+  # relies on.
+  if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
+    esc_owner=$(printf '%s' "$owner" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+    printf '    {"query": "%s", "expected": "%s", "persona": "%s", "owner": "%s", "fired": [%s], "runs": [%s]}' \
+      "$esc_query" "$esc_expected" "$esc_persona" "$esc_owner" "$fired" "$runs" >> "$TMP_RESULTS"
+  else
+    printf '    {"query": "%s", "expected": "%s", "persona": "%s", "runs": [%s]}' \
+      "$esc_query" "$esc_expected" "$esc_persona" "$runs" >> "$TMP_RESULTS"
+  fi
+done < <(emit_run_entries)
+
+rm -f ${ROOTS_FILE:+"$ROOTS_FILE"} ${READS_TMP:+"$READS_TMP"}
 
 end_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 {
