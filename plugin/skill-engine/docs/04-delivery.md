@@ -19,6 +19,18 @@ A contextualizer is shaped by two scope questions, decided before the first refe
 
 For source-root topology — single-repo vs. multi-repo, monorepo workspace vs. sibling repositories — see [01-principles.md](01-principles.md#source-root-topology). Topology and scope are independent axes.
 
+### Federated review: who signs what
+
+Splitting a domain across many contextualizers splits the review with it. Once there are fifty navigators and no single person who can honestly sign off on all of them, the question stops being "is this proposal good" and becomes "whose sign-off is this waiting on". The engine answers it with a field it already carries and a sign-off tier it already ships — no new schema, no new gate.
+
+**The recorded owner signs their own proposals.** `source-paths.json` carries an optional `owner` at the document root: one contextualizer, one owner, describing the whole artifact rather than any individual source. That owner is the person a DISCOVER or REFRESH proposal against their contextualizer is waiting on, and `review`'s second pass names them in Step 2 when the key is recorded. When it is absent, the second pass says nothing — an unrecorded owner is a fact about the artifact, not a finding against it.
+
+**A platform team spot-checks rather than gates.** The team that runs the engine across a fleet cannot read every proposal, and a queue that waits on them is a queue that stops moving. So they do not sit in the path: the domain owner reviews and applies, and the platform team spot-checks afterwards — sampling proposals, applying under the `provisional` tier, and coming back to read the diff later. `provisional` exists precisely so that "promoted, not yet fully read" is a state the audit trail can hold instead of a lie told by a ticked `reviewed` box.
+
+**A reviewer who is not the recorded owner ticks `provisional`, not `reviewed`.** This is the whole policy in one line. `reviewed` asserts that someone who knows the domain read the proposal against their own model of what the contextualizer is for; a reviewer standing in for an absent owner cannot make that claim, and Step 1's predict-then-compare shape is exactly what they lack the standing to fill in. Ticking `provisional` keeps the artifact moving and keeps the record honest: `apply` promotes on either tier, and the preserved `REVIEW.md` says which one it was, so the owner can come back to the ones that were signed in their absence.
+
+The engine enforces none of this. `apply` checks that exactly one Step 3 box is ticked and that the ticked box is not `reject`; it has no notion of who ticked it. The policy is a document because ownership is an organizational fact the artifact records rather than a permission the tool can verify.
+
 ## The case for multiple delivery surfaces - and not just the plugin marketplace
 
 This falls out of [Issue #46594](https://github.com/anthropics/claude-code/issues/46594) (covered in [01-principles.md](01-principles.md)): `/plugin update` is unreliable, so a single-surface plan is fragile. The public engine ships **two** surfaces — the plugin marketplace (one-line install in Claude Code) and the Desktop zip (for users who don't have a terminal or who prefer the Desktop app's native skill UI). A builder who adopts the **optional CLI pattern** below gains a third, scriptable path; within that pattern the CLI is the trustworthy primary path precisely because `/plugin update` can't be relied on. Read the CLI sections that follow as that optional pattern — not as a surface the engine generates.

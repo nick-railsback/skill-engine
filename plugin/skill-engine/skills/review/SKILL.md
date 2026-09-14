@@ -63,18 +63,112 @@ When `REVIEW.md` exists and the three Step-1 lines no longer contain the literal
 
 1. **Re-read `REVIEW.md`** and the proposed tree.
 
-2. **Compute 5–9 disagreements** between the user's predictions and the proposed contextualizer's coverage. Rank by magnitude:
+2. **Compute the disagreement set** between the user's predictions and the proposed contextualizer's coverage.
+
+   **How many to ask for.** The budget is a function of the proposal's *counted entries* — the `.review/manifest.json` entries whose `status` is `added`, `modified` or `removed`. `unchanged` entries record how big the contextualizer is, not how big this proposal is, so they are excluded from the count, the same omission the first pass already makes when it prints the status buckets. A three-file refresh of a 200-reference contextualizer is a small review.
+
+   | counted entries | disagreements |
+   |---|---|
+   | ≤ 40 | 5–9 |
+   | 41–80 | 7–11 |
+   | 81–120 | 9–13 |
+   | each further 40 begun | both bounds rise by 2 |
+   | 321 or more | 21–25 |
+
+   Both bounds rise together, so the window stays four wide at every proposal size, and both stop at the cap of 25 — the largest proposals ask for 21–25 and never more, because a fixed quota on a 5,000-file proposal is a recipe for padding. Read the pair off the manifest in front of you rather than reciting one: run the block below with the proposed tree's `.review/manifest.json` as its only argument and it writes the lower and upper bound, space-separated, on one line.
+
+```budget-rule
+# Disagreement budget for one proposal, read off its own manifest.
+#   usage: bash <this block> <manifest.json>   ->   "<lower> <upper>"
+set -u
+n="$(python3 - "$1" <<'PY'
+import json, sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    entries = json.load(fh)["entries"]
+print(sum(1 for e in entries
+          if e.get("status") in ("added", "modified", "removed")))
+PY
+)"
+k=$(( n > 40 ? (n - 1) / 40 : 0 ))
+lower=$(( 5 + 2 * k )); [ "$lower" -gt 21 ] && lower=21
+upper=$(( 9 + 2 * k )); [ "$upper" -gt 25 ] && upper=25
+printf '%s %s\n' "$lower" "$upper"
+```
+
+   **Rank by magnitude:**
    - **Scope-mismatch disagreements** rank highest: the prediction's "for ___" or "NOT ___" boundary differs from the navigator's actual coverage (e.g., user says "this skill is for the runtime API only" but the proposal includes plugin-authoring references).
    - **Content-style disagreements** rank next: prose voice, reference partition shape, depth-of-detail choices.
    - **Reference-count disagreements** rank lowest: number of references emitted, whether a borderline candidate became its own reference or got folded.
 
-3. **Write 5–9 disagreements** between the existing Step 2 section markers, leaving Steps 1 and 3 byte-for-byte unchanged. Immediately below the `## Step 2 — Disagreement set` heading and above the ranked bullet list, first check for hand-edited references: run `python3 "$CLAUDE_PLUGIN_ROOT/tests/hand_edit_check.py" <install>/<name>-context.proposed/.review/manifest.json <install>/<name>-context/.review/manifest.json` and parse the JSON array it writes to stdout. This is independent of, and computed separately from, the disagreement set below — like the density line that follows it, it is report-only, never itself a disagreement, and never counted toward the 5–9 slot budget, so a hand-edited file is never at risk of ranking out of the surfaced set the way a low-magnitude disagreement can. For each flagged entry, write one line: `Hand-edited since last promotion: <path> (engine last wrote <live_sha_after>; this proposal's baseline was <proposal_sha_before>).` When the array is empty, the absence of a mismatch is silent: write nothing, not a printed "no hand edits found" line — matching the same empty-bucket convention the first pass's Added/Modified/Removed lists already use. Then write one line stating the paragraph→permalink density this run computed against the proposed tree: run `python3 "$CLAUDE_PLUGIN_ROOT/tests/permalink_density.py" <install>/<name>-context.proposed/references` and parse its `[PASS]`/`[FAIL]` percentage, then write `Paragraph→permalink density: <pct>% (report-only; not one of the disagreements below).` Immediately below it, write `Re-emit candidates: N of M references cite changed paths (K changed paths uncited).` — never counted toward the 5–9 slot budget, and omitted entirely when no source advanced this run. Compute it by running `python3 "$CLAUDE_PLUGIN_ROOT/tests/cited_paths.py" <install>/<name>-context.proposed/references --changed <install>/<name>-context/research/.discover-inventory.json`: N is the count of references present under `.candidates`, M is the proposed tree's total `*.md` count, K is `.uncited_changes.count`; when `<install>/<name>-context/research/.discover-inventory.json` is absent or carries no source's `since_last_check` (no source advanced), skip the line. Immediately below it, for each source that advanced, write `Re-pinned: <repinned> of <citations> citations moved mechanically; <needs_review> read by hand.` — the counts REFRESH's post-run summary reported from `repin_citations.py` (`refresh/references/drift-detection-and-phases.md` § Re-read scoping); recompute them if that summary is not at hand by running `python3 "$CLAUDE_PLUGIN_ROOT/tests/repin_citations.py" <install>/<name>-context/references --repo <the source's cache directory> --old-sha <live last_checked_sha> --new-sha <proposed last_checked_sha>` with no `--out-dir`, which is a dry report. Omit the line when no source advanced. A proposal whose re-pin read nothing by hand and whose re-read rewrote no sentence has an empty disagreement set by construction — the only substance is the pin — and the *"Only <N> disagreement<s?> surfaced"* line below is the right rendering of it, not a sign the pass was skipped. This, the density line and the candidates line are independent of, and computed separately from, the disagreement set below — report-only, never themselves a disagreement. Then write the disagreements. Each disagreement is one sentence with verdict checkboxes:
+   **Group the set when the proposal spans more than one catalog section.** A counted entry's group is the navigator section whose catalog row cites its path — either a plain source section, headed `## Catalog: <source-slug>`, or a slice section, headed `## Catalog: <source-slug>/<slice-id>`. Resolve `added` and `modified` entries against the *proposed* navigator. Resolve `removed` entries against the **live navigator** at `<install>/<name>-context/SKILL.md`: a reference is removed precisely because the proposed catalog stopped citing it, so no proposed row can name one, and the live navigator is the only place a purge of thirty references can still be attributed from. Counted entries no catalog row cites — anything under `research/`, the navigator itself — collect into one residual group named `Unattributed`, which is rendered when grouping is already in force and never triggers grouping on its own; a single-section proposal with a residual stays a flat list. When more than one *named* group is present, write the disagreements under one sub-heading per group, each heading carrying that group's counted-entry count, ranked within the group. When only one named group is present, keep today's single flat ranked list. The block below reports the verdict and the per-group counts: it prints `flat` or `grouped` on its first line, then one line per group — the group's name, a tab, its counted-entry count.
+
+```group-rule
+# Which catalog sections a proposal's counted entries fall into.
+#   usage: bash <this block> <manifest.json> <proposed-navigator> <live-navigator>
+set -u
+python3 - "$1" "$2" "$3" <<'PY'
+import json, re, sys
+
+SECTION = re.compile(r"^#{2,3}\s+Catalog:\s*(\S+)\s*$")
+LINK = re.compile(r"\]\(([^)]+)\)")
+RESIDUAL = "Unattributed"
+
+
+def catalog_of(navigator):
+    """Map each cited reference path to the catalog section citing it."""
+    cited, section = {}, None
+    try:
+        with open(navigator, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return cited
+    for line in lines:
+        found = SECTION.match(line)
+        if found:
+            section = found.group(1)
+            continue
+        if line.startswith("#"):
+            section = None
+            continue
+        if section:
+            for target in LINK.findall(line):
+                cited.setdefault(target, section)
+    return cited
+
+
+manifest, proposed, live = sys.argv[1], sys.argv[2], sys.argv[3]
+from_proposed, from_live = catalog_of(proposed), catalog_of(live)
+
+with open(manifest, encoding="utf-8") as fh:
+    entries = json.load(fh)["entries"]
+
+counts, named = {}, set()
+for entry in entries:
+    status = entry.get("status")
+    if status not in ("added", "modified", "removed"):
+        continue
+    lookup = from_live if status == "removed" else from_proposed
+    group = lookup.get(entry.get("path"), RESIDUAL)
+    counts[group] = counts.get(group, 0) + 1
+    if group != RESIDUAL:
+        named.add(group)
+
+print("grouped" if len(named) > 1 else "flat")
+for group in sorted(counts):
+    print("%s\t%d" % (group, counts[group]))
+PY
+```
+
+   **Name who signs.** When `source-paths.json` records an `owner` at the document root, name that owner in the Step 2 preamble as the person whose sign-off the proposal is waiting on. `owner` is a document-root key describing the whole contextualizer, not a per-source one, so a proposal never has two. When the key is absent, say nothing — an unrecorded owner is not a finding.
+
+3. **Write the disagreement set** between the existing Step 2 section markers, leaving Steps 1 and 3 byte-for-byte unchanged. Immediately below the `## Step 2 — Disagreement set` heading and above the ranked bullet list, first check for hand-edited references: run `python3 "$CLAUDE_PLUGIN_ROOT/tests/hand_edit_check.py" <install>/<name>-context.proposed/.review/manifest.json <install>/<name>-context/.review/manifest.json` and parse the JSON array it writes to stdout. This is independent of, and computed separately from, the disagreement set below — like the density line that follows it, it is report-only, never itself a disagreement, and never counted toward the slot budget, so a hand-edited file is never at risk of ranking out of the surfaced set the way a low-magnitude disagreement can. For each flagged entry, write one line: `Hand-edited since last promotion: <path> (engine last wrote <live_sha_after>; this proposal's baseline was <proposal_sha_before>).` When the array is empty, the absence of a mismatch is silent: write nothing, not a printed "no hand edits found" line — matching the same empty-bucket convention the first pass's Added/Modified/Removed lists already use. Then write one line stating the paragraph→permalink density this run computed against the proposed tree: run `python3 "$CLAUDE_PLUGIN_ROOT/tests/permalink_density.py" <install>/<name>-context.proposed/references` and parse its `[PASS]`/`[FAIL]` percentage, then write `Paragraph→permalink density: <pct>% (report-only; not one of the disagreements below).` Immediately below it, write `Re-emit candidates: N of M references cite changed paths (K changed paths uncited).` — never counted toward the slot budget, and omitted entirely when no source advanced this run. Compute it by running `python3 "$CLAUDE_PLUGIN_ROOT/tests/cited_paths.py" <install>/<name>-context.proposed/references --changed <install>/<name>-context/research/.discover-inventory.json`: N is the count of references present under `.candidates`, M is the proposed tree's total `*.md` count, K is `.uncited_changes.count`; when `<install>/<name>-context/research/.discover-inventory.json` is absent or carries no source's `since_last_check` (no source advanced), skip the line. Immediately below it, for each source that advanced, write `Re-pinned: <repinned> of <citations> citations moved mechanically; <needs_review> read by hand.` — the counts REFRESH's post-run summary reported from `repin_citations.py` (`refresh/references/drift-detection-and-phases.md` § Re-read scoping); recompute them if that summary is not at hand by running `python3 "$CLAUDE_PLUGIN_ROOT/tests/repin_citations.py" <install>/<name>-context/references --repo <the source's cache directory> --old-sha <live last_checked_sha> --new-sha <proposed last_checked_sha>` with no `--out-dir`, which is a dry report. Omit the line when no source advanced. A proposal whose re-pin read nothing by hand and whose re-read rewrote no sentence has an empty disagreement set by construction — the only substance is the pin — and the *"Only <N> disagreement<s?> surfaced"* line below is the right rendering of it, not a sign the pass was skipped. This, the density line and the candidates line are independent of, and computed separately from, the disagreement set below — report-only, never themselves a disagreement. Then write the disagreements. Each disagreement is one sentence with verdict checkboxes:
 
    ```
    - [ ] accept  [ ] reject   <one-sentence disagreement>
    ```
 
-   If fewer than 5 disagreements exist (a tightly-aligned proposal), surface what there is and add a trailing italic line: *"Only <N> disagreement<s?> surfaced — this proposal aligns closely with your predictions."* If more than 9 exist, take the top 9 by magnitude and add a trailing italic line: *"<K> additional disagreement<s?> not shown."*
+   If fewer than the budget's lower bound exist (a tightly-aligned proposal), surface what there is and add a trailing italic line: *"Only <N> disagreement<s?> surfaced — this proposal aligns closely with your predictions."* If more than the upper bound exist, take the top <upper> by magnitude and add a trailing italic line: *"<K> additional disagreement<s?> not shown."*
 
 4. **Save the file** with Steps 1 and 3 preserved exactly as the user left them. Do not auto-tick any verdict box; the user does that.
 
