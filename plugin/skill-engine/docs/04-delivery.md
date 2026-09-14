@@ -45,6 +45,8 @@ This falls out of [Issue #46594](https://github.com/anthropics/claude-code/issue
 
 Each surface installs the same navigator + references content. The only differences are how the content gets onto the user's machine and where it lives once installed.
 
+**Distributing a contextualizer, not the engine.** The three surfaces above are how an *engine* reaches its users. A finished contextualizer has its own two shapes — a skills-only plugin published through the marketplace, and a shared context repository installed at user level — and the recipe for both, together with the access-scoping rule that governs them, is at <https://github.com/nick-railsback/skill-engine/blob/main/docs/recipes/distribute.md>.
+
 **npm as a future surface.** If you adopt the optional CLI pattern, the artifact already ships a CLI binary, which makes an npm package a natural fourth surface: the `bin/<area-domain>-context` script becomes an npm `bin/` entry, `package.json` joins the version-sync surfaces alongside `plugin.json`, and `npm install -g <area-domain>-context` becomes an additional install path that fits into existing JavaScript/TypeScript developer workflows. This guide does not yet flesh out the npm-specific details (publish flow, version-tag conventions, dependency declarations), but the optional CLI artifact contract is intentionally compatible with that path so adoption later doesn't require a rewrite.
 
 ## Surface 1: CLI installer *(optional pattern)*

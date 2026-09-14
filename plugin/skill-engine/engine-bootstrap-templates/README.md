@@ -19,6 +19,7 @@ This directory holds the templates the `engine-bootstrap` workflow stamps into a
 | `REVIEW.md.template` | Predict-then-compare review worksheet staged with every proposal |
 | `release-command.md.template` | User-side release skill — copied manually to `.claude/commands/release.md` per [06-release-doctrine.md](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/06-release-doctrine.md) (**not** stamped by engine-bootstrap) |
 | `pre-commit.sh.template` | User-side pre-commit hook — copied manually to `.git/hooks/pre-commit` per [06-release-doctrine.md](https://github.com/nick-railsback/skill-engine/blob/main/plugin/skill-engine/docs/06-release-doctrine.md) (**not** stamped by engine-bootstrap); runs every stamped contextualizer's `verify.sh` before each commit |
+| `contextualizer-plugin.json.template` | Plugin manifest skeleton for publishing a finished contextualizer as a skills-only plugin — copied manually to the published repo's `.claude-plugin/plugin.json` per [distribute.md](https://github.com/nick-railsback/skill-engine/blob/main/docs/recipes/distribute.md) (**not** stamped by engine-bootstrap) |
 | `eval/run-eval.sh.template` | Eval harness — stamped by `engine-bootstrap` into every fresh contextualizer's `evals/` per `docs/12-evaluation.md`; runs `evals/evals.json` queries against the navigator |
 | `eval/render-eval-results.sh.template` | Renders accumulated eval results into a report |
 | `eval/eval-viewer.html.template` | Static HTML viewer for eval result files |

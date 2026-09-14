@@ -55,6 +55,7 @@ run_json() {
     "plugin/skill-engine/engine-bootstrap-templates/research-state.json.template"
     "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template"
     "plugin/skill-engine/engine-bootstrap-templates/monorepo-config.json.template"
+    "plugin/skill-engine/engine-bootstrap-templates/contextualizer-plugin.json.template"
   )
   local f
   for f in "${paths[@]}"; do
