@@ -16,7 +16,7 @@ skill at one of three install levels:
 
 - **User-level:** `~/.claude/skills/<slug>-context/`
 - **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
-- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+- **Project-level:** `<repo>/**/.claude/skills/<slug>-context/`
 
 Every path below — `research/...`, `references/...`, `verify.sh` —
 resolves relative to whichever directory matches. Before reading
@@ -37,6 +37,98 @@ installed and lists the matches and exits when more than one is.
 Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
 every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 `$CTX_ROOT/verify.sh`.
+
+## Fleet (`--all`)
+
+`/skill-engine:status --all` reports on every contextualizer the locator
+enumerates instead of on one: it prints a table carrying one row per
+contextualizer, six columns wide — root path, registered source count,
+last refresh, pending proposal, review state, and owner. The enumeration
+comes from running the script in
+[`shared/locator-block.md`](../../shared/locator-block.md) with `--all`,
+which prints one absolute root per line and exits without setting
+`CTX_ROOT`. Supply the argv the block asks for rather than keeping a copy
+of it here:
+
+    export ctx_roots=$(bash -s -- --all <<'LOCATOR'
+    …the shared block, pasted verbatim at run time…
+    LOCATOR
+    )
+
+The derivation reads that enumeration from `ctx_roots` in its environment
+(hence the `export`) and does nothing when the locator found nothing.
+
+```python
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except AttributeError:
+    pass
+
+NONE = "—"  # em dash: the cell for "no such thing recorded"
+
+roots = [line.strip() for line in os.environ.get("ctx_roots", "").splitlines()]
+roots = [r for r in roots if r]
+if not roots:
+    # The locator found nothing. Nothing to report is not an error.
+    sys.exit(0)
+
+
+def review_state(proposed):
+    # The same read-only progress reading the "Pending proposals" section
+    # renders for a single contextualizer, condensed to one cell.
+    review = proposed / ".review" / "REVIEW.md"
+    if not review.is_file():
+        return "no review file"
+    text = review.read_text(encoding="utf-8", errors="replace")
+    if "___" in text:
+        return "awaiting Step 1"
+    if "(Run /skill-engine:review" in text:
+        return "Step 2 not generated"
+    ticks = re.findall(r"(?mi)^- \[x\] (?:reviewed|provisional|reject)", text)
+    return "signed off" if len(ticks) == 1 else "not signed off"
+
+
+for raw in roots:
+    root = Path(raw)
+    registry = root / "research" / "source-paths.json"
+    count, owner, last = 0, NONE, "never"
+    if registry.is_file():
+        try:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+        except ValueError:
+            data = {}
+        sources = data.get("sources") or []
+        count = len(sources)
+        owner = data.get("owner") or NONE
+        stamps = [s.get("lifecycle", {}).get("last_checked") for s in sources]
+        stamps = [s for s in stamps if s]
+        if stamps:
+            last = max(stamps)[:10]
+    proposed = Path(str(root) + ".proposed")
+    staged = proposed.is_dir()
+    print(" | ".join([
+        str(root),
+        str(count),
+        last,
+        "yes" if staged else "no",
+        review_state(proposed) if staged else NONE,
+        owner,
+    ]))
+```
+
+`--all` cannot be combined with a named contextualizer. When a run is
+given both a name and `--all`, halt with an error naming both selectors
+rather than guessing which one was meant:
+
+```
+--all was combined with the named contextualizer 'acme'. Pass one or the other: a name reports on that contextualizer alone, --all reports on every contextualizer found.
+```
 
 ## Pending proposals
 

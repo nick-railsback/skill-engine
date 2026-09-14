@@ -17,6 +17,11 @@
       "description": "The tracked sources. May be empty (no sources registered yet).",
       "items": { "$ref": "#/$defs/source" }
     },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Document-root, optional. Who owns this contextualizer — the team or person a pending proposal is routed to, and the last column of the fleet table STATUS --all renders. Bootstrap seeds it from the first owner token of the root (`*`) rule in a project-root CODEOWNERS file and omits the key when there is no such rule. Free-form and non-empty; the engine does not resolve it against any directory."
+    },
     "probe_budget": {
       "type": "integer",
       "minimum": 1,

@@ -21,7 +21,7 @@ skill at one of three install levels:
 
 - **User-level:** `~/.claude/skills/<slug>-context/`
 - **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
-- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+- **Project-level:** `<repo>/**/.claude/skills/<slug>-context/`
 
 Every path below — `research/...`, `references/...`, `verify.sh` —
 resolves relative to whichever directory matches. Before reading
@@ -42,6 +42,24 @@ installed and lists the matches and exits when more than one is.
 Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
 every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 `$CTX_ROOT/verify.sh`.
+
+## Fleet (`--all`)
+
+`/skill-engine:self-audit --all` audits every contextualizer the locator
+enumerates rather than one. Run the script in
+[`shared/locator-block.md`](../../shared/locator-block.md) with `--all` to
+get the roots, one absolute path per line, then run the eight drift checks
+against each enumerated contextualizer in turn, in sequence — a sweep is
+the single-contextualizer audit repeated, not a different audit, and the
+checks stay read-only throughout.
+
+Print one summary line per contextualizer at the end of the sweep, so a
+fleet's findings are readable without scrolling back through every
+contextualizer's own output.
+
+`--all` cannot be combined with a named contextualizer. When a run is
+given both a name and `--all`, halt with an error naming both selectors
+rather than guessing which one was meant.
 
 ## Doctrine surface
 

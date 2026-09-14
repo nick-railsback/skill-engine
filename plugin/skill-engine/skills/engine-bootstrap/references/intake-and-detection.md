@@ -298,6 +298,36 @@ directories here; either way, existing files pause for confirmation. A
 *different* slug's contextualizer existing alongside it is not a
 collision — bootstrapping proceeds with no pause.
 
+## Ownership seed — the root CODEOWNERS rule
+
+A contextualizer records who owns it, so a pending proposal has somewhere
+to be routed and the fleet table STATUS renders has a last column. At
+bootstrap, if a `CODEOWNERS` file exists at the project root, read the
+**root rule** — the line whose pattern is `*` — and take its **first
+owner token** as the contextualizer's root-level `owner`:
+
+<!-- doctrine:codeowners-seed:start -->
+```bash
+owner=""
+if [ -f CODEOWNERS ]; then
+  # The root rule only: the first token on the `*` line. An earlier
+  # path-scoped rule (docs/, src/) owns that path, not the repository.
+  owner=$(awk '$1 == "*" { print $2; exit }' CODEOWNERS)
+fi
+if [ -n "$owner" ]; then
+  printf '%s\n' "$owner"
+fi
+```
+<!-- doctrine:codeowners-seed:end -->
+
+The answer is the first token on the `*` line, never the first owner
+token in the file — a `CODEOWNERS` that scopes `docs/` before it scopes
+`*` still yields the `*` line's owner. When the file has no `*` rule, or
+no `CODEOWNERS` exists at all, the seed produces nothing and Step 3 omits
+the `owner` key entirely rather than guessing an owner from a
+path-scoped rule. The field is free-form and non-empty; the engine
+stores whatever token it reads and resolves it against nothing.
+
 ## Reachability probe — `--probe`
 
 With `--probe`, after the activation guard and before Step 3

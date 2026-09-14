@@ -151,6 +151,23 @@ are built for, not a benchmarked result. Demonstrated scale today is the
 bundled examples (up to eight sources in `langchain-context`); the headroom
 above that rests on the architecture, not on a run at that size.
 
+### Fleet operation
+
+One invocation can cover every contextualizer the locator finds.
+`/skill-engine:status --all` renders a fleet table: one row per
+contextualizer, six columns wide — root path, registered source count,
+last refresh, pending proposal, review state, and owner.
+`/skill-engine:refresh --all` and `/skill-engine:self-audit --all` sweep
+that same enumeration, running the full workflow against each
+contextualizer in sequence and printing one summary line apiece.
+`source-paths.json` carries an optional root-level `owner` that bootstrap
+seeds from the root rule of a project-root CODEOWNERS file, so the table
+can say whose desk a pending proposal belongs on. Combining `--all` with
+a named contextualizer is rejected, not guessed at.
+
+What the fleet layer does not do is route: the table names an owner,
+delivering anything to them is outside the engine.
+
 ### What this is *not*
 
 Skill-engine doesn't enforce naming conventions across forks. It doesn't
@@ -439,6 +456,9 @@ across DISCOVER, REFRESH, and the cache. Each entry also carries two state-machi
 unknown`). A `confirmed` source can become `removed` upstream without
 invalidating the curation, and the engine surfaces both axes separately so
 the reviewer sees the full picture.
+
+At the document root the file also carries the optional `owner` seeded at
+bootstrap from CODEOWNERS, alongside `probe_budget`.
 
 ### Bootstrap scaffolding
 

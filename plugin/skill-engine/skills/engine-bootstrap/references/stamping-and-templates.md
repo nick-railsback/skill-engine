@@ -53,8 +53,13 @@ locates the root itself from the project working directory.
 ### Stamping `research/source-paths.json`
 
 Replace the empty `"sources": []` from the template with one entry per
-intaken source, in the order supplied. The per-entry shape depends on
-`kind`:
+intaken source, in the order supplied. At the root of the same file, set
+`owner` to the token the ownership seed in
+[`intake-and-detection.md`](intake-and-detection.md) printed, and omit the
+key entirely when the seed printed nothing — an absent `owner` is the
+honest record of a repository with no root `CODEOWNERS` rule.
+
+The per-entry shape depends on `kind`:
 
 **`kind: "git-managed"`** — set `url`; add `"branch": "<name>"` only if
 Step 2.4 recorded a non-default branch:

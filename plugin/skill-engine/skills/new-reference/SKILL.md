@@ -47,7 +47,7 @@ skill at one of three install levels:
 
 - **User-level:** `~/.claude/skills/<slug>-context/`
 - **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
-- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+- **Project-level:** `<repo>/**/.claude/skills/<slug>-context/`
 
 Every path below — `research/...`, `references/...`, `verify.sh` —
 resolves relative to whichever directory matches. Before reading or

@@ -4,6 +4,24 @@ The pre-flight guards and migrations REFRESH runs before touching any source, pl
 
 ## Pre-flight
 
+`--all` sweeps the fleet. Given `--all`, REFRESH resolves no single
+`CTX_ROOT`: it runs the script in
+[`shared/locator-block.md`](../../shared/locator-block.md) with `--all` to
+enumerate the installed contextualizers, then runs the whole numbered
+sequence below once for each enumerated contextualizer, in turn. Each one
+sweeps its own tree and stages — or declines to stage — its own proposal
+under its own `<slug>-context.proposed/`; no contextualizer's run reaches
+into another's. At the end of the sweep, print one summary line per
+contextualizer: what drifted, what was staged, what was skipped.
+
+`--all` cannot be combined with a named contextualizer. When a run is
+given both a name and `--all`, halt with an error naming both selectors
+rather than guessing which one was meant:
+
+```
+--all was combined with the named contextualizer 'acme'. Pass one or the other: a name refreshes that contextualizer alone, --all refreshes each contextualizer the locator finds.
+```
+
 When `/skill-engine:refresh` is invoked:
 
 0. **Guard against an unapplied proposal.** If `$CTX_PROPOSED` already exists,
