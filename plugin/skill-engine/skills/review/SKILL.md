@@ -101,7 +101,7 @@ printf '%s %s\n' "$lower" "$upper"
    - **Content-style disagreements** rank next: prose voice, reference partition shape, depth-of-detail choices.
    - **Reference-count disagreements** rank lowest: number of references emitted, whether a borderline candidate became its own reference or got folded.
 
-   **Group the set when the proposal spans more than one catalog section.** A counted entry's group is the navigator section whose catalog row cites its path — either a plain source section, headed `## Catalog: <source-slug>`, or a slice section, headed `## Catalog: <source-slug>/<slice-id>`. Resolve `added` and `modified` entries against the *proposed* navigator. Resolve `removed` entries against the **live navigator** at `<install>/<name>-context/SKILL.md`: a reference is removed precisely because the proposed catalog stopped citing it, so no proposed row can name one, and the live navigator is the only place a purge of thirty references can still be attributed from. Counted entries no catalog row cites — anything under `research/`, the navigator itself — collect into one residual group named `Unattributed`, which is rendered when grouping is already in force and never triggers grouping on its own; a single-section proposal with a residual stays a flat list. When more than one *named* group is present, write the disagreements under one sub-heading per group, each heading carrying that group's counted-entry count, ranked within the group. When only one named group is present, keep today's single flat ranked list. The block below reports the verdict and the per-group counts: it prints `flat` or `grouped` on its first line, then one line per group — the group's name, a tab, its counted-entry count.
+   **Group the set when the proposal spans more than one catalog section.** A counted entry's group is the navigator section whose catalog row cites the reference that entry belongs to — either a plain source section, headed `## Catalog: <source-slug>`, or a slice section, headed `## Catalog: <source-slug>/<slice-id>`. *Belongs to*, not *is*: for a directory-form reference the catalog row's target is `references/<slug>/` while the manifest names `references/<slug>/<slug>.md` and each of its assets separately, so both sides reduce to the reference identity `verify.sh` Check 4 uses — the slug without `.md` and without a trailing `/` — before they are compared. Resolve `added` and `modified` entries against the *proposed* navigator. Resolve `removed` entries against the **live navigator** at `<install>/<name>-context/SKILL.md`: a reference is removed precisely because the proposed catalog stopped citing it, so no proposed row can name one, and the live navigator is the only place a purge of thirty references can still be attributed from. Counted entries no catalog row cites — anything under `research/`, the navigator itself — collect into one residual group named `Unattributed`, which is rendered when grouping is already in force and never triggers grouping on its own; a single-section proposal with a residual stays a flat list. When more than one *named* group is present, write the disagreements under one sub-heading per group, each heading carrying that group's counted-entry count, ranked within the group. When only one named group is present, keep today's single flat ranked list. The block below reports the verdict and the per-group counts: it prints `flat` or `grouped` on its first line, then one line per group — the group's name, a tab, its counted-entry count.
 
 ```group-rule
 # Which catalog sections a proposal's counted entries fall into.
@@ -113,10 +113,38 @@ import json, re, sys
 SECTION = re.compile(r"^#{2,3}\s+Catalog:\s*(\S+)\s*$")
 LINK = re.compile(r"\]\(([^)]+)\)")
 RESIDUAL = "Unattributed"
+PREFIX = "references/"
+
+
+def reference_id(path):
+    """The reference a path belongs to, or None when it belongs to none.
+
+    Both sides of the lookup have to be reduced to this before they can be
+    compared: a catalog row names a reference, a manifest entry names a
+    file, and for the directory form those are never the same string.
+
+        catalog row target   references/billing-refunds/
+        manifest entry path  references/billing-refunds/billing-refunds.md
+        its assets           references/billing-refunds/flow.svg, ...
+
+    The rule is verify.sh Check 4's, which defines a reference's identity
+    as the slug without `.md` and without a trailing `/`; every file under
+    a directory-form reference belongs to that reference. Anything else --
+    `research/...`, the navigator itself, a malformed target carrying
+    neither suffix -- has no reference and falls to the residual.
+    """
+    path = (path or "").strip()
+    if not path.startswith(PREFIX):
+        return None
+    rest = path[len(PREFIX):]
+    head, slash, _ = rest.partition("/")
+    if slash:
+        return head or None
+    return rest[:-3] if rest.endswith(".md") else None
 
 
 def catalog_of(navigator):
-    """Map each cited reference path to the catalog section citing it."""
+    """Map each cited reference to the catalog section citing it."""
     cited, section = {}, None
     try:
         with open(navigator, encoding="utf-8") as fh:
@@ -133,7 +161,9 @@ def catalog_of(navigator):
             continue
         if section:
             for target in LINK.findall(line):
-                cited.setdefault(target, section)
+                ref = reference_id(target)
+                if ref is not None:
+                    cited.setdefault(ref, section)
     return cited
 
 
@@ -149,7 +179,8 @@ for entry in entries:
     if status not in ("added", "modified", "removed"):
         continue
     lookup = from_live if status == "removed" else from_proposed
-    group = lookup.get(entry.get("path"), RESIDUAL)
+    ref = reference_id(entry.get("path"))
+    group = RESIDUAL if ref is None else lookup.get(ref, RESIDUAL)
     counts[group] = counts.get(group, 0) + 1
     if group != RESIDUAL:
         named.add(group)

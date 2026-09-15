@@ -481,6 +481,66 @@ report "$ok" "a twelve-entry proposal in one catalog section keeps a flat list a
   "grouping rule printed: ${out:-<nothing>}" \
   "budget rule printed: ${budget_out:-<nothing>}"
 
+# Fixture E — the directory form. A multimodal reference is a DIRECTORY
+# containing a canonical primary `.md` of the same basename plus its
+# assets, and `02-artifact-contract.md` makes it first-class: the catalog
+# row's target carries a trailing slash, while every manifest entry under
+# it carries a full file path. Those two strings never agree, so raw string
+# equality files every byte of a multimodal reference under the residual —
+# and a refresh touching only directory-form references in two sections
+# computes no named groups at all and prints `flat`, dropping the
+# per-owner sub-headings the whole feature exists to produce.
+#
+# Both resolution directions are exercised in one fixture: `added` and
+# `modified` entries against the proposed navigator, and a `removed`
+# directory-form reference against the live one.
+fixture_e="$WORK/directory-form"
+mkdir -p "$fixture_e"
+nav_open "$fixture_e/live.md" acme
+nav_section "$fixture_e/live.md" acme \
+  references/acme-api.md references/acme-diagrams/ references/acme-legacy-pack/
+nav_section "$fixture_e/live.md" acme/billing references/billing-refunds/
+nav_open "$fixture_e/proposed.md" acme
+nav_section "$fixture_e/proposed.md" acme \
+  references/acme-api.md references/acme-diagrams/
+nav_section "$fixture_e/proposed.md" acme/billing references/billing-refunds/
+manifest_from_list "$fixture_e/manifest.json" \
+  'references/acme-api.md:modified' \
+  'references/acme-diagrams/acme-diagrams.md:modified' \
+  'references/acme-diagrams/flow.svg:added' \
+  'references/acme-legacy-pack/acme-legacy-pack.md:removed' \
+  'references/acme-legacy-pack/schema.png:removed' \
+  'references/billing-refunds/billing-refunds.md:added'
+out="$(run_group "$fixture_e/manifest.json" "$fixture_e/proposed.md" "$fixture_e/live.md")"
+ok=1
+[ "$(printf '%s\n' "$out" | head -1)" = "grouped" ] || ok=0
+printf '%s\n' "$out" | grep -qxF "acme${TAB}5" || ok=0
+printf '%s\n' "$out" | grep -qxF "acme/billing${TAB}1" || ok=0
+printf '%s\n' "$out" | grep -qF "Unattributed" && ok=0
+report "$ok" "a directory-form reference's primary and its assets are attributed to the section citing the directory" \
+  "grouping rule printed: ${out:-<nothing>}"
+
+# Fixture F — the shape the consequence is stated in: a refresh that
+# touches ONLY directory-form references, in two different sections. Under
+# raw string equality this prints `flat` with everything residual, which is
+# indistinguishable from a single-section proposal.
+fixture_f="$WORK/directory-form-only"
+mkdir -p "$fixture_f"
+nav_open "$fixture_f/proposed.md" acme
+nav_section "$fixture_f/proposed.md" acme references/acme-diagrams/
+nav_section "$fixture_f/proposed.md" acme/billing references/billing-refunds/
+cp "$fixture_f/proposed.md" "$fixture_f/live.md"
+manifest_from_list "$fixture_f/manifest.json" \
+  'references/acme-diagrams/acme-diagrams.md:modified' \
+  'references/billing-refunds/billing-refunds.md:modified'
+out="$(run_group "$fixture_f/manifest.json" "$fixture_f/proposed.md" "$fixture_f/live.md")"
+ok=1
+[ "$(printf '%s\n' "$out" | head -1)" = "grouped" ] || ok=0
+printf '%s\n' "$out" | grep -qxF "acme${TAB}1" || ok=0
+printf '%s\n' "$out" | grep -qxF "acme/billing${TAB}1" || ok=0
+report "$ok" "a proposal of nothing but directory-form references still groups by section rather than collapsing to flat" \
+  "grouping rule printed: ${out:-<nothing>}"
+
 # The grouping rule is documented, not only executed.
 ok=1
 printf '%s' "$review_flat" | grep -qE 'Catalog: <[a-z-]+>[^/]' || ok=0
