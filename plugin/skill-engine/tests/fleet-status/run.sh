@@ -6,7 +6,11 @@
 #                       contextualizer the locator enumerates, six columns
 #                       wide: root path, source count, last refresh (a date
 #                       or `never`), pending proposal (yes/no), review
-#                       state, and owner (or an em dash when unowned).
+#                       state, and owner (or an em dash when unowned). An
+#                       enumeration that found nothing renders no rows: the
+#                       locator's nothing-found sentence goes to stdout, so
+#                       neither the capture nor the derivation may treat it
+#                       as a root.
 #   fleet sweep       — REFRESH and SELF-AUDIT can run their whole workflow
 #                       once per enumerated contextualizer, in sequence,
 #                       each staging under its own `<slug>-context.proposed/`,
@@ -470,6 +474,65 @@ case "$(cell "$gamma_row" 6)" in *'@org/team-g'*) ;; *) ok=0 ;; esac
 [ "$(cell "$alpha_row" 6)" = "—" ] || ok=0
 [ "$(cell "$beta_row" 6)" = "—" ] || ok=0
 report "$ok" "fleet table: the sixth column shows the recorded owner and an em dash when none is recorded"
+
+# An enumeration that found nothing is not a fleet of one. The locator
+# writes its nothing-found diagnostic to *stdout* and exits 1, so a caller
+# that captures stdout without testing the status hands the derivation a
+# sentence where it expects absolute paths. Both ends are asserted: the
+# derivation must reject a line that is not a root, and the capture the
+# fleet section shows must not be the form that masks the locator's exit
+# status. The empty output is taken from the locator itself rather than
+# transcribed, so a reworded diagnostic cannot quietly stop being covered.
+EMPTY_ROOTS=""
+EMPTY_LOCATOR_RC=0
+if command -v git >/dev/null 2>&1; then
+  EMPTY_HOME="$(mktmp)"
+  EMPTY_CWD="$(mktmp)"
+  awk '/^```bash$/ && !f { f = 1; next } f && /^```$/ { exit } f { print }' \
+    "$LOCATOR_BLOCK_MD" | sed 's|^name="<name>"$|name=""|' \
+    > "$EMPTY_HOME/.locator.sh"
+  EMPTY_ROOTS="$(
+    cd "$EMPTY_CWD" && HOME="$EMPTY_HOME" LC_ALL=C \
+      bash "$EMPTY_HOME/.locator.sh" --all 2>/dev/null
+  )"
+  EMPTY_LOCATOR_RC=$?
+fi
+
+ok=1
+[ "$EMPTY_LOCATOR_RC" -ne 0 ] || ok=0
+[ -n "$EMPTY_ROOTS" ] || ok=0
+report "$ok" "fleet table: fixture — the locator's nothing-found path exits non-zero with its diagnostic on stdout"
+
+if [ -n "$FLEET_CODE" ] && [ -n "$EMPTY_ROOTS" ]; then
+  if [ "$FLEET_LANG" = python ]; then
+    EMPTY_OUT="$(cd "$FLEET_REPO" && HOME="$FLEET_HOME" LC_ALL=C \
+      CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" ctx_roots="$EMPTY_ROOTS" \
+      python3 -c "$FLEET_CODE" 2>&1)"
+    EMPTY_RC=$?
+  else
+    EMPTY_OUT="$(cd "$FLEET_REPO" && HOME="$FLEET_HOME" LC_ALL=C \
+      CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" ctx_roots="$EMPTY_ROOTS" \
+      bash -c "$FLEET_CODE" 2>&1)"
+    EMPTY_RC=$?
+  fi
+  ok=1
+  [ "$EMPTY_RC" -eq 0 ] || ok=0
+  [ "$(printf '%s' "$EMPTY_OUT" | grep -c '|' | tr -d ' ')" -eq 0 ] || ok=0
+  report "$ok" "fleet table: the locator's nothing-found diagnostic renders no rows rather than one bogus row"
+else
+  fixture_error "could not run the fleet derivation against the locator's nothing-found output"
+fi
+
+# The capture itself, not just the derivation: `export VAR=$(cmd)` always
+# exits 0, so the status the locator returns is thrown away before any
+# guard downstream can read it. `using-skill-engine` gets this right; the
+# fleet section must not show the masking form.
+# Matched against the raw file, not the normalized blob: what is banned is
+# a *statement* of that shape, and the section is free to quote the form in
+# prose while explaining why it is wrong.
+ok=1
+grep -qE '^[[:space:]]*export[[:space:]]+ctx_roots=\$\(' "$STATUS_SKILL_MD" && ok=0
+report "$ok" "fleet table: the enumeration capture does not mask the locator's exit status behind \`export\`"
 
 # ════════════════════════════════════════════════════════════════════════
 # fleet sweep — the whole workflow, once per enumerated contextualizer

@@ -50,10 +50,19 @@ which prints one absolute root per line and exits without setting
 `CTX_ROOT`. Supply the argv the block asks for rather than keeping a copy
 of it here:
 
-    export ctx_roots=$(bash -s -- --all <<'LOCATOR'
+    ctx_roots=$(bash -s -- --all <<'LOCATOR'
     …the shared block, pasted verbatim at run time…
     LOCATOR
-    )
+    ) || ctx_roots=""
+    export ctx_roots
+
+The assignment and the `export` are two statements on purpose. The locator
+writes its nothing-found diagnostic to **stdout**, not stderr, and exits 1;
+`export ctx_roots=$(…)` would report the `export`'s own success and throw
+that exit status away, leaving the diagnostic sentence in `ctx_roots` where
+a root path belongs. Splitting them puts the `|| ctx_roots=""` on the
+command substitution, which is the one thing that knows the locator failed —
+the same guard `using-skill-engine` applies to the same paste.
 
 The derivation reads that enumeration from `ctx_roots` in its environment
 (hence the `export`) and does nothing when the locator found nothing.
@@ -73,7 +82,12 @@ except AttributeError:
 NONE = "—"  # em dash: the cell for "no such thing recorded"
 
 roots = [line.strip() for line in os.environ.get("ctx_roots", "").splitlines()]
-roots = [r for r in roots if r]
+# Absolute paths only. The locator's enumeration prints nothing else, but
+# its *diagnostics* go to stdout too, so a caller that captured stdout
+# without testing the exit status leaves a prose sentence here. Filtering
+# on the one shape a root can have keeps that sentence from being rendered
+# as a fleet row, and keeps the guard below reachable.
+roots = [r for r in roots if r.startswith("/")]
 if not roots:
     # The locator found nothing. Nothing to report is not an error.
     sys.exit(0)
