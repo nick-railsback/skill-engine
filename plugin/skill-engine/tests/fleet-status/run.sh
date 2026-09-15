@@ -21,9 +21,13 @@
 #                       with an error naming both.
 #   owner seed        — `source-paths.json` admits an optional root-level
 #                       `owner` (non-empty string); bootstrap records the
-#                       first owner token of a root `*` rule in a project-root
-#                       CODEOWNERS file and omits the field when there is no
-#                       root rule; the contract chapter documents it.
+#                       first owner token of the LAST root `*` rule in the
+#                       first CODEOWNERS file it finds among
+#                       `.github/CODEOWNERS`, the repository root and
+#                       `docs/CODEOWNERS` — all resolved against the
+#                       repository root, not the working directory — and
+#                       omits the field when there is no root rule; the
+#                       contract chapter documents it.
 #   router purity     — the enumeration flag stays out of the REFRESH and
 #                       DISCOVER routers; REFRESH documents its fleet flag in
 #                       `refresh/references/drift-detection-and-phases.md`.
@@ -804,6 +808,81 @@ docs/ @org/docs-team
   [ -n "$CO_FIELD" ] && ok=0
   printf '%s' "$CO_STDOUT" | grep -qF -- '@org/docs-team' && ok=0
   report "$ok" "owner seed: a CODEOWNERS file with no root rule yields no owner"
+fi
+
+# GitHub resolves CODEOWNERS from three locations — `.github/CODEOWNERS`,
+# the repository root, and `docs/CODEOWNERS` — and `.github/` is by far the
+# most common. It also resolves them against the repository root, not
+# against whatever directory a command happens to run in. `owner` has no
+# other seed and no other writer, so on a repository that keeps its file in
+# any of those places the feature produces nothing at all: the key is
+# omitted, the fleet table's sixth column is an em dash on every row,
+# `review`'s "Name who signs" step says nothing, and the federated-review
+# policy has no data — indistinguishable from a repository that genuinely
+# has no owner.
+#
+# run_codeowners_in_repo <relative-path> <body> <cwd-subdir> — the same
+# extraction, run inside a real git repository with the file at a named
+# location and the working directory somewhere below the top level.
+run_codeowners_in_repo() {
+  local rel="$1" body="$2" sub="${3:-.}" d
+  d="$(mktmp)"
+  git_q "$d" init -q
+  mkdir -p "$d/$(dirname "$rel")" "$d/$sub" "$d/research"
+  printf '%s' "$body" > "$d/$rel"
+  printf '{"schema_version":1,"sources":[]}\n' > "$d/research/source-paths.json"
+  printf 'fixture\n' > "$d/README.md"
+  git_q "$d" add -A >/dev/null 2>&1
+  git_q "$d" commit -q -m fixture >/dev/null 2>&1
+  CO_STDOUT="$(cd "$d/$sub" && HOME="$d" LC_ALL=C CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+    bash -c "$CO_CODE" 2>&1)"
+  CO_FIELD="$(jq -r '.owner // empty' "$d/research/source-paths.json" 2>/dev/null)"
+}
+
+# co_found <token> — the runner reported that owner, by either channel.
+co_found() {
+  printf '%s' "$CO_STDOUT" | grep -qF -- "$1" && return 0
+  [ "$CO_FIELD" = "$1" ] && return 0
+  return 1
+}
+
+if [ -n "$CO_CODE" ] && command -v jq >/dev/null 2>&1 \
+   && command -v git >/dev/null 2>&1; then
+  for loc in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+    run_codeowners_in_repo "$loc" '*  @org/team-here
+'
+    ok=1
+    co_found '@org/team-here' || ok=0
+    report "$ok" "owner seed: a root rule in $loc is found"
+  done
+
+  # Resolved against the repository root, not the process working
+  # directory: a bootstrap run from a package subdirectory sees the same
+  # file GitHub would.
+  run_codeowners_in_repo CODEOWNERS '*  @org/team-deep
+' packages/billing
+  ok=1
+  co_found '@org/team-deep' || ok=0
+  report "$ok" "owner seed: the file is resolved against the repository root, so a run from a subdirectory still finds it"
+
+  # GitHub reads exactly one file, in that precedence order.
+  run_codeowners_in_repo .github/CODEOWNERS '*  @org/dot-github
+'
+  ok=1
+  co_found '@org/dot-github' || ok=0
+  report "$ok" "owner seed: .github/CODEOWNERS is consulted first"
+
+  # CODEOWNERS is last-match-wins: a later `*` rule supersedes an earlier
+  # one, so stopping at the first is reading a rule the forge has
+  # overridden.
+  run_codeowners_in_repo CODEOWNERS '*  @org/superseded
+docs/ @org/docs-team
+*  @org/final
+'
+  ok=1
+  [ "$CO_FIELD" = '@org/final' ] || printf '%s' "$CO_STDOUT" | grep -qF -- '@org/final' || ok=0
+  co_found '@org/superseded' && ok=0
+  report "$ok" "owner seed: the last root rule wins, as CODEOWNERS is last-match-wins"
 fi
 
 # ════════════════════════════════════════════════════════════════════════

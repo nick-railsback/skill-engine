@@ -302,18 +302,41 @@ collision — bootstrapping proceeds with no pause.
 
 A contextualizer records who owns it, so a pending proposal has somewhere
 to be routed and the fleet table STATUS renders has a last column. At
-bootstrap, if a `CODEOWNERS` file exists at the project root, read the
-**root rule** — the line whose pattern is `*` — and take its **first
-owner token** as the contextualizer's root-level `owner`:
+bootstrap, if a `CODEOWNERS` file exists, read the **root rule** — the
+line whose pattern is `*` — and take its **first owner token** as the
+contextualizer's root-level `owner`.
+
+Where to look, and in what order: `.github/CODEOWNERS`, then the
+repository root, then `docs/CODEOWNERS` — the three locations a forge
+resolves, with `.github/` by far the most common of them. The first of
+those that exists is the one file read, whether or not it carries a root
+rule, which is how the forge resolves it too. All three are resolved
+against the repository root rather than the working directory, so a
+bootstrap run from a package subdirectory sees the same file the forge
+does.
 
 <!-- doctrine:codeowners-seed:start -->
 ```bash
 owner=""
-if [ -f CODEOWNERS ]; then
-  # The root rule only: the first token on the `*` line. An earlier
-  # path-scoped rule (docs/, src/) owns that path, not the repository.
-  owner=$(awk '$1 == "*" { print $2; exit }' CODEOWNERS)
-fi
+# Resolved against the repository root, not the process working directory:
+# a bootstrap run from a package subdirectory must see the same file the
+# forge does. Outside a repository, the working directory is all there is.
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$repo_root" ] || repo_root="$PWD"
+for candidate in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+  [ -f "$repo_root/$candidate" ] || continue
+  # The root rule only: the owner on the `*` line. An earlier path-scoped
+  # rule (docs/, src/) owns that path, not the repository.
+  #
+  # No `exit`: CODEOWNERS is last-match-wins, so a later `*` rule
+  # supersedes an earlier one and stopping at the first reads a rule the
+  # forge has already overridden. The first token of the LAST `*` line is
+  # the answer.
+  owner=$(awk '$1 == "*" { o = $2 } END { if (o != "") print o }' "$repo_root/$candidate")
+  # GitHub reads exactly one file, in this precedence order, whether or
+  # not it carries a root rule.
+  break
+done
 if [ -n "$owner" ]; then
   printf '%s\n' "$owner"
 fi
@@ -322,10 +345,13 @@ fi
 
 The answer is the first token on the `*` line, never the first owner
 token in the file — a `CODEOWNERS` that scopes `docs/` before it scopes
-`*` still yields the `*` line's owner. When the file has no `*` rule, or
-no `CODEOWNERS` exists at all, the seed produces nothing and Step 3 omits
-the `owner` key entirely rather than guessing an owner from a
-path-scoped rule. The field is free-form and non-empty; the engine
+`*` still yields the `*` line's owner. And on the **last** `*` line, not
+the first: CODEOWNERS is last-match-wins, so a file that states `*` twice
+means the second one, and stopping at the first would record an owner the
+forge has already overridden. When the file has no `*` rule, or no
+`CODEOWNERS` exists in any of the three locations, the seed produces
+nothing and Step 3 omits the `owner` key entirely rather than guessing an
+owner from a path-scoped rule. The field is free-form and non-empty; the engine
 stores whatever token it reads and resolves it against nothing.
 
 ## Reachability probe — `--probe`
