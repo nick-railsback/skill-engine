@@ -1,6 +1,6 @@
 ---
 name: skill-engine-context
-description: "Answers questions about nick-railsback/skill-engine — the Claude Code plugin that scaffolds and maintains 'contextualizer' skills. Covers its workflows (bootstrap, discover, refresh, review, apply, self-audit, status), the source-paths.json and reference-file artifact contract, the four reference invariants and verify.sh checks, the staging/proposed review model, monorepo handling, and versioning. References load on demand from references/."
+description: "Answers questions about nick-railsback/skill-engine — the Claude Code plugin that scaffolds and maintains 'contextualizer' skills. Covers its workflows (bootstrap, discover, refresh, review, apply, self-audit, status), the source-paths.json and reference-file artifact contract, the four reference invariants and verify.sh checks, the staging/proposed review model, fleet mode (`--all` across many contextualizers), monorepo handling, and versioning. References load on demand from references/."
 ---
 
 # Context navigator
@@ -47,15 +47,15 @@ that corpus and its permalink-density lint expects upstream citations.
 
 | Reference | Description |
 |---|---|
-| [overview](references/nick-railsback-skill-engine-overview.md) | Start-here orientation: what skill-engine is, the four-part contextualizer anatomy (navigator + references/ + source-paths.json + verify.sh), the three install levels, the bootstrap→discover→review→apply lifecycle with the full command catalog, and how a contextualizer answers a question at runtime. |
+| [overview](references/nick-railsback-skill-engine-overview.md) | Start-here orientation: what skill-engine is, the four-part contextualizer anatomy (navigator + references/ + source-paths.json + verify.sh), the three install levels (including nested project roots), the bootstrap→discover→review→apply lifecycle with the full command catalog, the `--all` fleet flag, and how a contextualizer answers a question at runtime. |
 | [principles](references/nick-railsback-skill-engine-principles.md) | The engine's design philosophy — progressive disclosure, goal-given delegation to the model, consent-gated source materialization, treating crawled content as data, and the trust model (verify.sh checks + human reviewer + permalink density; run-to-run variance is expected). |
 | [artifact-contract](references/nick-railsback-skill-engine-artifact-contract.md) | The data contract: the research/source-paths.json per-source schema and its enums (kind/status/lifecycle.state), the four source kinds and url-XOR-path rules, reference-file shape (no frontmatter, depth-1, file vs directory form), git-managed permalink vs web-doc/external-doc provenance citations, the optional SKILL.json trijection, and the navigator 5K budget. |
 | [invariants](references/nick-railsback-skill-engine-invariants.md) | The four reference invariants (first-5K, depth-1, max-100-line-TOC, SHA-pin), the paragraph→permalink density rule, and the eleven verify.sh named checks with their PASS/FAIL/N-A/WARN semantics — what the gate enforces mechanically vs what the reviewer backstops. |
 | [discover-refresh](references/nick-railsback-skill-engine-discover-refresh.md) | The two content-generating pipelines — DISCOVER (writes new references) and REFRESH (re-checks against upstream) — their goal-given posture, in-scope filter, consent-gated clone cache, the staging/proposed-dir model with manifest.json, and the review/apply/discard gate commands. |
-| [workflows](references/nick-railsback-skill-engine-workflows.md) | The full `/skill-engine:` slash-command surface — using-skill-engine router, engine-bootstrap, review, apply, discard, status, new-reference, clean-cache, config-set — with where each writes (live vs staged) and the review→apply gate as its spine. |
+| [workflows](references/nick-railsback-skill-engine-workflows.md) | The full `/skill-engine:` slash-command surface — using-skill-engine router, engine-bootstrap, review, apply, discard, status, new-reference, clean-cache, config-set — with where each writes (live vs staged), the size-aware disagreement budget, the federated-review sign-off tiers, and the review→apply gate as its spine. |
 | [monorepo](references/nick-railsback-skill-engine-monorepo.md) | How the engine treats a single source that is itself a monorepo — DISCOVER-deferred workspace-member detection (packages/apps/libs/crates), the WARN-not-FAIL monorepo-coverage heuristic, and the monorepo-config.json slice adapter (path-scoped SHA, sparse-checkout). |
 | [versioning](references/nick-railsback-skill-engine-versioning.md) | How the engine versions and releases itself (single-version ecosystem, semver posture, gated manual release), the CI-enforced template/example byte-sync and version-parity doctrine, and how a stamped contextualizer migrates across major plugin revisions. |
-| [evaluation-and-audit](references/nick-railsback-skill-engine-evaluation-and-audit.md) | The read-only SELF-AUDIT drift checks (including Check 7 permalink density and Check 8 grounded-citation), the routing evaluation harness, and coverage-testing instruments — and how self-audit, verify.sh, and human review divide the trust responsibilities. |
+| [evaluation-and-audit](references/nick-railsback-skill-engine-evaluation-and-audit.md) | The read-only SELF-AUDIT drift checks (including Check 7 permalink density and Check 8 grounded-citation), the routing evaluation harness including cross-fleet installed-set mode, and coverage-testing instruments — and how self-audit, verify.sh, and human review divide the trust responsibilities. |
 
 ## Cross-reference map
 
@@ -67,6 +67,7 @@ that corpus and its permalink-density lint expects upstream citations.
 - **"`apply` won't run / it says review is required."** → `workflows` (the review→apply gate: apply blocks until `REVIEW.md` Step 2 is populated).
 - **"Why does the engine work this way?"** → `principles`; pairs with `invariants` (the trust model) and `discover-refresh` (goal-given delegation).
 - **"My source is a monorepo."** → `monorepo`; pairs with `discover-refresh` (how members become references).
+- **"I have many contextualizers — how do I operate them as a set?"** → `workflows` for `--all` on status/refresh/self-audit and the federated-review tiers; `overview` for the nested-root locator; `evaluation-and-audit` for cross-fleet routing eval.
 - **"What changed across versions / how do I upgrade a contextualizer?"** → `versioning`.
 
 ## Markdown style for generated references

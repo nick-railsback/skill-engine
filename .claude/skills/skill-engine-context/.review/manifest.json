@@ -3,9 +3,9 @@
   "entries": [
     {
       "path": "SKILL.md",
-      "status": "unchanged",
+      "status": "modified",
       "sha_before": "aa30428",
-      "sha_after": "aa30428"
+      "sha_after": "86021e5"
     },
     {
       "path": "evals/eval-viewer.html",
@@ -52,56 +52,56 @@
     {
       "path": "references/nick-railsback-skill-engine-artifact-contract.md",
       "status": "modified",
-      "sha_before": "453c253",
-      "sha_after": "b72cb24"
+      "sha_before": "b72cb24",
+      "sha_after": "9f057e4"
     },
     {
       "path": "references/nick-railsback-skill-engine-discover-refresh.md",
       "status": "modified",
-      "sha_before": "ea68178",
-      "sha_after": "fabe901"
+      "sha_before": "fabe901",
+      "sha_after": "8a51658"
     },
     {
       "path": "references/nick-railsback-skill-engine-evaluation-and-audit.md",
       "status": "modified",
-      "sha_before": "e39bda9",
-      "sha_after": "f3f7e25"
+      "sha_before": "f3f7e25",
+      "sha_after": "3301cc7"
     },
     {
       "path": "references/nick-railsback-skill-engine-invariants.md",
       "status": "modified",
-      "sha_before": "dcf780e",
-      "sha_after": "e985c50"
+      "sha_before": "e985c50",
+      "sha_after": "ddb4197"
     },
     {
       "path": "references/nick-railsback-skill-engine-monorepo.md",
       "status": "modified",
-      "sha_before": "523989d",
-      "sha_after": "6ec7a98"
+      "sha_before": "6ec7a98",
+      "sha_after": "e454d0f"
     },
     {
       "path": "references/nick-railsback-skill-engine-overview.md",
       "status": "modified",
-      "sha_before": "093bf72",
-      "sha_after": "4b00030"
+      "sha_before": "4b00030",
+      "sha_after": "a774fb0"
     },
     {
       "path": "references/nick-railsback-skill-engine-principles.md",
       "status": "modified",
-      "sha_before": "abeb293",
-      "sha_after": "f88b391"
+      "sha_before": "f88b391",
+      "sha_after": "68bddd1"
     },
     {
       "path": "references/nick-railsback-skill-engine-versioning.md",
       "status": "modified",
-      "sha_before": "03dcb60",
-      "sha_after": "55b539c"
+      "sha_before": "55b539c",
+      "sha_after": "9bc2872"
     },
     {
       "path": "references/nick-railsback-skill-engine-workflows.md",
       "status": "modified",
-      "sha_before": "8ff3475",
-      "sha_after": "0618e56"
+      "sha_before": "0618e56",
+      "sha_after": "4fdd551"
     },
     {
       "path": "research/.research-state.json",
@@ -112,8 +112,8 @@
     {
       "path": "research/source-paths.json",
       "status": "modified",
-      "sha_before": "e53d337",
-      "sha_after": "3dafc16"
+      "sha_before": "3dafc16",
+      "sha_after": "6b94713"
     },
     {
       "path": "verify.sh",
