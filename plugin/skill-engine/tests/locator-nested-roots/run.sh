@@ -6,7 +6,8 @@
 # Three kinds of cases:
 #   - executed cases extract the locator's fenced bash into a scratch file
 #     and run it against a scratch git repository the fixture builds itself
-#     (real `git init`/`add`/`commit`, so `git check-ignore` really answers)
+#     (real `git init`/`add`/`commit`, so a fixture can say what git does
+#     and does not track)
 #     with HOME pointed at an empty scratch home, so nothing about the
 #     developer's machine or this repository's own git state can leak in.
 #   - extraction cases pull the root-resolution assignment out on its own,
@@ -108,8 +109,15 @@ git_q() {
 #   included: .claude/skills/a-context                       (repo root)
 #             packages/billing/.claude/skills/b-context      (depth 4)
 #             services/x/y/.claude/skills/c-context          (depth 6)
-#   excluded: ignored/…/i-context        (git check-ignore reports it)
-#             node_modules/pkg/…/n-context  (tracked, NOT gitignored — so
+#             ignored/…/i-context          (git check-ignore reports it —
+#                                            counted anyway: whether git
+#                                            tracks a directory says
+#                                            nothing about whether a
+#                                            contextualizer is installed
+#                                            in it, and the sibling
+#                                            `cwd independence` section
+#                                            is what that rule exists for)
+#   excluded: node_modules/pkg/…/n-context  (tracked, NOT gitignored — so
 #                                            only a node_modules skip
 #                                            excludes it)
 #             .git/stash/…/g-context      (inside the git directory)
@@ -254,6 +262,7 @@ fi
 # ════════════════════════════════════════════════════════════════════════
 
 expected_nested="$REPO/.claude/skills/a-context
+$REPO/ignored/.claude/skills/i-context
 $REPO/packages/billing/.claude/skills/b-context
 $REPO/services/x/y/.claude/skills/c-context"
 expected_nested="$(printf '%s\n' "$expected_nested" | LC_ALL=C sort)"
@@ -270,9 +279,9 @@ fi
 if [ "$fence_ok" -eq 1 ]; then
   ok=1
   [ "$all_rc" -eq 0 ] || ok=0
-  [ "$(printf '%s\n' "$all_paths" | grep -c . || true)" -eq 3 ] || ok=0
+  [ "$(printf '%s\n' "$all_paths" | grep -c . || true)" -eq 4 ] || ok=0
   [ "$(printf '%s\n' "$all_paths" | LC_ALL=C sort)" = "$expected_nested" ] || ok=0
-  report "$ok" "nested discovery: contextualizers at the repo root, at packages/billing/, and at services/x/y/ are all located"
+  report "$ok" "nested discovery: contextualizers at the repo root, at packages/billing/, at services/x/y/ and under a gitignored directory are all located"
 
   # Every line an absolute path, and the whole listing already in sorted
   # order as printed — not merely sortable. A duplicate (the repo-root
@@ -304,11 +313,6 @@ if [ "$fence_ok" -eq 1 ]; then
   printf '%s\n' "$all_paths" | grep -qF "$REPO/packages/billing/.claude/skills/b-context" || ok=0
   printf '%s\n' "$all_paths" | grep -q 'node_modules' && ok=0
   report "$ok" "nested discovery: a tracked, non-ignored contextualizer under node_modules/ is not counted"
-
-  ok=1
-  printf '%s\n' "$all_paths" | grep -qF "$REPO/packages/billing/.claude/skills/b-context" || ok=0
-  printf '%s\n' "$all_paths" | grep -qF "$REPO/ignored/" && ok=0
-  report "$ok" "nested discovery: a directory git check-ignore reports is not counted"
 
   ok=1
   printf '%s\n' "$all_paths" | grep -qF "$REPO/packages/billing/.claude/skills/b-context" || ok=0
@@ -354,6 +358,62 @@ if [ "$fence_ok" -eq 1 ]; then
   [ "$bare_rc" -ne 0 ] || ok=0
   [ "$(printf '%s\n' "$bare_paths" | LC_ALL=C sort)" = "$expected_nested" ] || ok=0
   report "$ok" "nested discovery: several found across nested roots, none named and no enumeration requested, still lists them and exits non-zero"
+fi
+
+# ════════════════════════════════════════════════════════════════════════
+# cwd independence — the same repository enumerates the same set from
+# every directory inside it, including when `.claude/` is gitignored
+# ════════════════════════════════════════════════════════════════════════
+
+# `.claude/` in `.gitignore` is an ordinary setup: it is how a team keeps
+# per-developer agent config out of the repository. The fixture above
+# cannot exercise what that does to the enumeration — its ignored decoy is
+# a directory named `ignored/`, so an ignore filter only ever skips a
+# contextualizer that was never wanted. Under a gitignored `.claude/` the
+# same filter changes the *answer*, and asymmetrically: the fixed-root arm
+# resolves `$PWD/.claude/skills` with no filter at all, so which
+# contextualizers exist depends on which directory the session happens to
+# be sitting in.
+
+if [ "$fence_ok" -eq 1 ]; then
+  IGN_REPO="$WORK/ignored-claude-repo"
+  mkdir -p "$IGN_REPO"
+  git_q "$IGN_REPO" init -q
+  printf '.claude/\n' > "$IGN_REPO/.gitignore"
+  mk_ctx "$IGN_REPO/.claude/skills" root
+  mk_ctx "$IGN_REPO/packages/billing/.claude/skills" billing
+  printf 'fixture\n' > "$IGN_REPO/README.md"
+  git_q "$IGN_REPO" add -A >/dev/null 2>&1
+  git_q "$IGN_REPO" commit -q -m fixture >/dev/null 2>&1
+
+  ign_fixture_ok=1
+  if ! GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+      git -C "$IGN_REPO" check-ignore -q .claude 2>/dev/null; then
+    fixture_error "the gitignored-.claude fixture's .gitignore is not in force"
+    ign_fixture_ok=0
+  fi
+
+  if [ "$ign_fixture_ok" -eq 1 ]; then
+    ign_expected="$(printf '%s\n%s\n' \
+      "$IGN_REPO/.claude/skills/root-context" \
+      "$IGN_REPO/packages/billing/.claude/skills/billing-context" \
+      | LC_ALL=C sort)"
+
+    ign_from_root="$(run_script "$SCRIPT_ALL" "$IGN_REPO" --all | abs_lines)"
+    ign_from_sub="$(run_script "$SCRIPT_ALL" "$IGN_REPO/packages/billing" --all | abs_lines)"
+
+    ok=1
+    [ "$(printf '%s\n' "$ign_from_root" | LC_ALL=C sort)" = "$ign_expected" ] || ok=0
+    report "$ok" "cwd independence: with \`.claude/\` gitignored, an enumeration from the repository root finds both the root and the nested contextualizer"
+
+    ok=1
+    [ "$(printf '%s\n' "$ign_from_sub" | LC_ALL=C sort)" = "$ign_expected" ] || ok=0
+    report "$ok" "cwd independence: with \`.claude/\` gitignored, an enumeration from a package subdirectory finds the same two"
+
+    ok=1
+    [ "$(printf '%s\n' "$ign_from_root" | LC_ALL=C sort)" = "$(printf '%s\n' "$ign_from_sub" | LC_ALL=C sort)" ] || ok=0
+    report "$ok" "cwd independence: the set a fleet sweep operates on does not change with the invocation directory"
+  fi
 fi
 
 # ════════════════════════════════════════════════════════════════════════

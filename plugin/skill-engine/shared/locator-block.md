@@ -53,9 +53,19 @@ ctx_roots=$(
         (*) continue ;;
       esac
       # research/.research-state.json is the canonical setup-state marker:
-      # a lookalike directory without it is not a contextualizer.
+      # a lookalike directory without it is not a contextualizer. It is
+      # the only per-hit filter here, deliberately. A git check-ignore
+      # test used to run beside it, and `.claude/` in .gitignore -- the
+      # ordinary way a team keeps per-developer agent config out of the
+      # repository -- turned that test from a decoy skip into a change of
+      # answer: the fixed-root arm above filters $PWD/.claude/skills by
+      # nothing, so the same directory was enumerated or skipped
+      # depending on which directory the session happened to sit in, and
+      # a nested contextualizer under an ignored .claude/ was unreachable
+      # from anywhere but its own subtree. Decoys are kept out by this
+      # marker and by the prune list above, both of which answer a
+      # question about the directory rather than about git's index.
       [ -f "$hit/research/.research-state.json" ] || continue
-      if git -C "$base" check-ignore -q "$hit" 2>/dev/null; then continue; fi
       printf '%s\n' "$hit"
     done | LC_ALL=C sort
   fi
