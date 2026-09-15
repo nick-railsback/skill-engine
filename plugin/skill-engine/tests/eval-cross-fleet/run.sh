@@ -902,6 +902,74 @@ wrongref_no_flags() {
 each_renderer "no sibling fired, so nothing off-diagonal is flagged" \
   "$WRONGREF" wrongref_no_flags
 
+section "installed-set mode: the harness leaves no temp files behind"
+
+# ROOTS_FILE and READS_TMP are mktemp'd before the corpus validation runs,
+# and the trap that removed them was installed forty-odd lines later and on
+# INT/TERM only — no EXIT arm anywhere. `check_schema_version`'s `exit 65`
+# fires in the main shell, deliberately, and an exit runs no INT/TERM trap,
+# so both files survived every rejected-corpus run. The empty-roots path
+# hand-`rm`s the same pair, which is the tell that the general case was
+# noticed once and not generalised.
+LEAK="$T/leak"
+mkdir -p "$LEAK/tmp" "$LEAK/bad-context/references" "$LEAK/bad-context/evals"
+printf '# bad-one\n\nfixture reference.\n' > "$LEAK/bad-context/references/bad-one.md"
+cat > "$LEAK/bad-context/evals/evals.json" <<'JSON'
+{
+  "schema_version": 9,
+  "entries": [
+    {
+      "query": "bad query",
+      "expected": "bad-one",
+      "notes": "the corpus this harness must refuse.",
+      "persona": "domain-expert"
+    }
+  ]
+}
+JSON
+printf '%s\n' "$LEAK/bad-context" > "$LEAK/roots.txt"
+
+mkdir -p "$T/work-leak" "$T/state-leak"
+LEAK_RC=0
+(
+  cd "$T/work-leak" || exit 70
+  PATH="$T/bin:$PATH" STUB_STATE="$T/state-leak" TMPDIR="$LEAK/tmp" \
+    bash "$RUN_SUT" --installed-set "$LEAK/roots.txt" ignored \
+      "$T/work-leak/results-leak.json" >"$T/harness-leak.out" 2>"$T/harness-leak.err"
+) || LEAK_RC=$?
+
+leak_left="$(find "$LEAK/tmp" -type f 2>/dev/null | LC_ALL=C sort | tr '\n' ' ')"
+leak_why=""
+[ "$LEAK_RC" -eq 65 ] || leak_why="the rejected corpus exited $LEAK_RC, not 65;"
+[ -z "$leak_left" ] || leak_why="$leak_why temp files survived the refusal: $leak_left"
+if [ -z "$leak_why" ]; then
+  pass "a corpus the harness refuses takes its scratch files with it"
+else
+  fail "a corpus the harness refuses takes its scratch files with it" "$leak_why"
+fi
+
+# The same property on the ordinary path: a run that completes normally
+# leaves nothing either, so the assertion above cannot be satisfied by a
+# harness that simply never writes a scratch file.
+mkdir -p "$LEAK/tmp-ok" "$T/work-leak-ok" "$T/state-leak-ok"
+LEAK_OK_RC=0
+(
+  cd "$T/work-leak-ok" || exit 70
+  PATH="$T/bin:$PATH" STUB_STATE="$T/state-leak-ok" TMPDIR="$LEAK/tmp-ok" \
+    bash "$RUN_SUT" --installed-set "$ROOTS_FILE" ignored \
+      "$T/work-leak-ok/results-ok.json" >"$T/harness-leak-ok.out" 2>"$T/harness-leak-ok.err"
+) || LEAK_OK_RC=$?
+
+leak_ok_left="$(find "$LEAK/tmp-ok" -type f 2>/dev/null | LC_ALL=C sort | tr '\n' ' ')"
+leak_ok_why=""
+[ "$LEAK_OK_RC" -eq 0 ] || leak_ok_why="the run exited $LEAK_OK_RC; stderr in $T/harness-leak-ok.err;"
+[ -z "$leak_ok_left" ] || leak_ok_why="$leak_ok_why temp files survived a completed run: $leak_ok_left"
+if [ -z "$leak_ok_why" ]; then
+  pass "a run that completes normally leaves no scratch file behind either"
+else
+  fail "a run that completes normally leaves no scratch file behind either" "$leak_ok_why"
+fi
+
 section "installed-set mode: the pass predicate is scoped to the owning root"
 
 COLLIDE_ROOTS="$T/collide-roots.txt"

@@ -395,6 +395,16 @@ ROOTS_FILE=""
 READS_TMP=""
 INSTALLED_SLUGS=""
 INSTALLED_SET_JSON=""
+
+# Every scratch file this script creates, removed in one place. Guarded
+# expansions throughout: it is installed as an EXIT trap before some of
+# these variables are set, and runs under `set -u`.
+clean_scratch() {
+  rm -f ${TMP_RESULTS:+"$TMP_RESULTS"} \
+        ${ROOTS_FILE:+"$ROOTS_FILE"} \
+        ${READS_TMP:+"$READS_TMP"}
+}
+TMP_RESULTS=""
 if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
   # Consume the root list ONCE, into a file, before the entry loop exists.
   # That loop reads from a process substitution and run_one redirects the
@@ -403,6 +413,15 @@ if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
   # harness silently process one entry.
   ROOTS_FILE=$(mktemp "${TMPDIR:-/tmp}/run-eval-roots.XXXXXX")
   READS_TMP=$(mktemp "${TMPDIR:-/tmp}/run-eval-reads.XXXXXX")
+  # Installed immediately, and with an EXIT arm. Everything between here
+  # and the results-file trap below can leave the script: the corpus
+  # validation a few lines down calls check_schema_version, whose failure
+  # path is `exit 65` in the main shell -- deliberately, so a rejected
+  # corpus cannot be half-processed -- and an `exit` runs no INT/TERM
+  # trap. Without EXIT, both files above survived every refused run. The
+  # results-file trap below adds to this rather than replacing it; `trap`
+  # is per-signal, and clean_scratch is idempotent.
+  trap clean_scratch EXIT
   # `grep .` drops blank lines: the locator's --all enumeration ends with a
   # newline, and a trailing empty line would become an empty slug.
   if [ "$INSTALLED_SET_ARG" = "-" ]; then
@@ -410,12 +429,10 @@ if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
   elif [ -f "$INSTALLED_SET_ARG" ]; then
     grep . "$INSTALLED_SET_ARG" > "$ROOTS_FILE" || true
   else
-    rm -f "$ROOTS_FILE" "$READS_TMP"
     echo "ERROR: installed-set roots file not found at $INSTALLED_SET_ARG" >&2
     exit 65
   fi
   if [ ! -s "$ROOTS_FILE" ]; then
-    rm -f "$ROOTS_FILE" "$READS_TMP"
     echo "ERROR: --installed-set was supplied no contextualizer roots." >&2
     exit 65
   fi
@@ -445,7 +462,13 @@ TMP_RESULTS="${RESULTS_PATH}.tmp"
 # without it bash resumes the script after the trap, the >> appends
 # recreate the deleted file without its JSON header or earlier entries,
 # and the final mv publishes the corrupt results file with exit 0.
-trap 'rm -f "$TMP_RESULTS" ${ROOTS_FILE:+"$ROOTS_FILE"} ${READS_TMP:+"$READS_TMP"}; exit 130' INT TERM
+#
+# Re-armed here rather than replaced: installed-set mode already set an
+# EXIT trap beside its first mktemp, and this pair adds TMP_RESULTS to
+# what the same function removes. The default path reaches these two
+# without having set the earlier one, which is why EXIT is repeated.
+trap 'clean_scratch; exit 130' INT TERM
+trap clean_scratch EXIT
 
 start_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 {

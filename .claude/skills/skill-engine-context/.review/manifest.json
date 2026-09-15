@@ -40,8 +40,8 @@
     {
       "path": "evals/run-eval.sh",
       "status": "unchanged",
-      "sha_before": "8839efd",
-      "sha_after": "8839efd"
+      "sha_before": "b9a21c7",
+      "sha_after": "b9a21c7"
     },
     {
       "path": "evals/run-note.md",
