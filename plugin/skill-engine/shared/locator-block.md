@@ -36,8 +36,22 @@ ctx_roots=$(
   if [ -n "$base" ]; then
     # No -mindepth here: it suppresses expression evaluation for shallow
     # entries, which silently defeats -prune on a top-level node_modules.
+    #
+    # The prune list is the whole cost control. Six levels of an entire
+    # working repository is a stat storm on the monorepo topology the
+    # fleet layer is aimed at, and this walk is on the hot path of every
+    # engine surface -- status, discover, refresh, self-audit,
+    # new-reference, review and the router all run this block first,
+    # including the read-only ones a user runs casually. Everything named
+    # here is somewhere a build or a package manager writes, i.e.
+    # somewhere nobody installs a contextualizer on purpose. A
+    # contextualizer that really does live under one of these names is
+    # reachable by naming it; the fleet enumeration skips it.
     nested=$(find "$base" -maxdepth 6 \
-      \( -name .git -o -name node_modules \) -prune -o \
+      \( -name .git -o -name node_modules -o -name vendor -o -name target \
+         -o -name dist -o -name build -o -name out -o -name .next \
+         -o -name .venv -o -name venv -o -name __pycache__ \
+         -o -name .terraform -o -name Pods \) -prune -o \
       -type d -name "${name:-*}-context" -print 2>/dev/null || true)
     printf '%s\n' "$nested" | while IFS= read -r hit; do
       [ -n "$hit" ] || continue

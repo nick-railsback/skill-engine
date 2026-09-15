@@ -139,6 +139,15 @@ build_scratch_repo() {
   mk_ctx "$repo/packages/ui/.claude/skills" u nomarker
   mk_ctx "$repo/one/two/three/four/.claude/skills" d
 
+  # One marker-carrying decoy per pruned build/vendor directory name, so
+  # the prune list is asserted by name rather than by however many names
+  # the expression happens to carry. Each is at a depth the walk would
+  # otherwise reach.
+  local pruned
+  for pruned in $PRUNED_DIR_NAMES; do
+    mk_ctx "$repo/$pruned/.claude/skills" "p${pruned}"
+  done
+
   printf 'fixture\n' > "$repo/README.md"
   git_q "$repo" add -A -f -- . ':!ignored' >/dev/null 2>&1
   git_q "$repo" commit -q -m fixture >/dev/null 2>&1
@@ -153,6 +162,27 @@ extract_fence() {
   awk '/^```bash$/ && !f { f = 1; next }
        f && /^```$/ { exit }
        f { print }' "$BLOCK_MD"
+}
+
+# PRUNED_DIR_NAMES — the build/vendor directory names the walk prunes,
+# read out of the locator's own `-prune` expression rather than
+# transcribed here. A name added there without a decoy in the fixture
+# would otherwise go untested, and a decoy for a name the expression
+# dropped fails loudly instead of quietly passing. `.git` and
+# `node_modules` carry their own named assertions and are left out of
+# this sweep.
+pruned_dir_names() {
+  # The parenthesized prune group only. Scanning from the `-prune` token
+  # to the `-print` one instead would also sweep up the `-name
+  # "${name:-*}-context"` that selects the hits, and a fixture decoy
+  # built from that reads as a contextualizer rather than as a decoy.
+  extract_fence \
+    | tr '\n' ' ' \
+    | sed -n 's/.*\\( \(.*\) \\) -prune.*/\1/p' \
+    | tr ' ' '\n' \
+    | awk 'prev == "-name" { print } { prev = $0 }' \
+    | grep -v -x -e '.git' -e 'node_modules' \
+    | LC_ALL=C sort -u
 }
 
 # prep_script <dest> <name> <echo-ctx-root: yes|no> — the locator script
@@ -232,7 +262,12 @@ if ! command -v git >/dev/null 2>&1; then
   fence_ok=0
 fi
 
+PRUNED_DIR_NAMES=""
 if [ "$fence_ok" -eq 1 ]; then
+  PRUNED_DIR_NAMES="$(pruned_dir_names)"
+  if [ -z "$PRUNED_DIR_NAMES" ]; then
+    fixture_error "the locator's -prune expression names no build/vendor directory beyond .git and node_modules"
+  fi
   build_scratch_repo "$REPO"
   if ! GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
       git -C "$REPO" check-ignore -q ignored 2>/dev/null; then
@@ -313,6 +348,20 @@ if [ "$fence_ok" -eq 1 ]; then
   printf '%s\n' "$all_paths" | grep -qF "$REPO/packages/billing/.claude/skills/b-context" || ok=0
   printf '%s\n' "$all_paths" | grep -q 'node_modules' && ok=0
   report "$ok" "nested discovery: a tracked, non-ignored contextualizer under node_modules/ is not counted"
+
+  # The walk reaches six levels of the whole working repository and runs
+  # on the hot path of every engine surface, read-only ones included. The
+  # names below are where a large repository keeps the files nobody
+  # installs a contextualizer into, and skipping them is the difference
+  # between a stat storm and a bounded scan on the monorepo topology the
+  # fleet layer is aimed at.
+  ok=1
+  printf '%s\n' "$all_paths" | grep -qF "$REPO/packages/billing/.claude/skills/b-context" || ok=0
+  while IFS= read -r pruned; do
+    [ -n "$pruned" ] || continue
+    printf '%s\n' "$all_paths" | grep -qF "$REPO/$pruned/" && ok=0
+  done <<< "$PRUNED_DIR_NAMES"
+  report "$ok" "nested discovery: a marker-carrying contextualizer under each pruned build/vendor directory is not counted"
 
   ok=1
   printf '%s\n' "$all_paths" | grep -qF "$REPO/packages/billing/.claude/skills/b-context" || ok=0
