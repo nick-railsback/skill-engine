@@ -902,6 +902,75 @@ wrongref_no_flags() {
 each_renderer "no sibling fired, so nothing off-diagonal is flagged" \
   "$WRONGREF" wrongref_no_flags
 
+section "installed-set mode: transcript scanning is per run, not per slug per run"
+
+# INSTALLED_SLUGS is computed once and never changes, but the escape and
+# the scan were redone for every slug on every run of every query: two
+# forks per slug per run. A forty-contextualizer fleet with three hundred
+# in-scope queries at three runs each is 40 x 300 x 3 x 2 forks to
+# re-derive a constant — avoidable shell cost in the one mode whose selling
+# point is that it scales to a fleet.
+#
+# Counted rather than timed: a wall-clock assertion on a fixture this small
+# measures the machine. A `grep` shim that logs its own argv and delegates
+# to the real one records every scan the run makes; the fired-set scans are
+# the ones naming a references/ path under a -context root.
+GREPS="$T/grepshim"
+mkdir -p "$GREPS/bin" "$T/work-greps" "$T/state-greps"
+REAL_GREP="$(command -v grep)"
+GREP_ARGV_LOG="$GREPS/argv.log"
+: > "$GREP_ARGV_LOG"
+cat > "$GREPS/bin/grep" <<SHIM
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "\$GREP_ARGV_LOG"
+exec "$REAL_GREP" "\$@"
+SHIM
+chmod +x "$GREPS/bin/grep"
+
+greps_why=""
+if [ -z "$REAL_GREP" ]; then
+  greps_why="grep is not on PATH;"
+else
+  GREPS_RC=0
+  (
+    cd "$T/work-greps" || exit 70
+    PATH="$GREPS/bin:$T/bin:$PATH" STUB_STATE="$T/state-greps" \
+      GREP_ARGV_LOG="$GREP_ARGV_LOG" \
+      bash "$RUN_SUT" --installed-set "$ROOTS_FILE" ignored \
+        "$T/work-greps/results-greps.json" \
+        >"$T/harness-greps.out" 2>"$T/harness-greps.err"
+  ) || GREPS_RC=$?
+
+  greps_results="$T/work-greps/results-greps.json"
+  if [ "$GREPS_RC" -ne 0 ] || [ ! -f "$greps_results" ]; then
+    greps_why="the instrumented run exited $GREPS_RC with no results file; stderr in $T/harness-greps.err;"
+  else
+    # A run scans a transcript for references/ paths under a -context root
+    # exactly twice: once for the pass predicate, once for the fired set.
+    # The bound is therefore two per run, and the count is taken over every
+    # such scan rather than over one spelling of one of them — a change
+    # that made the fired set per-slug again would blow the bound whatever
+    # grep flags it reached for. Runs and slugs are read back off the
+    # record the run itself wrote, so the bound tracks the fixture rather
+    # than a number transcribed here.
+    greps_runs="$(jq '[.entries[].runs[]] | length' "$greps_results" 2>/dev/null)"
+    greps_slugs="$(jq '.installed_set | length' "$greps_results" 2>/dev/null)"
+    greps_scans="$(grep -c -- '-context/references/' "$GREP_ARGV_LOG" 2>/dev/null || true)"
+    greps_scans="${greps_scans:-0}"
+    greps_bound=$(( ${greps_runs:-0} * 2 ))
+    if [ "${greps_runs:-0}" -lt 1 ] || [ "${greps_slugs:-0}" -lt 2 ]; then
+      greps_why="the fixture produced ${greps_runs:-0} runs across ${greps_slugs:-0} slugs, too few to tell the two costs apart;"
+    elif [ "$greps_scans" -gt "$greps_bound" ]; then
+      greps_why="$greps_scans reference-path scans for $greps_runs runs (bound $greps_bound) across $greps_slugs installed slugs — the cost still grows with the installed set;"
+    fi
+  fi
+fi
+if [ -z "$greps_why" ]; then
+  pass "the per-run transcript scanning does not grow with the size of the installed set"
+else
+  fail "the per-run transcript scanning does not grow with the size of the installed set" "$greps_why"
+fi
+
 section "installed-set mode: the harness leaves no temp files behind"
 
 # ROOTS_FILE and READS_TMP are mktemp'd before the corpus validation runs,

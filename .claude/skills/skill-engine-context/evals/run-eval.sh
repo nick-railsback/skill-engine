@@ -364,18 +364,29 @@ emit_fleet_entries() {
 
 # The installed slugs that fired on one run. A navigator has fired when the
 # run's transcript carries a Read of a reference under that navigator's own
-# references/ directory; the slug is regex-escaped and the path end-anchored
-# the same way run_one escapes and anchors `expected`. INSTALLED_SLUGS is
-# already sorted, so the emitted array is too.
+# references/ directory; the slugs are regex-escaped and the path
+# end-anchored the same way run_one escapes and anchors `expected`.
+#
+# ONE scan per run, not one per slug per run. INSTALLED_SLUGS is computed
+# once and never changes, so INSTALLED_SLUGS_RE — the escaped alternation —
+# is built once with it, below, and this reads which of its branches
+# matched rather than asking the same question once per slug. The loop this
+# replaces forked an escape and a grep for every slug on every run of every
+# query: a forty-contextualizer fleet with three hundred in-scope queries at
+# three runs each spent ~72,000 forks re-deriving a constant, in the one
+# mode whose whole point is that it scales to a fleet.
+#
+# `sort -u` keeps the output sorted and deduplicated, which is what
+# INSTALLED_SLUGS being sorted gave the old loop for free.
 fired_slugs() {
   local reads_file="$1"
-  local slug slug_re out=""
-  # shellcheck disable=SC2086 # word-split is intended: one slug per line
-  for slug in $INSTALLED_SLUGS; do
-    slug_re=$(printf '%s' "$slug" | sed -e 's/[][\.*^$+?(){}|\\\/]/\\&/g')
-    if grep -qE "/${slug_re}-context/references/[^/]*\\.md\$" "$reads_file"; then
-      if [ -n "$out" ]; then out="$out, \"$slug\""; else out="\"$slug\""; fi
-    fi
+  local slug out=""
+  [ -n "$INSTALLED_SLUGS_RE" ] || { printf ''; return 0; }
+  for slug in $(grep -oE "/(${INSTALLED_SLUGS_RE})-context/references/[^/]*\\.md\$" \
+                  "$reads_file" 2>/dev/null \
+                | sed -e 's#^/##' -e 's#-context/references/.*$##' \
+                | LC_ALL=C sort -u); do
+    if [ -n "$out" ]; then out="$out, \"$slug\""; else out="\"$slug\""; fi
   done
   printf '%s' "$out"
 }
@@ -394,6 +405,7 @@ emit_run_entries() {
 ROOTS_FILE=""
 READS_TMP=""
 INSTALLED_SLUGS=""
+INSTALLED_SLUGS_RE=""
 INSTALLED_SET_JSON=""
 
 # Every scratch file this script creates, removed in one place. Guarded
@@ -446,6 +458,11 @@ if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
       printf '%s\n' "${_base%-context}"
     done < "$ROOTS_FILE" | LC_ALL=C sort -u)
   unset _root _base
+  # The escaped alternation fired_slugs scans with, built once here beside
+  # the set it is derived from rather than re-derived per slug per run.
+  INSTALLED_SLUGS_RE=$(printf '%s\n' "$INSTALLED_SLUGS" \
+    | sed -e 's/[][\.*^$+?(){}|\\\/]/\\&/g' \
+    | awk 'NF { printf "%s%s", (n++ ? "|" : ""), $0 }')
   INSTALLED_SET_JSON=$(printf '%s\n' "$INSTALLED_SLUGS" | awk '
     NF { s = $0; gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s)
          printf "%s\"%s\"", (n++ ? ", " : ""), s }')
