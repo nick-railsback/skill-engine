@@ -1,6 +1,18 @@
 ---
 name: <contextualizer-slug>-context
 description: "Answers questions about the configured source(s). References load on demand from references/. Use when working in this contextualizer's domain."
+#
+# Optional third key: paths.
+#
+# It scopes a nested or per-slice contextualizer to the part of the tree it
+# answers for, so the platform loads it only while work is happening there.
+# A contextualizer installed at one of the standard .claude/skills/ roots
+# answers for everything under that repo and omits the key.
+#
+# To use it, strip the leading "# " from the two lines below and replace the
+# globs with the paths this contextualizer covers.
+# paths:
+#   - "packages/billing/**"
 ---
 
 # Context navigator
