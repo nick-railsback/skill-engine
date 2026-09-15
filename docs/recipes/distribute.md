@@ -113,10 +113,13 @@ resolves two user-level roots:
 - `~/.claude/skills/`
 - `~/.claude/local/skills/`
 
-At each one it runs `find "$root" -mindepth 1 -maxdepth 1 -type d -name
-'*-context'`. That is the whole contract: the contextualizer directories must
-be the **immediate children of one of those two roots**. Depth 1, nothing
-deeper.
+At each one it runs `find "$root" -mindepth 1 -maxdepth 1 \( -type d -o
+-type l \) -name '*-context'`. That is the whole contract: the
+contextualizer directories must be the **immediate children of one of those
+two roots**. Depth 1, nothing deeper — but a child may be a directory *or* a
+symlink to one, which is what makes the second shape below work. A symlink
+whose target no longer exists is skipped rather than reported as an
+install.
 
 Two ways to land them there, and both are fine:
 
@@ -147,9 +150,20 @@ this is the first thing to check.
 
 (The engine does scan more deeply than depth 1 in one place — contextualizers
 that sit beside the slice of a repository they describe, found under any
-`.claude/skills/` below the *working repository's* root. That nested scan
-deliberately skips the three fixed roots, so it is not a fallback that rescues
-a mis-cloned user-level install.)
+`.claude/skills/` below the *working repository's* root, to six levels,
+skipping the directories a build or a package manager writes: `.git`,
+`node_modules`, `vendor`, `target`, `dist`, `build`, `out`, `.next`, `.venv`,
+`venv`, `__pycache__`, `.terraform`, `Pods`. That nested scan deliberately
+skips the three fixed roots, so it is not a fallback that rescues a
+mis-cloned user-level install.)
+
+One more place the scan does not reach: a **Shape 1** plugin install lands
+under `~/.claude/plugins/`, which is none of the three roots. Claude Code
+loads those skills, but the engine's own workflows do not see them — so a
+maintainer who dogfoods their own published plugin will find
+`/skill-engine:status` does not list it. Work on the contextualizer in the
+repository it is published from, or install it a second time by one of the
+two shapes above.
 
 ## Which shape fits
 

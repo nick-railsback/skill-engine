@@ -24,7 +24,24 @@ ctx_roots=$(
     [ -d "$root" ] || continue
     # Quoted "${name:-*}" reaches find unexpanded: a named invocation
     # matches exactly <name>-context, a bare one globs *-context.
-    find "$root" -mindepth 1 -maxdepth 1 -type d -name "${name:-*}-context" 2>/dev/null
+    #
+    # -type l alongside -type d: find defaults to -P, so a symlink
+    # pointing at a directory has type l, and docs/recipes/distribute.md
+    # recommends exactly that install -- keep the clone wherever
+    # repositories are kept, symlink each <slug>-context/ into a root --
+    # for a repository holding anything besides contextualizers. Asking
+    # only for -type d made every contextualizer installed that way
+    # invisible to every engine surface, with no error anywhere.
+    find "$root" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) \
+      -name "${name:-*}-context" 2>/dev/null
+  done | while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    # -d follows the link, so a symlink left dangling by a clone that
+    # moved or was deleted is not reported as an installed
+    # contextualizer. Order is preserved: the search order above is what
+    # decides which root wins for a named match.
+    [ -d "$hit" ] || continue
+    printf '%s\n' "$hit"
   done
   # Contextualizers installed beside the slice of the repository they
   # describe: any .claude/skills/ below the repository root, bounded at
@@ -52,7 +69,7 @@ ctx_roots=$(
          -o -name dist -o -name build -o -name out -o -name .next \
          -o -name .venv -o -name venv -o -name __pycache__ \
          -o -name .terraform -o -name Pods \) -prune -o \
-      -type d -name "${name:-*}-context" -print 2>/dev/null || true)
+      \( -type d -o -type l \) -name "${name:-*}-context" -print 2>/dev/null || true)
     printf '%s\n' "$nested" | while IFS= read -r hit; do
       [ -n "$hit" ] || continue
       parent=${hit%/*}

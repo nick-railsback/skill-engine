@@ -274,6 +274,23 @@ for anchor in 'symlink' 'symbolic link'; do
 done
 report "$ok" "depth-1 layout: the recipe gives both ways to land them there — cloning the repository as the root, or one symlink per contextualizer"
 
+# Recommending the symlink shape is only worth anything if the locator can
+# see one. `find` defaults to -P, so a symlink pointing at a directory has
+# type `l`, not `d` — and this recipe quotes the locator's own find
+# expression fifteen lines above the bullet that tells a reader to use
+# symlinks. The two must agree, and each is checked against its own file so
+# that fixing one without the other goes red.
+LOCATOR_BLOCK_MD="$PLUGIN_ROOT/shared/locator-block.md"
+LOCATOR_FLAT="$(flatten "$LOCATOR_BLOCK_MD")"
+
+ok=1
+window_has "$LOCATOR_FLAT" '-maxdepth 1' 200 200 '\-type l' || ok=0
+report "$ok" "depth-1 layout: the locator's own depth-1 search matches a symlink, so the shape the recipe recommends is reachable"
+
+ok=1
+window_has "$RECIPE" '-maxdepth 1' 200 200 '\-type l' || ok=0
+report "$ok" "depth-1 layout: the find expression the recipe quotes as the contract is the one the locator runs"
+
 ok=0
 # Two requirements on the same window rather than one alternation of
 # phrasings: a negation, and a verb about finding or loading. Which words a

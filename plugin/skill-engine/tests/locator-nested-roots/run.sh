@@ -466,6 +466,76 @@ if [ "$fence_ok" -eq 1 ]; then
 fi
 
 # ════════════════════════════════════════════════════════════════════════
+# symlinked installs — the distribution recipe's second shape: a clone
+# kept elsewhere, with one symlink per contextualizer into a root
+# ════════════════════════════════════════════════════════════════════════
+
+# `find` defaults to -P, so a symlink pointing at a directory has type `l`,
+# not `d`. A locator that asks only for `-type d` sees none of the
+# contextualizers installed the way `docs/recipes/distribute.md` recommends
+# for a repository holding anything besides contextualizers.
+
+if [ "$fence_ok" -eq 1 ]; then
+  LINK_CLONE="$WORK/clone"
+  LINK_HOME="$(mktmp)"
+  LINK_REPO="$(mktmp)"
+  mkdir -p "$LINK_CLONE" "$LINK_HOME/.claude/skills" "$LINK_REPO"
+  git_q "$LINK_REPO" init -q
+  printf 'fixture\n' > "$LINK_REPO/README.md"
+
+  # The working copy, kept wherever repositories are kept.
+  mk_ctx "$LINK_CLONE" linked
+  mk_ctx "$LINK_CLONE" nested-linked
+  # One symlink per contextualizer into the user-level root, plus one left
+  # dangling by a clone that moved.
+  ln -s "$LINK_CLONE/linked-context" "$LINK_HOME/.claude/skills/linked-context"
+  ln -s "$LINK_CLONE/gone-context"   "$LINK_HOME/.claude/skills/gone-context"
+  # And the same gesture at the project level, beside the slice it describes.
+  mkdir -p "$LINK_REPO/packages/billing/.claude/skills"
+  ln -s "$LINK_CLONE/nested-linked-context" \
+    "$LINK_REPO/packages/billing/.claude/skills/nested-linked-context"
+
+  saved_home="$SCRATCH_HOME"
+  SCRATCH_HOME="$LINK_HOME"
+  link_out="$(run_script "$SCRIPT_ALL" "$LINK_REPO" --all)"
+  link_rc=$?
+  SCRATCH_HOME="$saved_home"
+  link_paths="$(printf '%s\n' "$link_out" | abs_lines)"
+
+  ok=1
+  [ "$link_rc" -eq 0 ] || ok=0
+  printf '%s\n' "$link_paths" \
+    | grep -qF "$LINK_HOME/.claude/skills/linked-context" || ok=0
+  report "$ok" "symlinked installs: a user-level contextualizer installed as a symlink into the root is enumerated"
+
+  ok=1
+  printf '%s\n' "$link_paths" \
+    | grep -qF "$LINK_REPO/packages/billing/.claude/skills/nested-linked-context" || ok=0
+  report "$ok" "symlinked installs: a nested project-level contextualizer installed as a symlink is enumerated"
+
+  ok=1
+  printf '%s\n' "$link_paths" | grep -qF 'gone-context' && ok=0
+  report "$ok" "symlinked installs: a symlink left dangling by a moved or deleted clone is not counted as an install"
+
+  # And the named path, not only the enumeration: every workflow that
+  # resolves a single CTX_ROOT goes through the same find.
+  link_named_script="$WORK/locator-linked.sh"
+  if prep_script "$link_named_script" "linked" yes; then
+    SCRATCH_HOME="$LINK_HOME"
+    link_named_out="$(run_script "$link_named_script" "$LINK_REPO")"
+    link_named_rc=$?
+    SCRATCH_HOME="$saved_home"
+    ok=1
+    [ "$link_named_rc" -eq 0 ] || ok=0
+    [ "$(printf '%s\n' "$link_named_out" | abs_lines | tail -n1)" \
+      = "$LINK_HOME/.claude/skills/linked-context" ] || ok=0
+    report "$ok" "symlinked installs: a named lookup resolves CTX_ROOT to the symlink path"
+  else
+    fixture_error "the locator's name placeholder could not be substituted for the symlink case"
+  fi
+fi
+
+# ════════════════════════════════════════════════════════════════════════
 # named lookup preserved — behavior for the three fixed roots, the
 # single-match case, and the zero-match diagnostics is untouched
 # ════════════════════════════════════════════════════════════════════════
