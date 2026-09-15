@@ -534,6 +534,25 @@ ok=1
 grep -qE '^[[:space:]]*export[[:space:]]+ctx_roots=\$\(' "$STATUS_SKILL_MD" && ok=0
 report "$ok" "fleet table: the enumeration capture does not mask the locator's exit status behind \`export\`"
 
+# The shared block is not runnable as pasted: its third line is
+# `name="<name>"`, and a fleet sweep has no name to put there. A surface
+# that says "verbatim" and stops has told the model to paste a fence whose
+# `find -name "<name>-context"` matches nothing — which is the locator's
+# exit-1 path, i.e. the row the assertion above bans, arriving by a second
+# route. `using-skill-engine` names the substitution at its own paste; each
+# surface that documents the flag must name it too.
+for pair in "STATUS:$STATUS_N" "SELF-AUDIT:$SELF_AUDIT_N" "REFRESH:$DRIFT_N"; do
+  label="${pair%%:*}"
+  blob="${pair#*:}"
+  ok=1
+  # The substituted spelling itself, not a paraphrase: every one of these
+  # files already carries "substitute it (or the empty string) for <name>"
+  # in its single-contextualizer section, close enough to the flag to
+  # satisfy a looser match without saying anything about the fleet paste.
+  near_window "$blob" '--all' 700 700 'name=""' || ok=0
+  report "$ok" "fleet table: $label's enumeration paste says the block's \`name\` line is substituted to \`name=\"\"\`"
+done
+
 # ════════════════════════════════════════════════════════════════════════
 # fleet sweep — the whole workflow, once per enumerated contextualizer
 # ════════════════════════════════════════════════════════════════════════

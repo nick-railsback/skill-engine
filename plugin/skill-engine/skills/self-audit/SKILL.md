@@ -47,8 +47,11 @@ every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 
 `/skill-engine:self-audit --all` audits every contextualizer the locator
 enumerates rather than one. Run the script in
-[`shared/locator-block.md`](../../shared/locator-block.md) with `--all` to
-get the roots, one absolute path per line, then run the eight drift checks
+[`shared/locator-block.md`](../../shared/locator-block.md) with `--all` —
+and with its `name="<name>"` line substituted to `name=""`, since a fleet
+run names no contextualizer and the block's `find -name "<name>-context"`
+would otherwise match nothing — to get the roots, one absolute path per
+line, then run the eight drift checks
 against each enumerated contextualizer in turn, in sequence — a sweep is
 the single-contextualizer audit repeated, not a different audit, and the
 checks stay read-only throughout.

@@ -6,7 +6,10 @@ The pre-flight guards and migrations REFRESH runs before touching any source, pl
 
 `--all` sweeps the fleet. Given `--all`, REFRESH resolves no single
 `CTX_ROOT`: it runs the script in
-[`shared/locator-block.md`](../../shared/locator-block.md) with `--all` to
+[`shared/locator-block.md`](../../shared/locator-block.md) with `--all` —
+and with its `name="<name>"` line substituted to `name=""`, since a fleet
+run names no contextualizer and the block's `find -name "<name>-context"`
+would otherwise match nothing — to
 enumerate the installed contextualizers, then runs the whole numbered
 sequence below once for each enumerated contextualizer, in turn. Each one
 sweeps its own tree and stages — or declines to stage — its own proposal

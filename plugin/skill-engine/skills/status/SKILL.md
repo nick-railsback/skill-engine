@@ -51,10 +51,15 @@ which prints one absolute root per line and exits without setting
 of it here:
 
     ctx_roots=$(bash -s -- --all <<'LOCATOR'
-    …the shared block, pasted verbatim at run time…
+    …the shared block at run time, with its `name="<name>"` line
+    substituted to `name=""` — a fleet run names no contextualizer…
     LOCATOR
     ) || ctx_roots=""
     export ctx_roots
+
+That substitution is not optional. Pasted with `<name>` left in place, the
+block's `find -name "<name>-context"` matches nothing and the locator takes
+its exit-1 path, which is the empty enumeration above by a second route.
 
 The assignment and the `export` are two statements on purpose. The locator
 writes its nothing-found diagnostic to **stdout**, not stderr, and exits 1;
