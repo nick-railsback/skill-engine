@@ -75,24 +75,43 @@ When `REVIEW.md` exists and the three Step-1 lines no longer contain the literal
    | each further 40 begun | both bounds rise by 2 |
    | 321 or more | 21–25 |
 
-   Both bounds rise together, so the window stays four wide at every proposal size, and both stop at the cap of 25 — the largest proposals ask for 21–25 and never more, because a fixed quota on a 5,000-file proposal is a recipe for padding. Read the pair off the manifest in front of you rather than reciting one: run the block below with the proposed tree's `.review/manifest.json` as its only argument and it writes the lower and upper bound, space-separated, on one line.
+   Both bounds rise together, so the window stays four wide at every proposal size, and both stop at the cap of 25 — the largest proposals ask for 21–25 and never more, because a fixed quota on a 5,000-file proposal is a recipe for padding. Read the pair off the manifest in front of you rather than reciting one: run the block below with the proposed tree's `.review/manifest.json` as its only argument and it writes the lower and upper bound, space-separated, on one line. A non-zero exit means the manifest could not be counted — say so and stop, rather than proceeding on a window it did not give you. A budget that silently stops tracking the proposal's size is worse than no budget, because it still looks like one.
 
 ```budget-rule
 # Disagreement budget for one proposal, read off its own manifest.
 #   usage: bash <this block> <manifest.json>   ->   "<lower> <upper>"
-set -u
+#
+# `set -e` as well as `set -u`. Without it a failing python3 left `n`
+# empty, bash arithmetic read the empty operand as 0, and the block
+# printed "5 9" and exited 0 — the floor, and indistinguishable from a
+# legitimately small proposal. A 5,000-entry proposal whose manifest was
+# unreadable would then be reviewed at the smallest budget with nothing in
+# the output saying the count had failed, which is the opposite of what a
+# size-aware budget is for. A manifest that cannot be counted has no
+# budget: say so, and stop.
+set -eu
 n="$(python3 - "$1" <<'PY'
 import json, sys
 
-with open(sys.argv[1], encoding="utf-8") as fh:
-    entries = json.load(fh)["entries"]
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        entries = json.load(fh)["entries"]
+except (OSError, ValueError, KeyError, TypeError) as exc:
+    sys.stderr.write(
+        "cannot count %s: %s. The disagreement budget is a function of this "
+        "manifest's counted entries; without one there is no budget to "
+        "read.\n" % (sys.argv[1], exc)
+    )
+    sys.exit(65)
 print(sum(1 for e in entries
           if e.get("status") in ("added", "modified", "removed")))
 PY
 )"
 k=$(( n > 40 ? (n - 1) / 40 : 0 ))
-lower=$(( 5 + 2 * k )); [ "$lower" -gt 21 ] && lower=21
-upper=$(( 9 + 2 * k )); [ "$upper" -gt 25 ] && upper=25
+# `|| ceiling`, not `&& ceiling`: under errexit an `[ … ] && x=y` list whose
+# test is false returns 1 and takes the whole block down with it.
+lower=$(( 5 + 2 * k )); [ "$lower" -le 21 ] || lower=21
+upper=$(( 9 + 2 * k )); [ "$upper" -le 25 ] || upper=25
 printf '%s %s\n' "$lower" "$upper"
 ```
 

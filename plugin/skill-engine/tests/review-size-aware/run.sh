@@ -321,6 +321,63 @@ n120 120 4 9 13
 n500 500 12 21 25
 FIXTURES
 
+# A manifest the block cannot count must not read as a small proposal.
+# The block opened `set -u` with no `set -e`, and `json.load(fh)["entries"]`
+# is unguarded — so a missing, unparseable or entries-less manifest sent a
+# traceback to stderr, left `n` empty, and bash arithmetic evaluated the
+# empty operand as 0: `5 9`, exit 0. That is the floor, and also exactly
+# what a legitimately small proposal prints, so a 5,000-entry proposal
+# whose manifest is malformed would be reviewed at the smallest budget with
+# nothing in the output saying the count had failed. The whole point of the
+# feature is that the ask tracks the proposal's size.
+#
+# run_budget_rc <manifest> — the block's stdout in BUDGET_OUT and its exit
+# status in BUDGET_RC, stderr discarded.
+BUDGET_OUT=""
+BUDGET_RC=0
+run_budget_rc() {
+  BUDGET_OUT="$(bash "$BUDGET_EXPR" "$1" 2>/dev/null)"
+  BUDGET_RC=$?
+}
+
+if [ -s "$BUDGET_EXPR" ]; then
+  printf '{"schema_version":1}\n' > "$WORK/manifest-no-entries.json"
+  printf 'not json at all\n' > "$WORK/manifest-unparseable.json"
+
+  for bad in no-entries unparseable missing; do
+    case "$bad" in
+      missing) target="$WORK/manifest-does-not-exist.json" ;;
+      *)       target="$WORK/manifest-$bad.json" ;;
+    esac
+    run_budget_rc "$target"
+    ok=1
+    [ "$BUDGET_RC" -ne 0 ] || ok=0
+    [ "$BUDGET_OUT" = "5 9" ] && ok=0
+    report "$ok" "a $bad manifest fails the budget rule instead of silently printing the floor" \
+      "budget rule printed: ${BUDGET_OUT:-<nothing>} (exit $BUDGET_RC)"
+  done
+
+  # Paired with the good case, so the assertions above cannot be satisfied
+  # by a block that fails on everything.
+  write_manifest "$WORK/manifest-good.json" 12 188
+  run_budget_rc "$WORK/manifest-good.json"
+  ok=1
+  [ "$BUDGET_RC" -eq 0 ] || ok=0
+  [ "$BUDGET_OUT" = "5 9" ] || ok=0
+  report "$ok" "a countable manifest still prints its window and exits 0" \
+    "budget rule printed: ${BUDGET_OUT:-<nothing>} (exit $BUDGET_RC)"
+
+  # And the ceiling still clamps — the lines that clamp it are the ones
+  # errexit is most likely to trip over.
+  write_manifest "$WORK/manifest-huge.json" 5000 0
+  run_budget_rc "$WORK/manifest-huge.json"
+  ok=1
+  [ "$BUDGET_RC" -eq 0 ] || ok=0
+  [ "$BUDGET_OUT" = "21 25" ] || ok=0
+  report "$ok" "a proposal above the cap still prints the ceiling pair and exits 0" \
+    "budget rule printed: ${BUDGET_OUT:-<nothing>} (exit $BUDGET_RC)"
+fi
+
 # The counted set is a stated rule in the document, not an accident of the
 # expression: the three counting statuses are named, and the exclusion of
 # unchanged from the count is written down.
