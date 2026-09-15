@@ -146,7 +146,9 @@ if [ -z "$kind" ]; then
     rm -rf -- "$d"
   done
 else
-  rm -rf -- "$cache_root/$kind"/*/
+  # ${var:?} on both: an unset or empty cache_root would make this
+  # `rm -rf -- //*/`, and this block runs with a user's real HOME.
+  rm -rf -- "${cache_root:?}/${kind:?}"/*/
 fi
 ```
 

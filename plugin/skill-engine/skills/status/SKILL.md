@@ -16,7 +16,7 @@ skill at one of three install levels:
 
 - **User-level:** `~/.claude/skills/<slug>-context/`
 - **Local-user-level:** `~/.claude/local/skills/<slug>-context/` (when in use)
-- **Project-level:** `<repo>/.claude/skills/<slug>-context/`
+- **Project-level:** `<repo>/**/.claude/skills/<slug>-context/`
 
 Every path below — `research/...`, `references/...`, `verify.sh` —
 resolves relative to whichever directory matches. Before reading
@@ -37,6 +37,125 @@ installed and lists the matches and exits when more than one is.
 Read every subsequent `research/foo` path as `$CTX_ROOT/research/foo`,
 every `references/foo` as `$CTX_ROOT/references/foo`, and `verify.sh` as
 `$CTX_ROOT/verify.sh`.
+
+## Fleet (`--all`)
+
+`/skill-engine:status --all` reports on every contextualizer the locator
+enumerates instead of on one: it prints a table carrying one row per
+contextualizer, six columns wide — root path, registered source count,
+last refresh, pending proposal, review state, and owner. The enumeration
+comes from running the script in
+[`shared/locator-block.md`](../../shared/locator-block.md) with `--all`,
+which prints one absolute root per line and exits without setting
+`CTX_ROOT`. Supply the argv the block asks for rather than keeping a copy
+of it here:
+
+    ctx_roots=$(bash -s -- --all <<'LOCATOR'
+    …the shared block at run time, with its `name="<name>"` line
+    substituted to `name=""` — a fleet run names no contextualizer…
+    LOCATOR
+    ) || ctx_roots=""
+    export ctx_roots
+
+That substitution is not optional. Pasted with `<name>` left in place, the
+block's `find -name "<name>-context"` matches nothing and the locator takes
+its exit-1 path, which is the empty enumeration above by a second route.
+
+The assignment and the `export` are two statements on purpose. The locator
+writes its nothing-found diagnostic to **stdout**, not stderr, and exits 1;
+`export ctx_roots=$(…)` would report the `export`'s own success and throw
+that exit status away, leaving the diagnostic sentence in `ctx_roots` where
+a root path belongs. Splitting them puts the `|| ctx_roots=""` on the
+command substitution, which is the one thing that knows the locator failed —
+the same guard `using-skill-engine` applies to the same paste.
+
+The derivation reads that enumeration from `ctx_roots` in its environment
+(hence the `export`) and does nothing when the locator found nothing.
+
+```python
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except AttributeError:
+    pass
+
+NONE = "—"  # em dash: the cell for "no such thing recorded"
+
+roots = [line.strip() for line in os.environ.get("ctx_roots", "").splitlines()]
+# Absolute paths only. The locator's enumeration prints nothing else, but
+# its *diagnostics* go to stdout too, so a caller that captured stdout
+# without testing the exit status leaves a prose sentence here. Filtering
+# on the one shape a root can have keeps that sentence from being rendered
+# as a fleet row, and keeps the guard below reachable.
+roots = [r for r in roots if r.startswith("/")]
+if not roots:
+    # The locator found nothing. Nothing to report is not an error.
+    sys.exit(0)
+
+
+def review_state(proposed):
+    # The same read-only progress reading the "Pending proposals" section
+    # renders for a single contextualizer, condensed to one cell.
+    review = proposed / ".review" / "REVIEW.md"
+    if not review.is_file():
+        return "no review file"
+    text = review.read_text(encoding="utf-8", errors="replace")
+    if "___" in text:
+        return "awaiting Step 1"
+    # `again after filling Step 1` and not `(Run /skill-engine:review`:
+    # the template's line is "(Run `/skill-engine:review <name>` again
+    # after filling Step 1 to populate this section.)" — with backticks,
+    # which the parenthesised form never matches. The branch was
+    # unreachable, so an ungenerated Step 2 fell through to the tick
+    # count and read as `signed off` whenever a reviewer had ticked a box
+    # without running the second pass, which is precisely the state
+    # `apply`'s pre-promotion gate refuses.
+    if "again after filling Step 1" in text:
+        return "Step 2 not generated"
+    ticks = re.findall(r"(?mi)^- \[x\] (?:reviewed|provisional|reject)", text)
+    return "signed off" if len(ticks) == 1 else "not signed off"
+
+
+for raw in roots:
+    root = Path(raw)
+    registry = root / "research" / "source-paths.json"
+    count, owner, last = 0, NONE, "never"
+    if registry.is_file():
+        try:
+            data = json.loads(registry.read_text(encoding="utf-8"))
+        except ValueError:
+            data = {}
+        sources = data.get("sources") or []
+        count = len(sources)
+        owner = data.get("owner") or NONE
+        stamps = [s.get("lifecycle", {}).get("last_checked") for s in sources]
+        stamps = [s for s in stamps if s]
+        if stamps:
+            last = max(stamps)[:10]
+    proposed = Path(str(root) + ".proposed")
+    staged = proposed.is_dir()
+    print(" | ".join([
+        str(root),
+        str(count),
+        last,
+        "yes" if staged else "no",
+        review_state(proposed) if staged else NONE,
+        owner,
+    ]))
+```
+
+`--all` cannot be combined with a named contextualizer. When a run is
+given both a name and `--all`, halt with an error naming both selectors
+rather than guessing which one was meant:
+
+```
+--all was combined with the named contextualizer 'acme'. Pass one or the other: a name reports on that contextualizer alone, --all reports on every contextualizer found.
+```
 
 ## Pending proposals
 
@@ -68,7 +187,7 @@ else
     ticks=$(grep -ciE '^- \[x\] (reviewed|provisional|reject)' "$review" 2>/dev/null); ticks=${ticks:-0}
     if grep -q '___' "$review" 2>/dev/null; then
       printf '  Review: awaiting Step 1 predictions (run /skill-engine:review %s).\n' "$slug"
-    elif grep -qF '(Run /skill-engine:review' "$review" 2>/dev/null; then
+    elif grep -qF 'again after filling Step 1' "$review" 2>/dev/null; then
       printf '  Review: Step 1 filled; Step 2 not yet generated (re-run /skill-engine:review %s).\n' "$slug"
     elif [ "$ticks" -eq 1 ]; then
       state=$(grep -iE '^- \[x\] (reviewed|provisional|reject)' "$review" | head -1 | sed -E 's/^- \[[xX]\] +//')

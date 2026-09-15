@@ -135,7 +135,7 @@ For slices promoted to Phase 2, the engine replaces the unconditional shallow cl
 
 ```bash
 mkdir -p /tmp/<area-domain>-research-<session-id>/<repo-name>
-cd /tmp/<area-domain>-research-<session-id>/<repo-name>
+cd /tmp/<area-domain>-research-<session-id>/<repo-name> || exit 1
 # Add `--branch <branch-value>` to the line below when the parent
 # sources[] entry carries a `branch` field; omit otherwise.
 git clone --filter=blob:none --no-checkout --depth=1 --single-branch <repo-uri> .

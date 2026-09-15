@@ -13,7 +13,7 @@ Run these in order. Any failure halts the apply and exits non-zero without mutat
 3. **The review actually ran.** A ticked Step-3 box on its own does not prove the predict-then-compare pass happened — a user can tick `reviewed` on an otherwise-untouched template. Apply must confirm the review loop ran before treating the tick as sign-off. Two literal-content checks, both required:
 
    - **Step 1 predictions are filled.** Search the three Step-1 prediction lines for the literal substring `___` (the same heuristic `review/SKILL.md` § Second pass uses to decide Step 1 is filled). If any still contains `___`, the user never filled their predictions.
-   - **Step 2 was populated.** The unpopulated template carries the literal line `(Run /skill-engine:review <name> again after filling Step 1 to populate this section.)` (the `<name>` is substituted at stamp time). If that placeholder is still present, `review`'s second pass never generated the disagreement set.
+   - **Step 2 was populated.** The unpopulated template carries the line ``(Run `/skill-engine:review <name>` again after filling Step 1 to populate this section.)`` — note the backticks around the command, and the `<name>` substituted at stamp time. Match on the substring `again after filling Step 1`, which is unambiguous and carries neither the backticks nor the substituted name; a reader built from the parenthesised opening instead matches the shipped template zero times. If that placeholder is still present, `review`'s second pass never generated the disagreement set.
 
    If either check fails, halt without mutating either tree:
 

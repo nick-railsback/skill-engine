@@ -200,7 +200,7 @@ A simple regenerator script:
 
 ```bash
 # scripts/refresh-fixture.sh
-cd skills/<area-domain>-context/references
+cd skills/<area-domain>-context/references || exit 1
 find . -maxdepth 1 -type f -name '<area-domain>-*.md' 2>/dev/null | sed 's|^\./||' | while IFS= read -r f; do
   printf "%s\t%s\n" "$f" "$(sha256sum "$f" | awk '{print $1}')"
 done | sort > ../../../test/fixtures/source-body-checksums.txt
@@ -374,7 +374,7 @@ test_metadata_schema_after_install() {
   local tmpdir
   tmpdir=$(mktemp -d)
   
-  pushd "$tmpdir" > /dev/null
+  pushd "$tmpdir" > /dev/null || return 2
   mkdir .claude
   
   <AREA_DOMAIN>_TOOL=claude "$REPO_ROOT/bin/<area-domain>-context" install > /dev/null
@@ -396,7 +396,7 @@ test_metadata_schema_after_install() {
     echo "[FAIL] reference_files not numeric: $ref_count"; return 1
   fi
 
-  popd > /dev/null
+  popd > /dev/null || return 2
   rm -rf "$tmpdir"
   return 0
 }
@@ -415,7 +415,7 @@ After running `<area-domain>-context package`, the resulting zip should:
 test_package_zip_hygiene() {
   local tmpdir
   tmpdir=$(mktemp -d)
-  cd "$tmpdir"
+  cd "$tmpdir" || return 2
 
   "$REPO_ROOT/bin/<area-domain>-context" package > /dev/null
   local zip

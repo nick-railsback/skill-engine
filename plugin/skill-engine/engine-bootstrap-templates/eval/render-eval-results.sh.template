@@ -282,6 +282,184 @@ aggregate() {
   ' "$records" | LC_ALL=C sort | awk -F '\t' '{ printf "  %s: %d / %d\n", $1, $2, $3 }'
 }
 
+# --- installed-set mode -----------------------------------------------------
+#
+# Everything below is reached only when the results file carries the header's
+# installed-set data. emit_records, decide and aggregate above are called,
+# never edited: the default output cannot reach code this section adds.
+
+# Detected by PRESENCE OF THE HEADER KEY, never by a flag. A flag would be a
+# second way to reach the same output, and the default path's byte-identical
+# output depends on there being exactly one. The match is line-anchored on a
+# top-level key, so a query whose text happens to contain installed_set does
+# not flip the renderer into table mode.
+INSTALLED_SET_PRESENT=0
+if grep -qE '^[[:space:]]*"installed_set"[[:space:]]*:' "$RESULTS_PATH"; then
+  INSTALLED_SET_PRESENT=1
+fi
+
+# The table's columns: the recorded installed set, in the order the header
+# wrote it (the harness sorts it). Taken from the header rather than from
+# observed fires, so a contextualizer that owns no in-scope query and never
+# fires still gets a column — which is the whole point of the measurement.
+installed_columns() {
+  sed -n 's/^[[:space:]]*"installed_set"[[:space:]]*:[[:space:]]*\[\(.*\)\].*$/\1/p' "$RESULTS_PATH" \
+    | head -n 1 \
+    | tr -d '"' \
+    | tr ',' ' '
+}
+
+# Emit <owner>US<run1,run2,...>US<fired-on-run-1>US<fired-on-run-2>... per
+# entry — the table's raw material, and separate from emit_records because it
+# indexes on data the default path never writes.
+#
+# Entries written in installed-set mode are one per line and carry owner,
+# fired and runs together; this reads exactly that shape (single-line entries
+# only, the same limitation emit_records documents).
+emit_fleet_records() {
+  awk -v US="$US" '
+    function extract(line, key,    v) {
+      v = line
+      gsub(/\\"/, "\001", v)
+      sub("^.*\"" key "\"[[:space:]]*:[[:space:]]*\"", "", v)
+      sub(/".*$/, "", v)
+      gsub(/\\\\/, "\\", v)
+      gsub(/\001/, "\"", v)
+      return v
+    }
+    # Anchored on the LAST "runs": [ on the line, for the same reason
+    # emit_records is: the line also carries free-text values.
+    function runs_of(line,    v) {
+      v = line
+      sub(/^.*"runs"[[:space:]]*:[[:space:]]*\[/, "", v)
+      sub(/\].*$/, "", v)
+      gsub(/[" ]/, "", v)
+      return v
+    }
+    # Walk "fired" by bracket depth, collecting one group per run. A regex
+    # cannot do this: the value is an array of arrays, and the inner brackets
+    # are exactly what delimits the groups.
+    function fired_of(line, out,    s, i, n, depth, c, cur) {
+      n = 0
+      if (!match(line, /"fired"[[:space:]]*:[[:space:]]*\[/)) return 0
+      s = substr(line, RSTART + RLENGTH)
+      depth = 1
+      cur = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "[") { depth++; if (depth == 2) { cur = ""; continue } }
+        else if (c == "]") {
+          depth--
+          if (depth == 1) { n++; out[n] = cur; continue }
+          if (depth == 0) break
+        }
+        if (depth == 2) cur = cur c
+      }
+      return n
+    }
+    /"owner"[[:space:]]*:[[:space:]]*"/ && /"fired"[[:space:]]*:[[:space:]]*\[/ && /"runs"[[:space:]]*:[[:space:]]*\[/ {
+      n = fired_of($0, groups)
+      printf "%s%s%s", extract($0, "owner"), US, runs_of($0)
+      for (i = 1; i <= n; i++) {
+        g = groups[i]
+        gsub(/[" ]/, "", g)
+        printf "%s%s", US, g
+      }
+      printf "\n"
+    }
+  ' "$1"
+}
+
+# Render the confusion table from the fleet records on stdin. Rows are the
+# query-owning contextualizers; columns are $1, the recorded installed set.
+#
+# Every cell is a majority vote over the entry's runs with `error` runs
+# excluded — the rule decide() already applies to the pass count. What is
+# voted on differs by cell, and the difference is load-bearing:
+#
+#   the diagonal    votes on whether the run PASSED, i.e. read the
+#                   expected reference. That is decide()'s own predicate,
+#                   which is what makes the diagonal reproduce the pass
+#                   count exactly rather than merely resembling it.
+#   off-diagonal    votes on whether that column's navigator FIRED —
+#                   read any reference it owns. A sibling has no expected
+#                   reference for someone else's query, so "did it
+#                   activate at all" is the only question there is.
+#
+# Voting the diagonal on `fired` too would make it a strict superset of
+# the pass count, diverging whenever the owning navigator reads one of its
+# own references that is not the expected one — the ordinary "right skill,
+# wrong reference" failure a per-navigator eval exists to catch. A
+# contextualizer that always activates and always picks the wrong file
+# would read as a perfect diagonal beside a 0% pass rate.
+render_confusion_table() {
+  awk -v US="$US" -v cols="$1" '
+    BEGIN { FS = US; ncol = split(cols, col, " ") }
+    {
+      owner = $1
+      nruns = split($2, outcome, ",")
+      if (!(owner in seen)) { seen[owner] = 1; order[++nowner] = owner }
+      valid = 0
+      for (c = 1; c <= ncol; c++) hit[c] = 0
+      for (r = 1; r <= nruns; r++) {
+        # An error run carries no verdict, so it is not in the denominator
+        # either: a single surviving run is the whole vote.
+        if (outcome[r] == "error") continue
+        valid++
+        nf = split($(2 + r), fired, ",")
+        for (c = 1; c <= ncol; c++) {
+          if (col[c] == owner) {
+            # The diagonal: the predicate decide() votes on, not the
+            # fired one. (No apostrophes in here: this awk program is a
+            # single-quoted shell word.)
+            if (outcome[r] == "pass") hit[c]++
+            continue
+          }
+          for (f = 1; f <= nf; f++)
+            if (fired[f] == col[c]) hit[c]++
+        }
+      }
+      if (valid == 0) next
+      for (c = 1; c <= ncol; c++)
+        if (hit[c] * 2 > valid) cell[owner SUBSEP c]++
+    }
+    END {
+      # POSIX awk has no asorti and the renderer is contractually
+      # byte-deterministic, so the row order is sorted here rather than left
+      # to `for (k in ...)`. An insertion sort rather than aggregate()`s pipe
+      # into external sort: the column widths below are global, so the rows
+      # cannot be formatted until every owner is known.
+      for (a = 2; a <= nowner; a++) {
+        key = order[a]
+        b = a - 1
+        while (b >= 1 && order[b] > key) { order[b + 1] = order[b]; b-- }
+        order[b + 1] = key
+      }
+      w = length("owner")
+      for (o = 1; o <= nowner; o++) if (length(order[o]) > w) w = length(order[o])
+      line = sprintf("  %-*s", w, "owner")
+      for (c = 1; c <= ncol; c++) line = line sprintf("  %s", col[c])
+      print line
+      for (o = 1; o <= nowner; o++) {
+        line = sprintf("  %-*s", w, order[o])
+        for (c = 1; c <= ncol; c++)
+          line = line sprintf("  %*d", length(col[c]), cell[order[o] SUBSEP c] + 0)
+        print line
+      }
+      # The blank line closes the table; the flags below are a list, not rows.
+      print ""
+      for (o = 1; o <= nowner; o++)
+        for (c = 1; c <= ncol; c++) {
+          if (col[c] == order[o]) continue
+          n = cell[order[o] SUBSEP c] + 0
+          if (n > 0) printf "  [CONFUSION] %s -> %s: %d\n", order[o], col[c], n
+        }
+    }
+  '
+}
+
+# --- end installed-set mode -------------------------------------------------
+
 TMP_RECORDS=$(mktemp eval-records.XXXXXX 2>/dev/null || mktemp)
 trap 'rm -f "$TMP_RECORDS"' EXIT
 emit_records "$RESULTS_PATH" > "$TMP_RECORDS"
@@ -315,6 +493,12 @@ while IFS="$US" read -r query expected persona runs; do
     printf '  [%s] %s -> %s | %s\n' "$vote" "$query" "$expected" "$outcomes"
   fi
 done < "$TMP_RECORDS"
+
+if [ "$INSTALLED_SET_PRESENT" -eq 1 ]; then
+  echo
+  echo "Confusion table (rows own the query; each column counts the queries its navigator fired on):"
+  emit_fleet_records "$RESULTS_PATH" | render_confusion_table "$(installed_columns)"
+fi
 
 if [ -n "$BASELINE_PATH" ]; then
   if [ ! -f "$BASELINE_PATH" ]; then

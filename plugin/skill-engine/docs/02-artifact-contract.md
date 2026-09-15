@@ -264,6 +264,18 @@ bound is enforced by `source-paths.schema.json`; see
 [`03-engine.md`](03-engine.md) § Source-paths additive fields for REFRESH's
 behavior under it.
 
+**`owner`** — optional, document-root (not per-entry). A non-empty string
+naming who owns the contextualizer: the team or person a pending proposal
+is routed to, and the last column of the fleet table `STATUS --all`
+renders. Bootstrap seeds it from a `CODEOWNERS` file at the project root,
+taking the first owner token of the root (`*`) rule and omitting the key
+when the file has no such rule or does not exist — a path-scoped rule
+never becomes the repository's owner. The value is free-form: the engine
+stores the token it read and resolves it against no directory, so a
+GitHub team handle, an email address, and a squad name are all equally
+valid. Absent means ownership is simply not recorded, which the fleet
+table shows as an em dash.
+
 **`importance`** — optional, per-entry. A JSON integer from 1 to 5
 (lowest to highest priority) used to order REFRESH's probing under
 `probe_budget`. Absent defaults to 3, the neutral priority.

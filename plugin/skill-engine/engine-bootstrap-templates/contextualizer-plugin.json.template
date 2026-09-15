@@ -1,0 +1,16 @@
+{
+  "_comment": "Plugin manifest for publishing a finished <area-domain>-context contextualizer as a skills-only plugin. Lives at .claude-plugin/plugin.json in the repository you publish; the contextualizer itself sits beside it at skills/<area-domain>-context/. There is no skills key: the platform finds skills by convention under the plugin root, so a skills list here would be a second inventory to keep in step with the directory. There is no hooks key either, and there must not be one — a contextualizer ships a navigator and reference text, nothing that executes on a session event. Replace every placeholder (<area-domain>, <your-team>, <your-git-host>, <your-org>) with values for your domain, and see docs/recipes/distribute.md for the surrounding recipe.",
+  "name": "<area-domain>-context",
+  "version": "1.0.0",
+  "description": "Installs <area-domain> system skills into AI assistants, providing on-demand context for <area-domain> development.",
+  "author": {
+    "name": "<your-team>"
+  },
+  "repository": "https://<your-git-host>/<your-org>/<area-domain>-contextualizer",
+  "license": "UNLICENSED",
+  "keywords": [
+    "<area-domain>",
+    "context",
+    "skills"
+  ]
+}

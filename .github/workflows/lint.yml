@@ -15,9 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # scripts/lint-fences.sh syntax-checks the ```python fences with
+      # py_compile, so this job needs an interpreter. Managed rather than
+      # whatever the hosted image ships, for the same reason json-validate
+      # pins one: the job should not depend on the runner image.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Lint shell scripts (incl. stamped *.sh.template)
+      - name: Lint shell scripts and the executable fences in SKILL Markdown
         run: bash scripts/ci-local.sh shellcheck
 
   json-validate:

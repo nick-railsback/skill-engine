@@ -545,8 +545,15 @@ else
     "sha256: $cache_surface_hash"
 fi
 
+# Re-baselined 2026-09-15 (PR #17 review, finding 7). This section's
+# review-progress reading grepped for `(Run /skill-engine:review`, a
+# literal the shipped REVIEW template never contains — it writes the
+# command in backticks — so the branch was unreachable. The pin is not that
+# these bytes never change; it is that a change to them is deliberate, and
+# this one is. Owned assertions for the substring itself live in
+# tests/fleet-status/run.sh, across all four files that carry it.
 pending_proposals_hash="$(extract_named_section "Pending proposals" "$STATUS_SKILL" | sha256_of_stdin)"
-if [ "$pending_proposals_hash" = "6f68a00587ac4c8c87a8f6dde0c2f812c9cec9f4b0bd9038fd81258d164d1c8f" ]; then
+if [ "$pending_proposals_hash" = "c357a6716bb6c20935d1f3ea30113b6078abec2b629bdd4c78beec1ca5f78f7e" ]; then
   pass "SKILL.md: the existing Pending proposals section is untouched"
 else
   fail "SKILL.md: the existing Pending proposals section is untouched" \

@@ -437,7 +437,14 @@ resolving_name_hash="$(awk '
 # contextualizers", "Locating the contextualizer root" — neither existed any
 # more). Repointing them is a deliberate, unrelated correction, so the constant
 # moves with it; the guard's job is still to catch drift nobody intended.
-if [ "$resolving_name_hash" = "9db5251af8fdbc64239f7b047895db0ae897cfbde94d7da8fab7f811f3c0aa74" ]; then
+#
+# Re-baselined a second time by v0.11.0's nested-roots work: the section
+# resolved `<install>` by restating the locator's root list in prose and
+# walking it, which stopped being true once the project level reached nested
+# `.claude/skills/` directories. It now runs shared/locator-block.md instead of
+# naming roots — the same "exactly one definition" doctrine check 10 enforces.
+# Intended, and in the same diff as the change that caused it.
+if [ "$resolving_name_hash" = "e2eef22efce2c77fa6dc0d0baba220ed9c06a9f93f6dfe9444554fa0868421e7" ]; then
   pass "review/SKILL.md: the existing 'Resolving <name>' section, unrelated to hand-edit detection, is untouched"
 else
   fail "review/SKILL.md: the existing 'Resolving <name>' section, unrelated to hand-edit detection, is untouched" \

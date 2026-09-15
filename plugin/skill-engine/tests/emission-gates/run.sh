@@ -401,12 +401,23 @@ report "$ok" "post-run Coverage report: surfaces the paragraph-to-permalink dens
 # categories Step 2 computes (scope-mismatch, content-style,
 # reference-count) — it must not consume one of those slots.
 review_all="$(cat "$REVIEW_SKILL")"
+#
+# The awk range below is anchored on two literal step titles. Rename either
+# one and the range never opens, `step2_categories` is the empty string, and
+# the negated grep below reports the good news about a file it never read —
+# PASS over nothing. So the emptiness is its own assertion: a future rename
+# of those headings goes red here rather than quietly green.
 step2_categories="$(awk '
-  /^2\. \*\*Compute 5–9 disagreements\*\*/ {p=1}
-  /^3\. \*\*Write 5–9 disagreements\*\*/ {p=0}
+  /^2\. \*\*Compute the disagreement set\*\*/ {p=1}
+  /^3\. \*\*Write the disagreement set\*\*/ {p=0}
   p {print}
 ' "$REVIEW_SKILL")"
 ok=1
+[ -n "$step2_categories" ] || ok=0
+report "$ok" "review Step 2 positioning: the category block extracts non-vacuously — the step headings the awk range is anchored on are still the ones review/SKILL.md carries"
+
+ok=1
+[ -n "$step2_categories" ] || ok=0
 printf '%s' "$review_all" | grep -qi 'density' || ok=0
 printf '%s' "$step2_categories" | grep -qi 'density' && ok=0
 report "$ok" "review Step 2 positioning: the density figure surfaces in review's output without being ranked as a fourth disagreement category"

@@ -4,6 +4,27 @@ The pre-flight guards and migrations REFRESH runs before touching any source, pl
 
 ## Pre-flight
 
+`--all` sweeps the fleet. Given `--all`, REFRESH resolves no single
+`CTX_ROOT`: it runs the script in
+[`shared/locator-block.md`](../../shared/locator-block.md) with `--all` —
+and with its `name="<name>"` line substituted to `name=""`, since a fleet
+run names no contextualizer and the block's `find -name "<name>-context"`
+would otherwise match nothing — to
+enumerate the installed contextualizers, then runs the whole numbered
+sequence below once for each enumerated contextualizer, in turn. Each one
+sweeps its own tree and stages — or declines to stage — its own proposal
+under its own `<slug>-context.proposed/`; no contextualizer's run reaches
+into another's. At the end of the sweep, print one summary line per
+contextualizer: what drifted, what was staged, what was skipped.
+
+`--all` cannot be combined with a named contextualizer. When a run is
+given both a name and `--all`, halt with an error naming both selectors
+rather than guessing which one was meant:
+
+```
+--all was combined with the named contextualizer 'acme'. Pass one or the other: a name refreshes that contextualizer alone, --all refreshes each contextualizer the locator finds.
+```
+
 When `/skill-engine:refresh` is invoked:
 
 0. **Guard against an unapplied proposal.** If `$CTX_PROPOSED` already exists,
@@ -318,6 +339,21 @@ auth wall (401/403) or rate limit (429) is a transient condition, and
 For `git-managed` probes, the tool-choice guidance in "Tool preference
 for git-managed sources" below (gh/git CLI over WebFetch; how to pick
 `<ref>` when `branch` is present vs. absent) applies.
+
+`git-managed` probes in this phase may run concurrently, up to ten at a
+time. Concurrency leaves the promotion order unchanged and leaves
+per-source isolation intact: a failing source still affects only itself,
+exactly as when probes run one at a time. Isolation is what makes
+concurrency safe, so it is enforced rather than assumed — a source that
+blocks isolates no better than one that raises. Each probe runs with its
+stdin closed and with git's terminal prompting disabled, so a source
+needing credentials or a host-key confirmation fails immediately instead
+of waiting on a terminal ten probes are sharing; and each probe is
+bounded by a timeout, so a dead host or a firewalled SSH url gives up its
+worker rather than holding it. Both cases surface the same way any other
+failed probe does: an `error` row naming that source, with every source
+that did answer reported normally. The `web-doc` HTTP HEAD path is
+unaffected and is not run concurrently.
 
 When the newly-probed SHA differs from the source's previously-recorded
 `last_checked_sha` **and** a local cache directory already exists for that

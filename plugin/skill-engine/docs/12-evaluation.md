@@ -159,6 +159,31 @@ Aggregation is the contract surface: the maintainer reads aggregated deltas and 
 
 The renderer is **deterministic**: the same `results-*.json` file produces identical output bytes on rerun. No timestamps in the output, no random ordering. Determinism is what makes the diff between two renderer runs a meaningful artefact to paste into a pull request.
 
+### Cross-fleet routing: installed-set mode
+
+Everything above grades one navigator on its own. It cannot answer the question that appears the moment a platform team has dozens installed: does this contextualizer stay dormant when all of its siblings are competing for the same query? A per-navigator eval that passes says nothing about that, and the failure is silent — a description that quietly answers a sibling's queries still scores 100% against its own corpus.
+
+`run-eval.sh --installed-set <roots>` measures it, taking the fleet from the contextualizer locator's `--all` enumeration: `<roots>` is a file of absolute contextualizer roots, one per line, or `-` to read the same lines on stdin.
+
+For each root, `--installed-set` reads that root's eval corpus, keeps the entries whose `expected` resolves to a real reference under it, and runs each surviving query the usual three runs. Cost scales with the fleet: every in-scope query of every installed contextualizer, times three runs per query. The corpus is `evals-train.json` and `evals-test.json` together, or `evals.json` when it is unsplit.
+
+Run `--installed-set` from the working directory the fleet is meant to load at — the repository root, for contextualizers installed under `.claude/skills/`. Nested `.claude/skills/` roots load per working directory, so a fleet member the platform does not load there measures as perfectly dormant.
+
+```bash
+# roots.txt is the locator block's --all output, one absolute root per line.
+# From the repository root, so the fleet loads the way it will be measured.
+# The first positional (the eval-set path) is ignored in this mode — the roots
+# supply the corpora — and the second is still the results path.
+bash .claude/skills/<area-domain>-context/evals/run-eval.sh \
+  --installed-set - ignored evals/results-fleet.json < roots.txt
+```
+
+The renderer emits a **confusion table** whenever the results file carries this data, and never otherwise: one row per query-owning contextualizer, one column per installed contextualizer, each cell a majority vote of the entry's non-error runs — the same vote the pass count already uses. What each cell votes *on* depends on where it sits, and the two are not the same question. The **diagonal** votes on whether the run passed, meaning the owner read the expected reference; that is the pass count's own predicate, which is what makes the diagonal reproduce it exactly rather than merely resemble it. **Off-diagonal** cells vote on whether that column's navigator fired at all — read any reference it owns — because a sibling has no expected reference for someone else's query. Voting the diagonal on firing too would make it a superset of the pass count, and a contextualizer that always activates and always opens the wrong file would read as a perfect diagonal beside a 0% pass rate. A contextualizer that owns no in-scope query and never fires still gets a column, and that column reading all zeros is the result you want. Every non-zero off-diagonal cell is flagged.
+
+The pass predicate is scoped to the owning root in this mode: a run counts as a pass only when the expected reference it opened is the *owner's* copy. Reference filenames collide across a fleet — `overview.md`, `configuration.md`, `testing.md` are what these files get called — and an unscoped match would credit an owner for a run its sibling answered.
+
+Three pieces of data make the table possible, and the harness records all three: the **installed set** in the header, the **owning slug** on each entry, and the navigators that **fired** on each run. They are additive optional fields in `results-*.json`, written only in installed-set mode, and they do not bump that file's `schema_version`. The migration contract above governs `evals.json`; the results file carries the version it always has.
+
 ## The three templates
 
 Three drop-in templates ship with the plugin under `plugin/skill-engine/engine-bootstrap-templates/eval/` (or browse them at <https://github.com/nick-railsback/skill-engine/tree/main/plugin/skill-engine/engine-bootstrap-templates/eval>). `engine-bootstrap` copies them into every fresh contextualizer's own tree automatically — the `<area-domain>` placeholder is already substituted with the contextualizer's own slug by the time a maintainer sees them.

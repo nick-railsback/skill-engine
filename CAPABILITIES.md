@@ -30,7 +30,7 @@ verify them — they demonstrate the mechanism, not the ceiling of its value.
 - [How you evaluate it](#how-you-evaluate-it) — three runs, 70/30 split, three-persona stratification, drop-in templates
 - [How it gets built](#how-it-gets-built) — DISCOVER, source-paths.json, bootstrap scaffolding
 - [How it handles failure](#how-it-handles-failure) — archived, renamed, deleted, transient, permanent
-- [How it's distributed](#how-its-distributed) — two surfaces (plugin marketplace, Desktop zip) plus the optional hand-rolled pattern
+- [How it's distributed](#how-its-distributed) — two surfaces for the engine (plugin marketplace, Desktop zip) plus the optional hand-rolled pattern, and the recipe for distributing a contextualizer
 - [How human review fits](#how-human-review-fits) — propose–review–promote, gates, SHA audit trail
 - [Appendix — Command reference](#appendix--command-reference) — every slash command and what it does
 
@@ -150,6 +150,23 @@ To be precise about the boundary between design and demonstration: the
 are built for, not a benchmarked result. Demonstrated scale today is the
 bundled examples (up to eight sources in `langchain-context`); the headroom
 above that rests on the architecture, not on a run at that size.
+
+### Fleet operation
+
+One invocation can cover every contextualizer the locator finds.
+`/skill-engine:status --all` renders a fleet table: one row per
+contextualizer, six columns wide — root path, registered source count,
+last refresh, pending proposal, review state, and owner.
+`/skill-engine:refresh --all` and `/skill-engine:self-audit --all` sweep
+that same enumeration, running the full workflow against each
+contextualizer in sequence and printing one summary line apiece.
+`source-paths.json` carries an optional root-level `owner` that bootstrap
+seeds from the root rule of a project-root CODEOWNERS file, so the table
+can say whose desk a pending proposal belongs on. Combining `--all` with
+a named contextualizer is rejected, not guessed at.
+
+What the fleet layer does not do is route: the table names an owner,
+delivering anything to them is outside the engine.
 
 ### What this is *not*
 
@@ -440,6 +457,9 @@ unknown`). A `confirmed` source can become `removed` upstream without
 invalidating the curation, and the engine surfaces both axes separately so
 the reviewer sees the full picture.
 
+At the document root the file also carries the optional `owner` seeded at
+bootstrap from CODEOWNERS, alongside `probe_budget`.
+
 ### Bootstrap scaffolding
 
 `/skill-engine:engine-bootstrap` stamps a fresh contextualizer skeleton into
@@ -544,8 +564,13 @@ marketplace (the recommended path) and the Claude Desktop zip — with the
 hand-rolled activation below as an optional pattern for builders who want a
 route the engine does not generate (see the optional CLI pattern in
 [04-delivery.md](plugin/skill-engine/docs/04-delivery.md)). The artifact a
-contextualizer produces is itself distributable the same two ways: a `.zip`
-into Claude Desktop or a published plugin for the marketplace.
+contextualizer produces is distributable in its own right, and in one more way
+than the engine is: a `.zip` into Claude Desktop, a skills-only plugin
+published to a marketplace, or a shared context repository cloned to a
+user-level skills root.
+[docs/recipes/distribute.md](docs/recipes/distribute.md) is the recipe for the
+latter two — the manifest shape, the layout the locator resolves, and the
+access-scoping rule a shared contextualizer has to respect.
 
 ### Plugin install (recommended)
 

@@ -44,6 +44,15 @@ run_shellcheck() {
   # shellcheck disable=SC2086 # newline-split is intended; repo paths carry no whitespace
   shellcheck -s bash --severity=warning $files
   echo "shellcheck: OK"
+
+  # The other half of the inventory. An extension-based sweep reads none of
+  # the shell and Python that ships INSIDE SKILL Markdown — the shared
+  # locator, STATUS's fleet-row derivation, `review`'s budget and grouper,
+  # the bootstrap CODEOWNERS seed — all of which the prose instructs an
+  # agent to run verbatim. Same dialect, same severity; see
+  # scripts/lint-fences.sh for what it can and cannot reach.
+  need python3
+  bash "$REPO_ROOT/scripts/lint-fences.sh"
 }
 
 run_json() {
@@ -55,6 +64,7 @@ run_json() {
     "plugin/skill-engine/engine-bootstrap-templates/research-state.json.template"
     "plugin/skill-engine/engine-bootstrap-templates/source-paths.json.template"
     "plugin/skill-engine/engine-bootstrap-templates/monorepo-config.json.template"
+    "plugin/skill-engine/engine-bootstrap-templates/contextualizer-plugin.json.template"
   )
   local f
   for f in "${paths[@]}"; do
