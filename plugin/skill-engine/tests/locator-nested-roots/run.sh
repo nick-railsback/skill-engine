@@ -786,6 +786,82 @@ if [ -n "$scan_hits" ]; then
 fi
 
 # ════════════════════════════════════════════════════════════════════════
+# pending-proposal pre-step — one line per staged proposal, whatever the
+# shape of the fleet that produced it
+# ════════════════════════════════════════════════════════════════════════
+
+# The router derives the proposals to surface from the enumeration rather
+# than searching again. That is the right input, but the derivation is
+# per-contextualizer while a proposal belongs to an install ROOT, and the
+# note it feeds prints one line per proposal found — so the arithmetic has
+# to be per distinct root, not per contextualizer.
+
+# proposed_fence <file> — the first ```bash fence that builds proposed_dirs.
+proposed_fence() {
+  awk '
+    /^```bash[[:space:]]*$/ { inf = 1; buf = ""; next }
+    inf && /^```[[:space:]]*$/ {
+      inf = 0
+      if (buf ~ /proposed_dirs/) { printf "%s", buf; exit }
+      next
+    }
+    inf { buf = buf $0 "\n" }
+  ' "$1"
+}
+
+PROPOSED_CODE="$(proposed_fence "$ROUTER_MD")"
+
+if [ -z "$PROPOSED_CODE" ]; then
+  fixture_error "no runnable proposed_dirs block found in $ROUTER_MD"
+else
+  PROP_HOME="$(mktmp)"
+  PROP_REPO="$(mktmp)"
+  PROP_SKILLS="$PROP_HOME/.claude/skills"
+  mkdir -p "$PROP_SKILLS" "$PROP_REPO"
+
+  # Three contextualizers sharing ONE install root, with a single staged
+  # proposal between them.
+  mk_ctx "$PROP_SKILLS" pa
+  mk_ctx "$PROP_SKILLS" pb
+  mk_ctx "$PROP_SKILLS" pc
+  mkdir -p "$PROP_SKILLS/pb-context.proposed/.review"
+
+  # An orphan: the last proposal in an install root whose live trees are
+  # all gone — deleted, renamed, or moved to another level. The
+  # enumeration names no contextualizer there, so a derivation that globs
+  # only the parents of enumerated contextualizers cannot reach it, and it
+  # is exactly the state a user most needs surfaced: `apply` and `discard`
+  # both take a slug that no longer has a live sibling.
+  mkdir -p "$PROP_HOME/.claude/local/skills/porphan-context.proposed/.review"
+
+  prop_ctx_all="$PROP_SKILLS/pa-context
+$PROP_SKILLS/pb-context
+$PROP_SKILLS/pc-context"
+
+  prop_script="$WORK/proposed.sh"
+  {
+    printf '%s\n' "$PROPOSED_CODE"
+    printf '\nprintf %s\\n "$proposed_dirs" | grep . | LC_ALL=C sort\n' '%s'
+  } > "$prop_script"
+
+  prop_out="$(cd "$PROP_REPO" && HOME="$PROP_HOME" LC_ALL=C \
+    ctx_all="$prop_ctx_all" bash "$prop_script" 2>/dev/null)"
+
+  ok=1
+  [ "$(printf '%s\n' "$prop_out" | grep -cF "$PROP_SKILLS/pb-context.proposed" || true)" -eq 1 ] || ok=0
+  report "$ok" "pending proposals: one staged proposal beside three contextualizers in one root is named once, not once per contextualizer"
+
+  ok=1
+  printf '%s\n' "$prop_out" \
+    | grep -qF "$PROP_HOME/.claude/local/skills/porphan-context.proposed" || ok=0
+  report "$ok" "pending proposals: a proposal whose live contextualizer was deleted or renamed is still surfaced"
+
+  ok=1
+  [ "$prop_out" = "$(printf '%s\n' "$prop_out" | LC_ALL=C sort -u)" ] || ok=0
+  report "$ok" "pending proposals: no proposal is listed twice"
+fi
+
+# ════════════════════════════════════════════════════════════════════════
 # router prose — what the entry-point skill tells the agent about
 # several installed contextualizers, and about where they live
 # ════════════════════════════════════════════════════════════════════════

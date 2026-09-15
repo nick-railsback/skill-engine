@@ -47,14 +47,31 @@ branch before anything reads it.
 Before dispatching to a workflow, check for pending proposals — any
 `*-context.proposed/` directory that DISCOVER or REFRESH left behind. A
 proposal is always staged as a sibling of the live contextualizer it was
-derived from, so the enumeration above is the input this needs and no
-second search is required:
+derived from, so the enumeration above is most of the input this needs: the
+*install roots* it names, deduplicated, are what gets searched. Each root
+is searched once, and the three fixed roots are searched whether or not the
+enumeration reached them:
 
 ```bash
+# The install ROOTS to search, not the contextualizers: a proposal is a
+# sibling of a contextualizer, so it belongs to the root, and globbing
+# once per contextualizer lists every proposal in a root once per
+# contextualizer sharing it — N contextualizers in one root, every
+# proposal printed N times, and the note below prints one line each.
+#
+# The three fixed roots are searched too, unioned with the parents the
+# enumeration yields. The enumeration only names roots that still hold a
+# contextualizer, so without them the last proposal in a root whose live
+# trees were all deleted or renamed is unreachable — an orphan is exactly
+# what a user needs told, since `apply` and `discard` both take a slug
+# that no longer has a live sibling.
 proposed_dirs=$(
-  printf '%s\n' "$ctx_all" | while IFS= read -r ctx; do
-    [ -n "$ctx" ] || continue
-    ls -d "${ctx%/*}"/*-context.proposed 2>/dev/null
+  {
+    printf '%s\n' "$ctx_all" | sed -n 's|/[^/]*$||p'
+    printf '%s\n' "$HOME/.claude/skills" "$HOME/.claude/local/skills" \
+      "$PWD/.claude/skills"
+  } | grep . | LC_ALL=C sort -u | while IFS= read -r root; do
+    ls -d "$root"/*-context.proposed 2>/dev/null
   done
 )
 ```
