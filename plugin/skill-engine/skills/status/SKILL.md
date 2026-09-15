@@ -107,7 +107,15 @@ def review_state(proposed):
     text = review.read_text(encoding="utf-8", errors="replace")
     if "___" in text:
         return "awaiting Step 1"
-    if "(Run /skill-engine:review" in text:
+    # `again after filling Step 1` and not `(Run /skill-engine:review`:
+    # the template's line is "(Run `/skill-engine:review <name>` again
+    # after filling Step 1 to populate this section.)" — with backticks,
+    # which the parenthesised form never matches. The branch was
+    # unreachable, so an ungenerated Step 2 fell through to the tick
+    # count and read as `signed off` whenever a reviewer had ticked a box
+    # without running the second pass, which is precisely the state
+    # `apply`'s pre-promotion gate refuses.
+    if "again after filling Step 1" in text:
         return "Step 2 not generated"
     ticks = re.findall(r"(?mi)^- \[x\] (?:reviewed|provisional|reject)", text)
     return "signed off" if len(ticks) == 1 else "not signed off"
@@ -179,7 +187,7 @@ else
     ticks=$(grep -ciE '^- \[x\] (reviewed|provisional|reject)' "$review" 2>/dev/null); ticks=${ticks:-0}
     if grep -q '___' "$review" 2>/dev/null; then
       printf '  Review: awaiting Step 1 predictions (run /skill-engine:review %s).\n' "$slug"
-    elif grep -qF '(Run /skill-engine:review' "$review" 2>/dev/null; then
+    elif grep -qF 'again after filling Step 1' "$review" 2>/dev/null; then
       printf '  Review: Step 1 filled; Step 2 not yet generated (re-run /skill-engine:review %s).\n' "$slug"
     elif [ "$ticks" -eq 1 ]; then
       state=$(grep -iE '^- \[x\] (reviewed|provisional|reject)' "$review" | head -1 | sed -E 's/^- \[[xX]\] +//')

@@ -324,6 +324,31 @@ mk_proposal() {
   } > "$prop/.review/REVIEW.md"
 }
 
+# mk_proposal_from_template <skills-dir> <slug> — a staged proposal whose
+# REVIEW.md is the SHIPPED template with `<name>` substituted and Step 1
+# filled, and nothing else touched. This is the state `review`'s first pass
+# leaves behind and `review`'s second pass has not yet acted on.
+#
+# Built from the template rather than written by hand on purpose: the whole
+# of finding 7 is that the reader's literal and the template's line had
+# drifted apart, and a hand-written fixture would carry whichever spelling
+# the fixture author reached for — which is exactly how the drift stayed
+# invisible.
+REVIEW_TEMPLATE_MD="${REVIEW_TEMPLATE_MD:-$PLUGIN_ROOT/engine-bootstrap-templates/REVIEW.md.template}"
+
+mk_proposal_from_template() {
+  local skills_dir="$1" slug="$2"
+  local prop="$skills_dir/$slug-context.proposed"
+  mkdir -p "$prop/.review" "$prop/references"
+  printf '{"entries":[{"path":"references/a.md","status":"added"}]}\n' \
+    > "$prop/.review/manifest.json"
+  # `<name>` as bootstrap substitutes it, then the three Step-1 blanks
+  # filled the way a reviewer fills them. Step 2 is left exactly as the
+  # template ships it.
+  sed -e "s|<name>|$slug|g" -e 's|___|a filled prediction|g' \
+    "$REVIEW_TEMPLATE_MD" > "$prop/.review/REVIEW.md"
+}
+
 # ────────────────────────────────────────────────────────────────────────
 # Blobs
 # ────────────────────────────────────────────────────────────────────────
@@ -474,6 +499,84 @@ case "$(cell "$gamma_row" 6)" in *'@org/team-g'*) ;; *) ok=0 ;; esac
 [ "$(cell "$alpha_row" 6)" = "—" ] || ok=0
 [ "$(cell "$beta_row" 6)" = "—" ] || ok=0
 report "$ok" "fleet table: the sixth column shows the recorded owner and an em dash when none is recorded"
+
+# Finding 7: the review-state cell's "Step 2 not generated" branch. The
+# fixture below is the shipped template with Step 1 filled — the one state
+# that branch exists to name — and the cell must not read as signed off or
+# as merely unsigned, because `apply`'s pre-promotion gate refuses exactly
+# this proposal and the fleet table would be telling a platform team it is
+# ready.
+TEMPLATE_OUT=""
+TEMPLATE_RC=1
+if [ -n "$FLEET_CODE" ] && [ -s "$REVIEW_TEMPLATE_MD" ]; then
+  TEMPLATE_HOME="$(mktmp)"
+  TEMPLATE_REPO="$(mktmp)"
+  git_q "$TEMPLATE_REPO" init -q
+  mk_ctx "$TEMPLATE_REPO/.claude/skills" delta "$(mk_source d1 '')"
+  mk_proposal_from_template "$TEMPLATE_REPO/.claude/skills" delta
+  printf 'fixture\n' > "$TEMPLATE_REPO/README.md"
+  git_q "$TEMPLATE_REPO" add -A >/dev/null 2>&1
+  git_q "$TEMPLATE_REPO" commit -q -m fixture >/dev/null 2>&1
+
+  if [ "$FLEET_LANG" = python ]; then
+    TEMPLATE_OUT="$(cd "$TEMPLATE_REPO" && HOME="$TEMPLATE_HOME" LC_ALL=C \
+      CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+      ctx_roots="$TEMPLATE_REPO/.claude/skills/delta-context" \
+      python3 -c "$FLEET_CODE" 2>&1)"
+    TEMPLATE_RC=$?
+  else
+    TEMPLATE_OUT="$(cd "$TEMPLATE_REPO" && HOME="$TEMPLATE_HOME" LC_ALL=C \
+      CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+      ctx_roots="$TEMPLATE_REPO/.claude/skills/delta-context" \
+      bash -c "$FLEET_CODE" 2>&1)"
+    TEMPLATE_RC=$?
+  fi
+fi
+
+delta_row="$(printf '%s\n' "$TEMPLATE_OUT" | grep -F -- 'delta-context' | grep '|' | head -n1)"
+ok=1
+[ "$TEMPLATE_RC" -eq 0 ] || ok=0
+[ -n "$delta_row" ] || ok=0
+[ -n "$delta_row" ] && [ "$(cell "$delta_row" 4)" = "yes" ] || ok=0
+report "$ok" "fleet table: fixture — a proposal staged from the shipped REVIEW template is reported as pending"
+
+ok=1
+[ -n "$delta_row" ] || ok=0
+case "$(cell "$delta_row" 5)" in
+  *"Step 2"*) ;;
+  *) ok=0 ;;
+esac
+report "$ok" "fleet table: a REVIEW.md carrying the shipped template's unpopulated Step 2 reads as an ungenerated Step 2, not as a sign-off state"
+
+# Three readers, one template line. The fleet cell re-implements in Python
+# the reading STATUS already does in bash, and `apply`'s pre-promotion gate
+# states it a third time in prose — which is how a literal that matched
+# nothing got copied twice instead of noticed once. Asserted across all four
+# files so a fix to one of them cannot leave the others behind.
+APPLY_GATES_MD="${APPLY_GATES_MD:-$SKILLS_DIR/apply/references/pre-promotion-gates.md}"
+STEP2_NEEDLE='again after filling Step 1'
+
+ok=1
+grep -qF "$STEP2_NEEDLE" "$REVIEW_TEMPLATE_MD" || ok=0
+report "$ok" "fleet table: the shipped REVIEW template carries the unpopulated-Step-2 line every reader keys on"
+
+for pair in "STATUS python cell:$STATUS_SKILL_MD" \
+            "STATUS bash reading:$STATUS_SKILL_MD" \
+            "apply pre-promotion gate:$APPLY_GATES_MD"; do
+  label="${pair%%:*}"
+  file="${pair#*:}"
+  ok=1
+  grep -qF "$STEP2_NEEDLE" "$file" || ok=0
+  report "$ok" "fleet table: the $label reads Step 2 by a substring the template actually contains"
+done
+
+# Both of STATUS's own readers, matched as the constructs they are — the
+# Python membership test and the bash fixed-string grep — rather than by
+# counting occurrences, which the explanatory comment beside them inflates.
+ok=1
+grep -qF "\"$STEP2_NEEDLE\" in text" "$STATUS_SKILL_MD" || ok=0
+grep -qF "grep -qF '$STEP2_NEEDLE'" "$STATUS_SKILL_MD" || ok=0
+report "$ok" "fleet table: both of STATUS's review-state readers key on that same substring"
 
 # An enumeration that found nothing is not a fleet of one. The locator
 # writes its nothing-found diagnostic to *stdout* and exits 1, so a caller
