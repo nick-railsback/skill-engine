@@ -231,7 +231,7 @@ package_release() {
 
   # Build from skills/ so the top-level entry inside the zip
   # is <area-domain>-context/. Desktop requires this.
-  cd "$SOURCE_ROOT/skills"
+  cd "$SOURCE_ROOT/skills" || exit 1
   zip -rq "$zip_name" "<area-domain>-context" \
     -x "*.git/*" -x "*.DS_Store" -x "*.swp" -x "*.bak"
   mv "$zip_name" "$invoker_cwd/"

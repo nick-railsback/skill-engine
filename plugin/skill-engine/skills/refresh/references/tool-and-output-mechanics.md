@@ -108,12 +108,14 @@ identical advance can simply be run again.
 ```bash
 : "${CTX_ROOT:?advance needs CTX_ROOT — the contextualizer root the locator block resolved}"
 
-if [ "<old_sha>" = "<new_sha>" ]; then
+old_sha="<old_sha>"
+new_sha="<new_sha>"
+if [ "$old_sha" = "$new_sha" ]; then
   exit 0
 fi
 
 "$CLAUDE_PLUGIN_ROOT/bin/cache-git.sh" advance \
-  "<source_id>" "<old_sha>" "<new_sha>" \
+  "<source_id>" "$old_sha" "$new_sha" \
   "$CTX_ROOT/research/.discover-inventory.json" || exit $?
 ```
 <!-- doctrine:cache-advance-recipe:end -->

@@ -296,7 +296,7 @@ When you bump the version:
 **User action required:** None. Run `skill-engine update` to upgrade the engine; existing contextualizers work unchanged.
 
 **CLI behavior:**
-```bash
+```text
 detect_legacy_installation()
 # Returns: "none" (v0.1 contextualizers are compatible with v0.2 engine)
 
@@ -311,7 +311,7 @@ install_skills()
 **User action required:** One-time migration via CLI or manual re-scaffolding.
 
 **CLI behavior:**
-```bash
+```text
 detect_legacy_installation()
 # Returns: "0.1" (version from metadata file; schema is incompatible)
 
