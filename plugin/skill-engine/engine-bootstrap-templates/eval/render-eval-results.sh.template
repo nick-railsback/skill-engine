@@ -373,10 +373,25 @@ emit_fleet_records() {
 # Render the confusion table from the fleet records on stdin. Rows are the
 # query-owning contextualizers; columns are $1, the recorded installed set.
 #
-# Every cell — diagonal and off-diagonal alike — is a majority vote over the
-# entry's runs with `error` runs excluded, which is the rule decide() already
-# applies to the pass count. Applying it identically to both is what makes
-# the diagonal reproduce that count instead of merely resembling it.
+# Every cell is a majority vote over the entry's runs with `error` runs
+# excluded — the rule decide() already applies to the pass count. What is
+# voted on differs by cell, and the difference is load-bearing:
+#
+#   the diagonal    votes on whether the run PASSED, i.e. read the
+#                   expected reference. That is decide()'s own predicate,
+#                   which is what makes the diagonal reproduce the pass
+#                   count exactly rather than merely resembling it.
+#   off-diagonal    votes on whether that column's navigator FIRED —
+#                   read any reference it owns. A sibling has no expected
+#                   reference for someone else's query, so "did it
+#                   activate at all" is the only question there is.
+#
+# Voting the diagonal on `fired` too would make it a strict superset of
+# the pass count, diverging whenever the owning navigator reads one of its
+# own references that is not the expected one — the ordinary "right skill,
+# wrong reference" failure a per-navigator eval exists to catch. A
+# contextualizer that always activates and always picks the wrong file
+# would read as a perfect diagonal beside a 0% pass rate.
 render_confusion_table() {
   awk -v US="$US" -v cols="$1" '
     BEGIN { FS = US; ncol = split(cols, col, " ") }
@@ -392,9 +407,17 @@ render_confusion_table() {
         if (outcome[r] == "error") continue
         valid++
         nf = split($(2 + r), fired, ",")
-        for (f = 1; f <= nf; f++)
-          for (c = 1; c <= ncol; c++)
+        for (c = 1; c <= ncol; c++) {
+          if (col[c] == owner) {
+            # The diagonal: the predicate decide() votes on, not the
+            # fired one. (No apostrophes in here: this awk program is a
+            # single-quoted shell word.)
+            if (outcome[r] == "pass") hit[c]++
+            continue
+          }
+          for (f = 1; f <= nf; f++)
             if (fired[f] == col[c]) hit[c]++
+        }
       }
       if (valid == 0) next
       for (c = 1; c <= ncol; c++)

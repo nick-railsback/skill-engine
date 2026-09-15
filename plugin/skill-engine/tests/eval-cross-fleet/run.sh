@@ -289,6 +289,56 @@ cat > "$FLEET/gamma-context/evals/evals.json" <<'JSON'
 JSON
 
 # ---------------------------------------------------------------------------
+# Fixture fleet 2: two roots that own a reference of the SAME NAME.
+#
+# `references/shared.md` exists under both. The query belongs to one-context
+# and expects `shared`; the stub answers it by reading TWO-context's
+# `shared.md` — the sibling won, and the owner read nothing of its own. A
+# pass predicate that matches `references/shared.md` anywhere on the path
+# scores that as a pass for one-context.
+#
+# Collisions are not exotic in a fleet: `overview`, `getting-started`,
+# `configuration` and `testing` are what reference files get called, and
+# installed-set mode is the one mode where several roots' corpora are in
+# play at once.
+# ---------------------------------------------------------------------------
+
+COLLIDE="$T/collide"
+mkdir -p "$COLLIDE/one-context/references" "$COLLIDE/one-context/evals" \
+         "$COLLIDE/two-context/references" "$COLLIDE/two-context/evals"
+for r in "$COLLIDE/one-context" "$COLLIDE/two-context"; do
+  printf '# shared\n\nfixture reference.\n' > "$r/references/shared.md"
+done
+
+cat > "$COLLIDE/one-context/evals/evals.json" <<'JSON'
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "query": "collide query",
+      "expected": "shared",
+      "notes": "in scope; the stub answers it from the sibling root.",
+      "persona": "domain-expert"
+    }
+  ]
+}
+JSON
+
+cat > "$COLLIDE/two-context/evals/evals.json" <<'JSON'
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "query": "two ghost query",
+      "expected": "two-missing",
+      "notes": "out of scope: two owns nothing the filter keeps.",
+      "persona": "domain-expert"
+    }
+  ]
+}
+JSON
+
+# ---------------------------------------------------------------------------
 # The stub `claude`. No extension, so the shellcheck inventory leaves it
 # alone; it is a plain executable on PATH exactly like the real CLI.
 #
@@ -329,6 +379,9 @@ case "$query" in
   "beta first query")
     emit_read "$STUB_FLEET/beta-context/references/beta-one.md"
     ;;
+  "collide query")
+    emit_read "$STUB_COLLIDE/two-context/references/shared.md"
+    ;;
   "beta second query")
     if [ "$n" -eq 2 ]; then
       echo "stub: simulated CLI failure" >&2
@@ -344,6 +397,7 @@ STUB
 chmod +x "$T/bin/claude"
 
 export STUB_FLEET="$FLEET"
+export STUB_COLLIDE="$COLLIDE"
 
 # run_harness <workdir> <state-tag> [args...] — invoke the substituted
 # harness with the stub CLI on PATH, capturing stdout and stderr to files.
@@ -654,6 +708,39 @@ cat > "$ARITH" <<'JSON'
 }
 JSON
 
+# The "right skill, wrong reference" discriminator — the case the ARITH
+# fixture cannot express, because its `fired` and `runs` fields are
+# hand-aligned and the harness only produces that pairing by coincidence.
+# Both entries are owned by alpha and alpha's navigator fires on every run
+# of both; the difference is which reference it then reads.
+#
+#   w1  runs fail,fail,fail   fired alpha,alpha,alpha
+#       Alpha activated every time and read the wrong file every time —
+#       the ordinary failure a per-navigator eval exists to catch. Its
+#       diagonal contribution is 0, because the entry did not pass.
+#   w2  runs pass,pass,pass   fired alpha,alpha,alpha
+#       The contrast: same firing, right reference, contributes 1.
+#
+# Row alpha is therefore 1 0 0 against a pass count of 1. Voting the
+# diagonal on "fired" instead reads 2 0 0 against the same pass count of 1,
+# i.e. a contextualizer that always activates and always picks the wrong
+# file renders as a perfect diagonal beside a 0% pass rate.
+WRONGREF="$T/results-wrong-reference.json"
+cat > "$WRONGREF" <<'JSON'
+{
+  "navigator": "installed-set",
+  "schema_version": 1,
+  "installed_set": ["alpha", "beta", "gamma"],
+  "started_at": "2026-01-01T00:00:00Z",
+  "runs_per_query": 3,
+  "entries": [
+    {"query": "w1", "expected": "alpha-one", "persona": "domain-expert", "owner": "alpha", "fired": [["alpha"], ["alpha"], ["alpha"]], "runs": ["fail", "fail", "fail"]},
+    {"query": "w2", "expected": "alpha-two", "persona": "domain-expert", "owner": "alpha", "fired": [["alpha"], ["alpha"], ["alpha"]], "runs": ["pass", "pass", "pass"]}
+  ],
+  "ended_at": "2026-01-01T00:05:00Z"
+}
+JSON
+
 PLAIN="$T/results-plain.json"
 cat > "$PLAIN" <<'JSON'
 {
@@ -793,6 +880,58 @@ arith_diagonal_matches_pass_count() {
 each_renderer "the diagonal cell reproduces the entry's existing pass count exactly" \
   "$ARITH" arith_diagonal_matches_pass_count
 
+section "confusion table: the diagonal votes on the pass predicate, not on whether the owner fired"
+
+wrongref_row() {
+  [ "$(table_row "$1" alpha)" = "1 0 0" ]
+}
+each_renderer "a navigator that fires on every run but reads the wrong reference does not fill its own diagonal" \
+  "$WRONGREF" wrongref_row
+
+wrongref_diagonal_matches_pass_count() {
+  local numerator
+  numerator="$(printf '%s\n' "$1" | sed -n 's/^[[:space:]]*overall:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*\/.*$/\1/p' | head -n 1)"
+  [ -n "$numerator" ] && [ "$(table_row "$1" alpha | awk '{print $1}')" = "$numerator" ]
+}
+each_renderer "the diagonal still reproduces the pass count when \`fired\` and \`runs\` disagree" \
+  "$WRONGREF" wrongref_diagonal_matches_pass_count
+
+wrongref_no_flags() {
+  [ "$(flag_count "$1")" = "0" ]
+}
+each_renderer "no sibling fired, so nothing off-diagonal is flagged" \
+  "$WRONGREF" wrongref_no_flags
+
+section "installed-set mode: the pass predicate is scoped to the owning root"
+
+COLLIDE_ROOTS="$T/collide-roots.txt"
+cat > "$COLLIDE_ROOTS" <<EOF
+$COLLIDE/one-context
+$COLLIDE/two-context
+EOF
+run_harness "$T/work-collide" collide --installed-set "$COLLIDE_ROOTS" ignored \
+  "$T/work-collide/results-collide.json"
+
+collide_why=""
+if [ "$HARNESS_RC" -ne 0 ] || [ -z "$HARNESS_RESULTS" ] || [ ! -f "$HARNESS_RESULTS" ]; then
+  collide_why="the harness did not write a results file (exit=$HARNESS_RC); stderr in $HARNESS_ERR;"
+else
+  collide_runs="$(jq -r '[.entries[] | select(.owner == "one") | .runs[]] | join(",")' \
+    "$HARNESS_RESULTS" 2>/dev/null)"
+  collide_fired="$(jq -r '[.entries[] | select(.owner == "one") | .fired[][]] | unique | join(",")' \
+    "$HARNESS_RESULTS" 2>/dev/null)"
+  case "$collide_runs" in
+    *pass*) collide_why="$collide_why one-context scored a pass on a run that read the SIBLING root's identically-named reference (runs: $collide_runs);" ;;
+    "") collide_why="$collide_why no entry owned by one-context was recorded;" ;;
+  esac
+  [ "$collide_fired" = "two" ] || collide_why="$collide_why the fired set for that entry is '$collide_fired', not the sibling that actually read;"
+fi
+if [ -z "$collide_why" ]; then
+  pass "a sibling root's identically-named reference does not score a pass for the owner"
+else
+  fail "a sibling root's identically-named reference does not score a pass for the owner" "$collide_why"
+fi
+
 section "presence detection: no installed-set data, no table"
 
 presence_why=""
@@ -901,6 +1040,20 @@ if [ -z "$cost_why" ]; then
   pass "the cost is documented as scaling with the fleet size times three runs per query"
 else
   fail "the cost is documented as scaling with the fleet size times three runs per query" "$cost_why"
+fi
+
+predicate_why=""
+if ! within "$DOC_TEXT" "diagonal" 400 "pass" && ! within "$DOC_TEXT" "pass" 400 "diagonal"; then
+  predicate_why="$predicate_why the chapter does not say the diagonal votes on the pass predicate;"
+fi
+if ! within "$DOC_TEXT" "off-diagonal" 400 "fire" && ! within "$DOC_TEXT" "fire" 400 "off-diagonal"; then
+  predicate_why="$predicate_why the chapter does not say off-diagonal cells vote on whether the column navigator fired;"
+fi
+if [ -z "$predicate_why" ]; then
+  pass "the chapter states which predicate each half of the table votes on, rather than claiming one vote for both"
+else
+  fail "the chapter states which predicate each half of the table votes on, rather than claiming one vote for both" \
+    "$predicate_why"
 fi
 
 fields_why=""

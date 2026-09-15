@@ -193,6 +193,14 @@ US=$(printf '\037')
 # pass-vs-fail vote, so an expired token is not misread as a navigator
 # regression.
 #
+# A third argument, the owning contextualizer's slug, scopes the pass
+# predicate to that root's own references/ directory. Installed-set mode
+# supplies it; the default path passes nothing and the predicate stays the
+# root-relative one it has always been. Without it, a fleet whose roots
+# both carry `references/overview.md` — and `overview`, `configuration`,
+# `testing` are exactly what reference files get called — scores the owner
+# a pass for a run in which some sibling's navigator answered.
+#
 # The maintainer can override this function (e.g., to assert against catalog
 # row text, or to use a different CLI) by editing the body below.
 #
@@ -204,8 +212,15 @@ RUN_ONE_READS=""
 run_one() {
   local query="$1"
   local expected="$2"
-  local exp_re out rc err_tmp
+  local owner_slug="${3:-}"
+  local exp_re owner_re expect_path out rc err_tmp
   exp_re=$(printf '%s' "$expected" | sed -e 's/[][\.*^$+?(){}|\\\/]/\\&/g')
+  if [ -n "$owner_slug" ]; then
+    owner_re=$(printf '%s' "$owner_slug" | sed -e 's/[][\.*^$+?(){}|\\\/]/\\&/g')
+    expect_path="/${owner_re}-context/references/${exp_re}\\.md\$"
+  else
+    expect_path="(^|/)references/${exp_re}\\.md\$"
+  fi
   err_tmp=$(mktemp "${TMPDIR:-/tmp}/run-eval-stderr.XXXXXX")
   # Redirect stdin from /dev/null so claude does not consume the
   # process-substitution feeding the outer while-read loop. Without this,
@@ -236,7 +251,7 @@ run_one() {
               | (.input.file_path // empty)' 2>/dev/null) || read_paths=""
   if [ -n "$RUN_ONE_READS" ]; then printf '%s\n' "$read_paths" > "$RUN_ONE_READS"; fi
   hits=$(printf '%s\n' "$read_paths" \
-    | grep -cE "(^|/)references/${exp_re}\\.md\$") || true
+    | grep -cE "$expect_path") || true
   if [ "${hits:-0}" -gt 0 ]; then
     echo "pass"
   else
@@ -459,7 +474,7 @@ while IFS="$US" read -r query expected persona owner; do
   i=1
   while [ "$i" -le "$RUNS_PER_QUERY" ]; do
     RUN_ONE_READS="$READS_TMP"
-    outcome=$(run_one "$query" "$expected")
+    outcome=$(run_one "$query" "$expected" "$owner")
     if [ -n "$runs" ]; then runs="$runs, \"$outcome\""; else runs="\"$outcome\""; fi
     if [ "$INSTALLED_SET_MODE" -eq 1 ]; then
       fired_run=$(fired_slugs "$READS_TMP")
