@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -37,6 +38,32 @@ from pathlib import Path
 
 IN_SCOPE_STATUSES = {"confirmed", "proposed"}
 MAX_WORKERS = 10
+
+# No probe may wait indefinitely. A dead host or a firewalled SSH url
+# otherwise holds a worker slot until the OS gives up, and with ten slots
+# a handful of them stall the whole run with nothing printed. A timed-out
+# probe becomes an `error` row like any other failure, so the sources that
+# did answer are still reported.
+PROBE_TIMEOUT_SECONDS = 20
+
+# The environment every probe runs git in. Sequentially, a source needing
+# credentials or a host-key confirmation prompted once, in order, on a
+# terminal nobody else was using; with ten in flight those prompts
+# interleave into something a user cannot answer, and each one is a worker
+# blocked forever. Refusing to prompt turns all of that into a prompt
+# failure -- an `error` row naming the source, which is the outcome this
+# script exists to report.
+PROBE_ENV = {
+    **os.environ,
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_ASKPASS": "true",
+    "SSH_ASKPASS": "true",
+    # BatchMode only: ssh fails instead of asking, which is the whole
+    # point. Nothing here relaxes host-key checking -- an unknown host is
+    # an `error` row naming the source, not a key accepted on the user's
+    # behalf. A GIT_SSH_COMMAND the user set deliberately is left alone.
+    "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND", "ssh -oBatchMode=yes"),
+}
 
 
 def is_in_scope(source: dict) -> bool:
@@ -68,10 +95,16 @@ def probe(source: dict) -> dict:
     ref = source.get("branch") or "HEAD"
     recorded_sha = source.get("lifecycle", {}).get("last_checked_sha")
 
+    # stdin=DEVNULL as well as the environment above: capture_output
+    # redirects stdout and stderr only, so without it git inherits this
+    # process's stdin and can read from the user's terminal.
     result = subprocess.run(
         ["git", "ls-remote", "--", url, ref],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
+        env=PROBE_ENV,
+        timeout=PROBE_TIMEOUT_SECONDS,
     )
     lines = result.stdout.splitlines()
     live_sha = lines[0].split()[0] if lines and lines[0].split() else ""
@@ -110,6 +143,16 @@ def probe(source: dict) -> dict:
 def probe_isolated(source: dict) -> dict:
     try:
         return probe(source)
+    except subprocess.TimeoutExpired:
+        return {
+            "source_id": source.get("id"),
+            "state": "error",
+            "recorded_sha": (source.get("lifecycle") or {}).get("last_checked_sha"),
+            "live_sha": None,
+            "error": (
+                f"git ls-remote did not answer within {PROBE_TIMEOUT_SECONDS}s"
+            ),
+        }
     except Exception as exc:  # noqa: BLE001
         return {
             "source_id": source.get("id"),

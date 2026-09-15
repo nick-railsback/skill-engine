@@ -276,6 +276,38 @@ SHIM
   chmod +x "$dir/git" || return 1
 }
 
+make_environment_git() {
+  # Records, per invocation, the two things that decide whether a probe can
+  # sit waiting for a human: the value of GIT_TERMINAL_PROMPT it was given,
+  # and whatever it can read from its own stdin. The read is from a regular
+  # file the caller redirects in, so it returns immediately whether or not
+  # the descriptor was inherited — nothing here can block the suite.
+  local dir="$1"
+  mkdir -p "$dir" || return 1
+  cat > "$dir/git" <<'SHIM'
+#!/usr/bin/env bash
+printf 'prompt=%s stdin=%s\n' \
+  "${GIT_TERMINAL_PROMPT:-unset}" \
+  "$(head -c 16 </dev/stdin 2>/dev/null | tr -d '\n')" \
+  >> "$PROBE_ENV_LOG"
+printf '%s\tHEAD\n' "${PROBE_FIXTURE_SHA:-0000000000000000000000000000000000000000}"
+SHIM
+  chmod +x "$dir/git" || return 1
+}
+
+make_hanging_git() {
+  # A remote that never answers — a dead host, or a firewalled SSH url. It
+  # holds its worker slot until something takes it away.
+  local dir="$1"
+  mkdir -p "$dir" || return 1
+  cat > "$dir/git" <<'SHIM'
+#!/usr/bin/env bash
+sleep 30
+printf '%s\tHEAD\n' "${PROBE_FIXTURE_SHA:-0000000000000000000000000000000000000000}"
+SHIM
+  chmod +x "$dir/git" || return 1
+}
+
 make_logging_git() {
   # Logs its own argument vector, then hands the call to the real git, so
   # the run stays truthful while every verb it used is recoverable.
@@ -710,6 +742,94 @@ else
   else
     fail "git verbs: every git invocation a probe run makes is ls-remote, and it does make some" \
       "git invocations recorded: $logged; verbs other than ls-remote: ${other_verbs:-<none>}"
+  fi
+fi
+
+# ===========================================================================
+echo
+echo "── a probe cannot sit waiting on a terminal, and cannot hang forever ──"
+# ===========================================================================
+# Sequentially, a source that needed credentials or a host-key confirmation
+# prompted once, in order, on a terminal nobody else was using. With ten
+# probes in flight the same prompts interleave into something no user can
+# answer — and a probe waiting on a prompt is a probe that never returns.
+# The same is true of a remote that simply never answers.
+
+env_dir="$TMPROOT/environment"
+env_shim="$env_dir/bin"
+PROBE_ENV_LOG="$env_dir/env.log"
+mkdir -p "$env_dir"
+: > "$PROBE_ENV_LOG"
+if ! make_environment_git "$env_shim"; then
+  fixture_error "could not build the environment-recording git shim"
+else
+  env_fp="$env_dir/sources.json"
+  write_sources_file "$env_fp" "$(source_entry "env-a" "$env_dir/bare.git")"
+  export PROBE_ENV_LOG
+  # Stdin is a regular file carrying a marker. A probe that leaves the
+  # child's stdin inherited hands git this descriptor; one that closes it
+  # hands git nothing to read.
+  printf 'STDIN-LEAK-MARKER\n' > "$env_dir/stdin.txt"
+  PROBE_OUT="$(PATH="$env_shim:$PATH" python3 "$PROBE_SCRIPT" "$env_fp" \
+    < "$env_dir/stdin.txt" 2>/dev/null)"
+  unset PROBE_ENV_LOG
+
+  if [ ! -s "$env_dir/env.log" ]; then
+    fixture_error "the environment shim recorded no invocation"
+  else
+    if ! grep -q 'stdin=STDIN-LEAK' "$env_dir/env.log"; then
+      pass "terminal isolation: a probe does not hand git the caller's stdin, so a credential prompt has nothing to read"
+    else
+      fail "terminal isolation: a probe does not hand git the caller's stdin, so a credential prompt has nothing to read" \
+        "$(cat "$env_dir/env.log")"
+    fi
+
+    if grep -q 'prompt=0' "$env_dir/env.log"; then
+      pass "terminal isolation: a probe runs git with terminal prompting disabled"
+    else
+      fail "terminal isolation: a probe runs git with terminal prompting disabled" \
+        "$(cat "$env_dir/env.log")"
+    fi
+  fi
+fi
+
+hang_dir="$TMPROOT/hanging"
+hang_shim="$hang_dir/bin"
+mkdir -p "$hang_dir"
+if ! make_hanging_git "$hang_shim"; then
+  fixture_error "could not build the hanging git shim"
+else
+  # The timeout the script applies, read out of the script rather than
+  # transcribed, then lowered in a scratch copy so the case costs a second
+  # instead of the real budget. A script with no timeout at all has no such
+  # constant, and the assertion below is what says so.
+  hang_timeout="$(sed -n 's/^PROBE_TIMEOUT_SECONDS[[:space:]]*=[[:space:]]*\([0-9][0-9.]*\).*$/\1/p' \
+    "$PROBE_SCRIPT" | head -n1)"
+  if [ -z "$hang_timeout" ]; then
+    fail "hung remotes: one remote that never answers is reported as an error rather than stalling the run" \
+      "the probe script declares no PROBE_TIMEOUT_SECONDS, so nothing bounds a call that never returns"
+  else
+    hang_script="$hang_dir/status_probe.py"
+    sed "s/^PROBE_TIMEOUT_SECONDS[[:space:]]*=.*/PROBE_TIMEOUT_SECONDS = 1/" \
+      "$PROBE_SCRIPT" > "$hang_script"
+    hang_fp="$hang_dir/sources.json"
+    write_sources_file "$hang_fp" \
+      "$(source_entry "hang-a" "$hang_dir/bare.git")" \
+      "$(source_entry "hang-b" "$hang_dir/bare.git")"
+    hang_start="$(date +%s)"
+    hang_out="$(PATH="$hang_shim:$PATH" python3 "$hang_script" "$hang_fp" 2>/dev/null)"
+    hang_rc=$?
+    hang_elapsed=$(( $(date +%s) - hang_start ))
+
+    hang_states="$(printf '%s' "$hang_out" | jq -r '[.[].state] | join(",")' 2>/dev/null)"
+    hang_errors="$(printf '%s' "$hang_out" | jq -r '[.[] | select(.state == "error") | .error] | length' 2>/dev/null)"
+    if [ "$hang_rc" -eq 0 ] && [ "$hang_states" = "error,error" ] \
+       && [ "${hang_errors:-0}" -eq 2 ] && [ "$hang_elapsed" -lt 20 ]; then
+      pass "hung remotes: one remote that never answers is reported as an error rather than stalling the run"
+    else
+      fail "hung remotes: one remote that never answers is reported as an error rather than stalling the run" \
+        "exit=$hang_rc states='${hang_states:-<none>}' errors=${hang_errors:-0} elapsed=${hang_elapsed}s"
+    fi
   fi
 fi
 

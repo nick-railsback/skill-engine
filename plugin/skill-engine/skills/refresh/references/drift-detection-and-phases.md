@@ -343,8 +343,17 @@ for git-managed sources" below (gh/git CLI over WebFetch; how to pick
 `git-managed` probes in this phase may run concurrently, up to ten at a
 time. Concurrency leaves the promotion order unchanged and leaves
 per-source isolation intact: a failing source still affects only itself,
-exactly as when probes run one at a time. The `web-doc` HTTP HEAD path
-is unaffected and is not run concurrently.
+exactly as when probes run one at a time. Isolation is what makes
+concurrency safe, so it is enforced rather than assumed — a source that
+blocks isolates no better than one that raises. Each probe runs with its
+stdin closed and with git's terminal prompting disabled, so a source
+needing credentials or a host-key confirmation fails immediately instead
+of waiting on a terminal ten probes are sharing; and each probe is
+bounded by a timeout, so a dead host or a firewalled SSH url gives up its
+worker rather than holding it. Both cases surface the same way any other
+failed probe does: an `error` row naming that source, with every source
+that did answer reported normally. The `web-doc` HTTP HEAD path is
+unaffected and is not run concurrently.
 
 When the newly-probed SHA differs from the source's previously-recorded
 `last_checked_sha` **and** a local cache directory already exists for that
