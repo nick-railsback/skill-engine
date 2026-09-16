@@ -18,7 +18,15 @@
 #   contract conventions table   — the contract's "Why these conventions
 #                                  exist" table names the frontmatter
 #                                  convention as the contract's field set,
-#                                  `paths:` included.
+#                                  `paths:` included, and its rationale
+#                                  marks `paths:` as Claude Code-scoped
+#                                  rather than as part of what keeps
+#                                  loading cross-platform.
+#   contract paths: paragraph    — § Frontmatter fields states what Check 3
+#                                  reads as no entry and what it fails
+#                                  outright: a trailing comment, a YAML
+#                                  null, a flow sequence that never closes,
+#                                  a repeated key.
 #
 # Every assertion here is a fact still owed. The sweep's own precision and
 # reach already hold, so they live in `preserved.sh` beside this file, each
@@ -214,6 +222,54 @@ else
     fail "$label" "cells naming both: $both" ${fm_cells[@]+"${fm_cells[@]}"}
   fi
 fi
+
+# The frontmatter row's rationale cell is about platforms that drop or
+# reject unknown fields. `paths:` is a Claude Code field, so on such a
+# platform it is the failure the cell describes; the cell must say so.
+label="contract conventions table: the frontmatter row's rationale marks paths: as Claude Code-scoped"
+if [ -z "$table" ]; then
+  fail "$label" "no table under '## Why these conventions exist' in ${CONTRACT_DOC#"$REPO_ROOT"/}"
+else
+  scoped=0
+  rationales=()
+  while IFS= read -r row; do
+    cell="$(printf '%s\n' "$row" | awk -F'|' '{ print $2 }' | flatten)"
+    case "$cell" in
+      *frontmatter*paths*) ;;
+      *) continue ;;
+    esac
+    rationale="$(printf '%s\n' "$row" | awk -F'|' '{ print $3 }' | flatten)"
+    rationales+=( "rationale:$rationale" )
+    case "$rationale" in
+      *paths*claude\ code*|*claude\ code*paths*) scoped=$((scoped + 1)) ;;
+    esac
+  done <<< "$table"
+  if [ "$scoped" -eq 1 ]; then
+    pass "$label"
+  else
+    fail "$label" ${rationales[@]+"${rationales[@]}"}
+  fi
+fi
+
+# ════════════════════════════════════════════════════════════════════════
+# contract paths: paragraph
+# ════════════════════════════════════════════════════════════════════════
+
+echo
+echo "── contract paths: paragraph: states what Check 3 counts as no entry ──"
+
+fm_unit="$(section_from '^### Frontmatter fields' "$CONTRACT_DOC" 2>/dev/null | prose_units | grep -F 'is admitted as an optional third' | head -1)"
+for rule in 'comment' 'null' 'never closes' 'repeat'; do
+  label="contract paths: paragraph: names the '$rule' rule"
+  if [ -z "$fm_unit" ]; then
+    fail "$label" "no paths: admission paragraph under '### Frontmatter fields' in ${CONTRACT_DOC#"$REPO_ROOT"/}"
+  else
+    case "$fm_unit" in
+      *"$rule"*) pass "$label" ;;
+      *) fail "$label" "paragraph: $fm_unit" ;;
+    esac
+  fi
+done
 
 echo
 echo "Passed: $pass_count"
