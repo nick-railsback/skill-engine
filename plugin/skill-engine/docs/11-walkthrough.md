@@ -189,7 +189,7 @@ Look at the example as a unit:
 
 ```text
 examples/modelcontextprotocol-python-sdk-context/
-  SKILL.md                                             # navigator (two-field frontmatter, catalog + cross-ref map)
+  SKILL.md                                             # navigator (frontmatter: name + description, catalog + cross-ref map)
   references/
     modelcontextprotocol-python-sdk-overview.md        # orientation
     modelcontextprotocol-python-sdk-mcpserver.md       # high-level server
@@ -207,7 +207,7 @@ examples/modelcontextprotocol-python-sdk-context/
 ```
 
 Running the same conventions this guide preaches:
-* **SKILL.md has two-field frontmatter:** `name:` and `description:` only.
+* **SKILL.md frontmatter carries `name:` and `description:`:** the two required fields. The contract also admits `paths:` as an optional third field for scoping a nested or per-slice contextualizer to its file globs; this example has no need for it and leaves it out.
 * **References have NO YAML frontmatter:** every reference file in this example starts with its `# Reference Title` H1. This matches Anthropic's canonical Agent Skills practice — frontmatter is scoped to `SKILL.md` only; supporting markdown files are pure Markdown.
 * **A common reference shape used in this example:** When to Use, Architecture Overview, Critical Patterns, Common Gotchas, Key Components, Related References. Under goal-given DISCOVER, the model varies body shape by what the source domain rewards; this six-section shape is one acceptable form, not a contract requirement.
 * **Catalog bijection:** every catalog row has a real file; every primary reference file has a catalog row.

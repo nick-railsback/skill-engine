@@ -777,7 +777,7 @@ Pulling this together: every convention in this chapter exists to make either th
 
 | Convention | What would break without it |
 |---|---|
-| **Two-field frontmatter** | Cross-platform navigator loading (some platforms drop unknown fields, others reject them) |
+| **Contract frontmatter fields only (`name`, `description`, optional `paths:`)** | Cross-platform navigator loading (some platforms drop unknown fields, others reject them) |
 | **No YAML frontmatter on references** | Navigator loading model breaks on at least one platform when supporting markdown files carry frontmatter the SKILL.md-level metadata schema doesn't recognize |
 | **Six prescribed reference sections** | AI can't predict where to find a gotcha vs. a pattern; loads inefficiently |
 | **Catalog bijection** | Orphaned files invisible; phantom rows cause runtime read failures |
