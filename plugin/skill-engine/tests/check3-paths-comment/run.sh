@@ -208,6 +208,37 @@ expect_reject "empty block item: a commented key over a quoted empty item is rej
   "paths:  # note
   - \"\""
 
+# ════════════════════════════════════════════════════════════════════════
+# multi-line flow sequences: a bracket is never a glob
+# ════════════════════════════════════════════════════════════════════════
+
+expect_reject "multi-line flow: an empty sequence split over two lines is rejected" \
+  "paths: [
+]"
+expect_reject "multi-line flow: an empty sequence with a comment on the opening line is rejected" \
+  "paths: [   # globs go here
+]"
+expect_reject "multi-line flow: a sequence holding only a commented-out glob is rejected" \
+  "paths: [
+  # a/**
+]"
+# A ` #` inside a flow sequence opens a comment that swallows the closing
+# bracket, so the sequence never closes and a YAML loader refuses it.
+expect_reject "multi-line flow: a comment that swallows the closing bracket is rejected" \
+  "paths: [a/**, #b/**]"
+expect_reject "multi-line flow: a sequence still open at the end of the frontmatter is rejected" \
+  "paths: [a/**,"
+
+# The next key ends an open sequence rather than being read into it.
+verdict="$(gate_case "name: acme-context
+paths: [a/**,
+description: $NAV_DESC")"
+if [ "$verdict" = "reject" ]; then
+  pass "multi-line flow: a sequence still open at the next key is rejected"
+else
+  fail "multi-line flow: a sequence still open at the next key is rejected" "verdict: $verdict"
+fi
+
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

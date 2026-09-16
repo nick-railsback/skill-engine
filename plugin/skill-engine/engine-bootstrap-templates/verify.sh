@@ -842,8 +842,9 @@ else
     # Nothing here parses YAML. It does not need to: the question is
     # "how many non-empty items", and verify.sh ships stamped into user
     # repos where a PyYAML dependency would not. One pass gathers the
-    # value (the key line's remainder plus the block items under it)
-    # and one counter reads it, whichever spelling was used. Two
+    # value (the key line's remainder plus the block items under it, or
+    # every line up to the `]` of a flow sequence the key line leaves
+    # open) and one counter reads it, whichever spelling was used. Two
     # counters with different ideas of an item are how `paths: [""]`
     # came to be rejected while its block spelling `- ""` was accepted.
     #
@@ -852,6 +853,12 @@ else
     # and newlines, deletes quotes, and counts what is not blank. Quote
     # characters are deleted rather than matched, so the count does not
     # depend on which of YAML's two quotings was used.
+    #
+    # A flow sequence still open at the next key or at the end of the
+    # frontmatter fails on its own: YAML refuses it, and counting its
+    # lone `[` as a glob is how `paths: [   # globs go here` over `]`
+    # once passed. A ` #` inside a flow sequence opens a comment that
+    # swallows the `]`, so `[a/**, #b/**]` is one of these too.
     #
     # A trailing YAML comment is not a glob. The discount uses YAML's
     # plain-scalar rule: a comment starts at a `#` that opens the value
@@ -903,17 +910,29 @@ else
         key = trim(uncomment(v))
         body = key
         found = 1
-        inpaths = 1
+        inflow = (key ~ /^\[/ && key !~ /\]$/)
+        inpaths = !inflow
+        next
+      }
+      inflow && /^[A-Za-z0-9_.-]+:/ { inflow = 0; unclosed = 1 }
+      inflow {
+        t = trim(uncomment($0))
+        body = body "\n" t
+        if (t ~ /\]$/) inflow = 0
         next
       }
       inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths = 0 }
       inpaths && /^[[:space:]]*-/ { body = body "\n" uncomment($0) }
-      END { if (found) printf "%d\t%s\n", count(body), key }
+      END {
+        if (inflow) unclosed = 1
+        if (found) printf "%d\t%d\t%s\n", count(body), unclosed, key
+      }
     ')"
     if [ -n "$fm_paths_scan" ]; then
-      fm_paths_items="${fm_paths_scan%%$'\t'*}"
-      fm_paths_value="${fm_paths_scan#*$'\t'}"
-      if [ "$fm_paths_items" -eq 0 ]; then
+      IFS=$'\t' read -r fm_paths_items fm_paths_unclosed fm_paths_value <<< "$fm_paths_scan"
+      if [ "$fm_paths_unclosed" -eq 1 ]; then
+        fail "$nav_rel frontmatter: paths: opens a flow sequence it never closes ('$fm_paths_value')"
+      elif [ "$fm_paths_items" -eq 0 ]; then
         if [ -n "$fm_paths_value" ]; then
           fail "$nav_rel frontmatter: paths: names no glob ('$fm_paths_value') — must contain at least one"
         else

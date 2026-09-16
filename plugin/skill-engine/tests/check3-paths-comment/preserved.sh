@@ -17,6 +17,11 @@
 #                      applied to the extracted same-line value only: the
 #                      value goes empty, and the block-list count only
 #                      recognizes a key line with nothing after the colon.
+#   multi-line flow  — a flow sequence whose items sit on the lines after
+#                      the key is accepted. At risk from the fix that
+#                      stopped a lone `[` counting as a glob: rejecting
+#                      every sequence left open on the key line is the
+#                      shortcut, and it refuses a spelling YAML accepts.
 #   hash inside glob — a `#` starts a comment only when whitespace precedes
 #                      it or it stands first in the value. A `#` glued to a
 #                      path segment or a quote is part of the glob. At risk
@@ -158,6 +163,19 @@ expect accept "comment discount: a comma-separated string with a trailing commen
   "paths: a/**, b/**  # note"
 expect accept "comment discount: a single-glob string with a comma-bearing comment is accepted" \
   "paths: a/**  # a, b"
+
+# ════════════════════════════════════════════════════════════════════════
+# multi-line flow: a sequence spread over several lines is still a list
+# ════════════════════════════════════════════════════════════════════════
+
+expect accept "multi-line flow: a sequence split over several lines is accepted" \
+  "paths: [
+  packages/billing/**,
+  shared/**,
+]"
+expect accept "multi-line flow: a sequence with a comment on its opening line is accepted" \
+  "paths: [  # note
+  packages/billing/**]"
 
 # ════════════════════════════════════════════════════════════════════════
 # hash inside glob: a `#` not preceded by whitespace belongs to the glob
