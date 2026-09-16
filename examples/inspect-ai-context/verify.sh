@@ -842,9 +842,9 @@ else
     # Nothing here parses YAML. It does not need to: the question is
     # "how many non-empty items", and verify.sh ships stamped into user
     # repos where a PyYAML dependency would not. One pass gathers the
-    # value (the key line's remainder plus the block items under it, or
-    # every line up to the `]` of a flow sequence the key line leaves
-    # open) and one counter reads it, whichever spelling was used. Two
+    # value (the key line's remainder plus every line up to the next key,
+    # which is where YAML reads it too) and one counter reads it,
+    # whichever spelling was used and whichever line it starts on. Two
     # counters with different ideas of an item are how `paths: [""]`
     # came to be rejected while its block spelling `- ""` was accepted.
     #
@@ -860,7 +860,8 @@ else
     # one itself.
     #
     # A flow sequence still open at the next key or at the end of the
-    # frontmatter fails on its own: YAML refuses it, and counting its
+    # frontmatter, whether it opened on the key line or under it, fails
+    # on its own: YAML refuses it, and counting its
     # lone `[` as a glob is how `paths: [   # globs go here` over `]`
     # once passed. A ` #` inside a flow sequence opens a comment that
     # swallows the `]`, so `[a/**, #b/**]` is one of these too.
@@ -917,22 +918,16 @@ else
         body = key
         if (key ~ /^[|>][-+0-9]*$/) body = ""
         found = 1
-        inflow = (key ~ /^\[/ && key !~ /\]$/)
-        inpaths = !inflow
-        next
-      }
-      inflow && /^[A-Za-z0-9_.-]+:/ { inflow = 0; unclosed = 1 }
-      inflow {
-        t = trim(uncomment($0))
-        body = body "\n" t
-        if (t ~ /\]$/) inflow = 0
+        inpaths = 1
         next
       }
       inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths = 0 }
-      inpaths && /^[[:space:]]*-/ { body = body "\n" uncomment($0) }
+      inpaths { body = body "\n" uncomment($0) }
       END {
-        if (inflow) unclosed = 1
-        if (found) printf "%d\t%d\t%s\n", count(body), unclosed, key
+        if (!found) exit
+        v = trim(body)
+        unclosed = (v ~ /^\[/ && v !~ /\]$/)
+        printf "%d\t%d\t%s\n", count(body), unclosed, key
       }
     ')"
     if [ -n "$fm_paths_scan" ]; then

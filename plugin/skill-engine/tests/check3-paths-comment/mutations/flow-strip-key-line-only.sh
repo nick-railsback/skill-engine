@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Control for: the comment-free fixture matrix keeps its reject verdicts. A
-# scratch copy of the checker turns the same-line emptiness failure into a
-# no-op, so an empty flow sequence, a separator-only flow sequence and a bare
-# comma are all accepted.
+# Control for: an empty flow sequence written on the line under the key is
+# rejected. A scratch copy of the checker strips a flow sequence's brackets
+# only when the key line opened it, so `[]` under a bare key survives as a
+# token and counts as a glob.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -26,8 +26,8 @@ if ! VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
   exit 0
 fi
 
-# `fail "…names no glob…"` becomes `: "…names no glob…"`.
-sed 's/fail \("\$nav_rel frontmatter: paths: names no glob\)/: \1/' "$copy" > "$copy.mutated" \
+# The bracket strip asks whether the key line, not the value, opens `[`.
+sed 's|if (s ~ /^\\\[/ \&\& s ~|if (key ~ /^\\[/ \&\& s ~|' "$copy" > "$copy.mutated" \
   && mv "$copy.mutated" "$copy"
 chmod +x "$copy"
 
@@ -37,8 +37,8 @@ if cmp -s "$work/pristine.sh" "$copy"; then
 fi
 
 if VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
-  echo "a gate that accepts empty same-line values was accepted"
+  echo "a gate that reads flow brackets on the key line only was accepted"
   exit 0
 fi
-echo "a gate that accepts empty same-line values was rejected"
+echo "a gate that reads flow brackets on the key line only was rejected"
 exit 1

@@ -22,6 +22,12 @@
 #                      stopped a lone `[` counting as a glob: rejecting
 #                      every sequence left open on the key line is the
 #                      shortcut, and it refuses a spelling YAML accepts.
+#   next-line empty  — an empty or never-closed flow sequence written on the
+#                      line under the key is rejected. At risk from reading
+#                      those lines at all: a sequence left open there has
+#                      no `]` to strip, so its `[` would count as a glob
+#                      unless the unclosed test looks at the whole value
+#                      rather than the key line alone.
 #   null lookalikes  — only a token that is exactly a YAML null (`~`,
 #                      `null`, `Null`, `NULL`) or an empty mapping is no
 #                      value. At risk from a prefix match, which drops
@@ -181,6 +187,17 @@ expect accept "multi-line flow: a sequence split over several lines is accepted"
 expect accept "multi-line flow: a sequence with a comment on its opening line is accepted" \
   "paths: [  # note
   packages/billing/**]"
+
+# ════════════════════════════════════════════════════════════════════════
+# next-line emptiness: reading the lines under the key finds no glob there
+# ════════════════════════════════════════════════════════════════════════
+
+expect reject "next-line value: an empty flow sequence under the key is rejected" \
+  "paths:
+  []"
+expect reject "next-line value: a flow sequence under the key that never closes is rejected" \
+  "paths:
+  [a/**,"
 
 # ════════════════════════════════════════════════════════════════════════
 # null lookalikes: a glob that only starts like a null is a glob

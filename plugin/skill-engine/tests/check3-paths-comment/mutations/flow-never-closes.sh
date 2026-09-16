@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Control for: a flow sequence whose items sit on the lines after the key is
-# accepted. A scratch copy of the checker never sees the closing `]` of a
-# sequence the key line leaves open, so every multi-line sequence reads as
-# unclosed and is rejected, the shortcut that refuses a spelling YAML
-# accepts.
+# accepted. A scratch copy of the checker also calls a sequence unclosed
+# whenever the key line leaves it open, without looking for its `]` on the
+# lines below, so every multi-line sequence is rejected: the shortcut that
+# refuses a spelling YAML accepts.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -27,8 +27,9 @@ if ! VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
   exit 0
 fi
 
-# The line that closes an open sequence stops closing it.
-sed 's|if (t ~ /\\]\$/) inflow = 0|t = t|' "$copy" > "$copy.mutated" \
+# Inserted after the whole-value unclosed test.
+printf '%s\n' 'if (key ~ /^\[/ && key !~ /\]$/) unclosed = 1' > "$work/inject.txt"
+sed '/unclosed = (v ~/r '"$work/inject.txt" "$copy" > "$copy.mutated" \
   && mv "$copy.mutated" "$copy"
 chmod +x "$copy"
 

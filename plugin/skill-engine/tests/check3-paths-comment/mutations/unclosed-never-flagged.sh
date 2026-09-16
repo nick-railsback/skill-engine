@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Control for: the comment-free fixture matrix keeps its reject verdicts. A
-# scratch copy of the checker turns the same-line emptiness failure into a
-# no-op, so an empty flow sequence, a separator-only flow sequence and a bare
-# comma are all accepted.
+# Control for: a flow sequence that opens on the line under the key and never
+# closes is rejected. A scratch copy of the checker never calls a sequence
+# unclosed, so the lone `[` of `[a/**,` counts toward a glob and the value
+# is accepted.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -26,8 +26,8 @@ if ! VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
   exit 0
 fi
 
-# `fail "…names no glob…"` becomes `: "…names no glob…"`.
-sed 's/fail \("\$nav_rel frontmatter: paths: names no glob\)/: \1/' "$copy" > "$copy.mutated" \
+# The whole-value unclosed test always answers no.
+sed 's/unclosed = (v ~ .*$/unclosed = 0/' "$copy" > "$copy.mutated" \
   && mv "$copy.mutated" "$copy"
 chmod +x "$copy"
 
@@ -37,8 +37,8 @@ if cmp -s "$work/pristine.sh" "$copy"; then
 fi
 
 if VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
-  echo "a gate that accepts empty same-line values was accepted"
+  echo "a gate that never flags an unclosed sequence was accepted"
   exit 0
 fi
-echo "a gate that accepts empty same-line values was rejected"
+echo "a gate that never flags an unclosed sequence was rejected"
 exit 1

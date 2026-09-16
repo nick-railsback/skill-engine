@@ -12,6 +12,10 @@
 # bare `#`, and the realistic "optional" note a stamped navigator would
 # carry.
 #
+# A value is not always on the key line. YAML reads the indented lines under
+# a bare key as its value too, so a flow sequence, a plain string or a block
+# scalar written there names globs the gate must count, not reject.
+#
 # Every case here is a fact still owed. The behaviours that already hold and
 # must keep holding (non-empty values with comments, a `#` inside a glob, the
 # admitted key set, the existing fixture matrix, the shipped navigators) live
@@ -97,6 +101,20 @@ expect_reject() {
 description: $NAV_DESC
 $2")"
   if [ "$verdict" = "reject" ]; then
+    pass "$label"
+  else
+    fail "$label" "verdict: $verdict" "paths lines: $2"
+  fi
+}
+
+# expect_accept <label> <paths-lines> — the given `paths:` lines, appended to
+# a valid two-key frontmatter, must be accepted.
+expect_accept() {
+  local label="$1" verdict
+  verdict="$(gate_case "name: acme-context
+description: $NAV_DESC
+$2")"
+  if [ "$verdict" = "accept" ]; then
     pass "$label"
   else
     fail "$label" "verdict: $verdict" "paths lines: $2"
@@ -265,6 +283,28 @@ expect_reject "no-value spelling: a bare literal block indicator is rejected" \
 expect_reject "no-value spelling: a folded block indicator over only a comment is rejected" \
   "paths: >-
   # nothing"
+
+# ════════════════════════════════════════════════════════════════════════
+# next-line values: the value may start on the line after the key
+# ════════════════════════════════════════════════════════════════════════
+
+expect_accept "next-line value: a flow sequence under a commented key is accepted" \
+  "paths:  # note
+  [a/**, b/**]"
+expect_accept "next-line value: a flow sequence under a bare key is accepted" \
+  "paths:
+  [a/**]"
+expect_accept "next-line value: a flow sequence spread over the lines under the key is accepted" \
+  "paths:
+  [
+    a/**,
+  ]"
+expect_accept "next-line value: a plain string under a bare key is accepted" \
+  "paths:
+  a/**"
+expect_accept "next-line value: a literal block scalar carrying a glob is accepted" \
+  "paths: |
+  a/**"
 
 echo
 echo "Passed: $pass_count"
