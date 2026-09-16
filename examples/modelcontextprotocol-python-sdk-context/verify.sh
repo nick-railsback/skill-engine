@@ -833,6 +833,15 @@ else
       esac
     done < <(printf '%s\n' "$fm" | grep -oE '^[A-Za-z0-9_.-]+:' | sed 's/:$//')
 
+    # A repeated top-level key fails too. Loaders disagree on it (last
+    # wins in some, a parse error in others), so no single occurrence is
+    # the value every loader sees, and the paths: count below would be
+    # judging one of several.
+    fm_dup_keys="$(printf '%s\n' "$fm" | grep -oE '^[A-Za-z0-9_.-]+:' | sed 's/:$//' | sort | uniq -d)"
+    for fm_key in $fm_dup_keys; do
+      fail "$nav_rel frontmatter repeats a key: $fm_key"
+    done
+
     # paths:, when present, must name at least one glob. Three spellings
     # are admitted, which are the ones Claude Code documents for the
     # field ("a comma-separated string or a YAML list") plus the block

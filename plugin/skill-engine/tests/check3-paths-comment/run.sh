@@ -323,6 +323,26 @@ expect_accept "quoted hash: a block item holding such a glob is accepted" \
   "paths:
   - \" #drafts/**\""
 
+# ════════════════════════════════════════════════════════════════════════
+# repeated keys: which occurrence a loader keeps is not the gate's to guess
+# ════════════════════════════════════════════════════════════════════════
+
+# Loaders disagree on a repeated key: a last-wins loader keeps the second
+# occurrence and a strict one refuses the document. Whichever occurrence
+# the gate read, it would be judging a value some loader never sees.
+expect_reject "repeated key: two named paths: keys are rejected" \
+  "paths: a/**
+paths: b/**"
+
+verdict="$(gate_case "name: acme-context
+description: $NAV_DESC
+description: $NAV_DESC")"
+if [ "$verdict" = "reject" ]; then
+  pass "repeated key: a repeated description: is rejected"
+else
+  fail "repeated key: a repeated description: is rejected" "verdict: $verdict"
+fi
+
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"
