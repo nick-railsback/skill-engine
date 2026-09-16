@@ -18,12 +18,17 @@ PLUGIN_ROOT="$(cd "$SUITE_DIR/../.." && pwd)"
 
 # Inserted after the admitted-key loop, which is the last reader of the
 # frontmatter before the `paths:` logic. Read from a here-document so no
-# quote in the line needs escaping.
+# quote in either line needs escaping. The anchor ends where that loop's
+# input does, so the repeated-key loop below it, which reads the same keys
+# through `sort | uniq -d`, is not matched too.
 IFS= read -r strip <<'LINE'
 fm="$(printf '%s\n' "$fm" | sed 's/#.*$//')"
+LINE
+IFS= read -r anchor <<'LINE'
+^    done < <\(printf .* grep -oE .* sed 's/:\$//'\)$
 LINE
 
 mutation_control VERIFY_SH "$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh" \
   "$SUITE_DIR/preserved.sh" \
   "a comment strip that begins at the first hash" \
-  insert_after 'done < <\(printf .* grep -oE ' "$strip"
+  insert_after "$anchor" "$strip"

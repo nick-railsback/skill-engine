@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The navigator-frontmatter gate's behaviours that must survive its
 # `paths:` rules: the trailing-comment discount, the multi-line and
-# next-line readings, the no-value tokens and quoting. Every one of them
-# already holds, so none of them can go red-then-green; each is instead
+# next-line readings, the no-value tokens, quoting and repeated keys. Every
+# one of them already holds, so none of them can go red-then-green; each is instead
 # broken on a scratch copy of the checker by a control in `mutations/`,
 # which requires this file red.
 #
@@ -45,6 +45,12 @@
 #                      real comment after it.
 #   key set          — name, description and paths are admitted; any other
 #                      top-level key is rejected.
+#   repeated key     — a `paths:` that names a glob, repeated as an empty
+#                      one, fails on both counts: the repeat itself, and
+#                      the last occurrence, which is the one a last-wins
+#                      loader keeps. At risk from a repeated-key check that
+#                      stops seeing repeats, which leaves only the paths:
+#                      failure.
 #   no interpreter   — the checker ships stamped into user repos, where a
 #                      Python or yq dependency does not exist.
 #   fixture matrix   — the pre-existing comment-free fixture matrix for this
@@ -210,6 +216,14 @@ expect accept "key set: name + description + paths is accepted" \
 expect reject:keys "key set: a version: key is rejected" "version: 1.0"
 expect reject:keys "key set: an author: key is rejected" "author: someone"
 expect reject:keys "key set: a disable-model-invocation: key is rejected" "disable-model-invocation: true"
+
+# ════════════════════════════════════════════════════════════════════════
+# repeated key: a named paths: repeated as an empty one
+# ════════════════════════════════════════════════════════════════════════
+
+expect reject:keys+paths "repeated key: a named paths: over an empty one fails on both counts" \
+  "paths: a/**
+paths:"
 
 # ════════════════════════════════════════════════════════════════════════
 # no interpreter: the checker names neither Python nor yq
