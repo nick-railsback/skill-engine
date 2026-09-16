@@ -444,7 +444,7 @@ paths:
 verdict_version="$(gate_case "name: acme-context
 description: $NAV_DESC
 version: 1.0")"
-[ "$verdict_version" = "reject" ] || ok=0
+[ "$verdict_version" = "reject:keys" ] || ok=0
 if [ "$ok" -eq 1 ]; then
   pass "frontmatter gate: a two-field frontmatter and a paths: block list are accepted, a version: third key is rejected"
 else

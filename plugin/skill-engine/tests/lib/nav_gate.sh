@@ -26,8 +26,18 @@ nav_gate_report() {
   '
 }
 
-# gate_case <frontmatter-body> — "accept", "reject" or "unreadable", from a
-# scratch contextualizer whose navigator frontmatter is exactly those lines.
+# gate_case <frontmatter-body> — the verdict on a scratch contextualizer whose
+# navigator frontmatter is exactly those lines:
+#   accept           the section carries no [FAIL]
+#   reject:<reasons> it does; <reasons> names which failures fired, sorted
+#                    and joined by `+`, each one of
+#                      keys   a non-admitted or repeated top-level key
+#                      paths  the paths: value
+#                      other  anything else (the description cap, a
+#                             missing key)
+#   unreadable       the section never appeared
+# A reject verdict names its reason because Check 3 can fail for several:
+# a cell that expects the paths: failure must not pass on a key-set one.
 gate_case() {
   local root report
   root="$(mktemp -d)"
@@ -43,7 +53,12 @@ gate_case() {
   if [ -z "$report" ]; then
     printf 'unreadable'
   elif printf '%s\n' "$report" | grep -q '\[FAIL\]'; then
-    printf 'reject'
+    printf 'reject:%s' "$(printf '%s\n' "$report" | awk '
+      !/\[FAIL\]/ { next }
+      /frontmatter: paths: / { print "paths"; next }
+      /non-admitted key|repeats a key/ { print "keys"; next }
+      { print "other" }
+    ' | sort -u | paste -sd + -)"
   else
     printf 'accept'
   fi

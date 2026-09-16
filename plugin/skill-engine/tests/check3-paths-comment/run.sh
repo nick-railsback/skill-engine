@@ -60,13 +60,13 @@ fail() {
 . "$PLUGIN_ROOT/tests/lib/nav_gate.sh"
 
 # expect_reject <label> <paths-lines> — the given `paths:` lines, appended to
-# a valid two-key frontmatter, must be rejected.
+# a valid two-key frontmatter, must be rejected by the paths: gate alone.
 expect_reject() {
   local label="$1" verdict
   verdict="$(gate_case "name: acme-context
 description: $NAV_DESC
 $2")"
-  if [ "$verdict" = "reject" ]; then
+  if [ "$verdict" = "reject:paths" ]; then
     pass "$label"
   else
     fail "$label" "verdict: $verdict" "paths lines: $2"
@@ -123,7 +123,7 @@ expect_reject "comment discount: a bare key with a note and only a commented-out
 verdict="$(gate_case "name: acme-context
 paths:  # note
 description: $NAV_DESC")"
-if [ "$verdict" = "reject" ]; then
+if [ "$verdict" = "reject:paths" ]; then
   pass "comment discount: a bare commented key followed by another key is rejected"
 else
   fail "comment discount: a bare commented key followed by another key is rejected" "verdict: $verdict"
@@ -217,7 +217,7 @@ expect_reject "multi-line flow: a sequence still open at the end of the frontmat
 verdict="$(gate_case "name: acme-context
 paths: [a/**,
 description: $NAV_DESC")"
-if [ "$verdict" = "reject" ]; then
+if [ "$verdict" = "reject:paths" ]; then
   pass "multi-line flow: a sequence still open at the next key is rejected"
 else
   fail "multi-line flow: a sequence still open at the next key is rejected" "verdict: $verdict"
@@ -296,14 +296,20 @@ expect_accept "quoted hash: a block item holding such a glob is accepted" \
 # Loaders disagree on a repeated key: a last-wins loader keeps the second
 # occurrence and a strict one refuses the document. Whichever occurrence
 # the gate read, it would be judging a value some loader never sees.
-expect_reject "repeated key: two named paths: keys are rejected" \
-  "paths: a/**
-paths: b/**"
+verdict="$(gate_case "name: acme-context
+description: $NAV_DESC
+paths: a/**
+paths: b/**")"
+if [ "$verdict" = "reject:keys" ]; then
+  pass "repeated key: two named paths: keys are rejected"
+else
+  fail "repeated key: two named paths: keys are rejected" "verdict: $verdict"
+fi
 
 verdict="$(gate_case "name: acme-context
 description: $NAV_DESC
 description: $NAV_DESC")"
-if [ "$verdict" = "reject" ]; then
+if [ "$verdict" = "reject:keys" ]; then
   pass "repeated key: a repeated description: is rejected"
 else
   fail "repeated key: a repeated description: is rejected" "verdict: $verdict"

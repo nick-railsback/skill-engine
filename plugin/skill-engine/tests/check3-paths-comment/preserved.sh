@@ -95,9 +95,10 @@ fail() {
 # shellcheck source=../lib/nav_gate.sh
 . "$PLUGIN_ROOT/tests/lib/nav_gate.sh"
 
-# expect <accept|reject> <label> <extra-frontmatter-lines> — the given lines,
-# appended to a valid two-key frontmatter, get the given verdict. An empty
-# third argument means the two-key frontmatter alone.
+# expect <verdict> <label> <extra-frontmatter-lines> — the given lines,
+# appended to a valid two-key frontmatter, get the given gate_case verdict
+# (`accept`, or `reject:` and the reason). An empty third argument means the
+# two-key frontmatter alone.
 expect() {
   local want="$1" label="$2" body verdict
   body="name: acme-context
@@ -161,10 +162,10 @@ expect accept "multi-line flow: a sequence with a comment on its opening line is
 # next-line emptiness: reading the lines under the key finds no glob there
 # ════════════════════════════════════════════════════════════════════════
 
-expect reject "next-line value: an empty flow sequence under the key is rejected" \
+expect reject:paths "next-line value: an empty flow sequence under the key is rejected" \
   "paths:
   []"
-expect reject "next-line value: a flow sequence under the key that never closes is rejected" \
+expect reject:paths "next-line value: a flow sequence under the key that never closes is rejected" \
   "paths:
   [a/**,"
 
@@ -194,7 +195,7 @@ expect accept "hash inside glob: a double-quoted hash glob with a trailing comme
 expect accept "hash inside glob: a block item with a hash inside a path segment is accepted" \
   "paths:
   - docs/#-anchors/**"
-expect reject "hash inside glob: a comment after a closed empty quote is still discounted" \
+expect reject:paths "hash inside glob: a comment after a closed empty quote is still discounted" \
   "paths: \"\"  # \"x/**\""
 
 # ════════════════════════════════════════════════════════════════════════
@@ -205,9 +206,9 @@ expect accept "key set: name + description alone is accepted" ""
 expect accept "key set: name + description + paths is accepted" \
   "paths:
   - src/**"
-expect reject "key set: a version: key is rejected" "version: 1.0"
-expect reject "key set: an author: key is rejected" "author: someone"
-expect reject "key set: a disable-model-invocation: key is rejected" "disable-model-invocation: true"
+expect reject:keys "key set: a version: key is rejected" "version: 1.0"
+expect reject:keys "key set: an author: key is rejected" "author: someone"
+expect reject:keys "key set: a disable-model-invocation: key is rejected" "disable-model-invocation: true"
 
 # ════════════════════════════════════════════════════════════════════════
 # no interpreter: the checker names neither Python nor yq
