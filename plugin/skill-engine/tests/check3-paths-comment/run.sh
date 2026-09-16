@@ -18,8 +18,9 @@
 #
 # Every case here is a fact still owed. The behaviours that already hold and
 # must keep holding (non-empty values with comments, a `#` inside a glob, the
-# admitted key set, the existing fixture matrix, the shipped navigators) live
-# in `preserved.sh` beside this file, with a mutation control each.
+# admitted key set, the shipped navigators) live in `preserved.sh` beside
+# this file, with a mutation control each; the existing comment-free fixture
+# matrix lives in monorepo-config-check, and two of those controls run it.
 #
 # The verdict is read from the checker's own `(navigator-skill)` section over
 # a scratch contextualizer root — never from its exit code, which every other
@@ -55,43 +56,8 @@ fail() {
   fail_count=$((fail_count + 1))
 }
 
-# nav_gate_report <contextualizer-root> — the navigator-frontmatter check's
-# own section of a verify run over that root.
-nav_gate_report() {
-  local root cache out
-  root="$1"
-  cache="$(mktemp -d)"
-  out="$(CTX_ROOT="$root" SKILL_ENGINE_CACHE_ROOT="$cache" bash "$VERIFY_SH" 2>&1)"
-  rm -rf "$cache"
-  printf '%s\n' "$out" | awk '
-    index($0, "(navigator-skill)") > 0 && !found { found = 1; print; next }
-    found && /^=== / { exit }
-    found { print }
-  '
-}
-
-# gate_case <frontmatter-body> — "accept", "reject" or "unreadable", from a
-# scratch contextualizer whose navigator frontmatter is exactly those lines.
-gate_case() {
-  local root report
-  root="$(mktemp -d)"
-  mkdir -p "$root/research"
-  {
-    printf -- '---\n'
-    printf '%s\n' "$1"
-    printf -- '---\n\n# Acme\n'
-  } > "$root/SKILL.md"
-  printf '{"schema_version": 1, "sources": []}\n' > "$root/research/source-paths.json"
-  report="$(nav_gate_report "$root")"
-  rm -rf "$root"
-  if [ -z "$report" ]; then
-    printf 'unreadable'
-  elif printf '%s\n' "$report" | grep -q '\[FAIL\]'; then
-    printf 'reject'
-  else
-    printf 'accept'
-  fi
-}
+# shellcheck source=../lib/nav_gate.sh
+. "$PLUGIN_ROOT/tests/lib/nav_gate.sh"
 
 # expect_reject <label> <paths-lines> — the given `paths:` lines, appended to
 # a valid two-key frontmatter, must be rejected.

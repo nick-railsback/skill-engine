@@ -228,24 +228,19 @@ carries_uncommented_key() {
   [ "$items" -ge 1 ]
 }
 
-# nav_gate_report <navigator-file> — the navigator-frontmatter check's own
-# section of a verify run over a fixture carrying just this navigator and a
-# minimal sources file. The verdict must be isolated to that section: a
-# fixture this small reaches later checks that report on their own terms.
-nav_gate_report() {
-  local root cache out
+# shellcheck source=../lib/nav_gate.sh
+. "$PLUGIN_ROOT/tests/lib/nav_gate.sh"
+
+# nav_file_gate_report <navigator-file> — nav_gate_report over a fixture
+# carrying just this navigator and a minimal sources file.
+nav_file_gate_report() {
+  local root
   root="$(mktemp -d)"
-  cache="$(mktemp -d)"
   mkdir -p "$root/research"
   cp "$1" "$root/SKILL.md"
   printf '{"schema_version": 1, "sources": []}\n' > "$root/research/source-paths.json"
-  out="$(CTX_ROOT="$root" SKILL_ENGINE_CACHE_ROOT="$cache" bash "$VERIFY_SH" 2>&1)"
-  rm -rf "$root" "$cache"
-  printf '%s\n' "$out" | awk '
-    index($0, "(navigator-skill)") > 0 && !found { found = 1; print; next }
-    found && /^=== / { exit }
-    found { print }
-  '
+  nav_gate_report "$root"
+  rm -rf "$root"
 }
 
 # add_third_key <navigator-file> <key-line> — the same navigator with one
@@ -365,7 +360,7 @@ check_template() {
     fail "check-3 accept: a navigator stamped from $name with the example on is accepted" \
       "the stamped navigator carries no uncommented paths: block — nothing was exercised"
   else
-    report="$(nav_gate_report "$stamped")"
+    report="$(nav_file_gate_report "$stamped")"
     if [ -n "$report" ] && ! printf '%s\n' "$report" | grep -q '\[FAIL\]'; then
       pass "check-3 accept: a navigator stamped from $name with the example on is accepted"
     else
@@ -383,7 +378,7 @@ check_template() {
     fail "check-3 reject: the same stamped navigator from $name with a version: key is rejected" \
       "the stamped navigator carries no uncommented paths: block — the gate was not exercised from the template side"
   else
-    report="$(nav_gate_report "$rejected")"
+    report="$(nav_file_gate_report "$rejected")"
     if printf '%s\n' "$report" | grep -q '\[FAIL\].*version'; then
       pass "check-3 reject: the same stamped navigator from $name with a version: key is rejected"
     else

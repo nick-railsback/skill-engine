@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Control for: the comment-free fixture matrix keeps its reject verdicts. A
+# Control for: the comment-free fixture matrix in monorepo-config-check,
+# which reaches the checker through VERIFY_SH, keeps its reject verdicts. A
 # scratch copy of the checker turns the same-line emptiness failure into a
 # no-op, so an empty flow sequence, a separator-only flow sequence and a bare
 # comma are all accepted.
@@ -12,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUITE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_ROOT="$(cd "$SUITE_DIR/../.." && pwd)"
 TEMPLATES_DIR="$PLUGIN_ROOT/engine-bootstrap-templates"
+MATRIX="$PLUGIN_ROOT/tests/monorepo-config-check/run.sh"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -21,7 +23,7 @@ cp "$TEMPLATES_DIR/verify.sh" "$copy"
 cp "$copy" "$work/pristine.sh"
 chmod +x "$copy"
 
-if ! VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
+if ! VERIFY_SH="$copy" bash "$MATRIX" >/dev/null 2>&1; then
   echo "pristine copy is already red"
   exit 0
 fi
@@ -36,7 +38,7 @@ if cmp -s "$work/pristine.sh" "$copy"; then
   exit 0
 fi
 
-if VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
+if VERIFY_SH="$copy" bash "$MATRIX" >/dev/null 2>&1; then
   echo "a gate that accepts empty same-line values was accepted"
   exit 0
 fi

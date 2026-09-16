@@ -47,9 +47,10 @@
 #   no interpreter   — the checker ships stamped into user repos, where a
 #                      Python or yq dependency does not exist.
 #   fixture matrix   — the pre-existing comment-free fixture matrix for this
-#                      gate keeps every verdict. That matrix lives in a
-#                      suite that always runs the shipped template; it is
-#                      mirrored here so it can be run against a scratch copy.
+#                      gate keeps every verdict. That matrix lives in
+#                      monorepo-config-check, which honours VERIFY_SH, so
+#                      its two controls here run that suite rather than a
+#                      copy of its cells kept in this file.
 #   shipped navs     — the in-repo navigator and the three bundled examples
 #                      still pass the gate.
 #
@@ -91,43 +92,8 @@ fail() {
   fail_count=$((fail_count + 1))
 }
 
-# nav_gate_report <contextualizer-root> — the navigator-frontmatter check's
-# own section of a verify run over that root.
-nav_gate_report() {
-  local root cache out
-  root="$1"
-  cache="$(mktemp -d)"
-  out="$(CTX_ROOT="$root" SKILL_ENGINE_CACHE_ROOT="$cache" bash "$VERIFY_SH" 2>&1)"
-  rm -rf "$cache"
-  printf '%s\n' "$out" | awk '
-    index($0, "(navigator-skill)") > 0 && !found { found = 1; print; next }
-    found && /^=== / { exit }
-    found { print }
-  '
-}
-
-# gate_case <frontmatter-body> — "accept", "reject" or "unreadable", from a
-# scratch contextualizer whose navigator frontmatter is exactly those lines.
-gate_case() {
-  local root report
-  root="$(mktemp -d)"
-  mkdir -p "$root/research"
-  {
-    printf -- '---\n'
-    printf '%s\n' "$1"
-    printf -- '---\n\n# Acme\n'
-  } > "$root/SKILL.md"
-  printf '{"schema_version": 1, "sources": []}\n' > "$root/research/source-paths.json"
-  report="$(nav_gate_report "$root")"
-  rm -rf "$root"
-  if [ -z "$report" ]; then
-    printf 'unreadable'
-  elif printf '%s\n' "$report" | grep -q '\[FAIL\]'; then
-    printf 'reject'
-  else
-    printf 'accept'
-  fi
-}
+# shellcheck source=../lib/nav_gate.sh
+. "$PLUGIN_ROOT/tests/lib/nav_gate.sh"
 
 # expect <accept|reject> <label> <extra-frontmatter-lines> — the given lines,
 # appended to a valid two-key frontmatter, get the given verdict. An empty
@@ -257,33 +223,6 @@ if [ -f "$VERIFY_SH" ]; then
 else
   fail "no interpreter: the checker names neither python nor yq" "no file at $VERIFY_SH"
 fi
-
-# ════════════════════════════════════════════════════════════════════════
-# fixture matrix: the comment-free verdicts, mirrored so a scratch copy of
-# the checker can be run against them
-# ════════════════════════════════════════════════════════════════════════
-
-expect accept "fixture matrix: two-key frontmatter is accepted" ""
-expect accept "fixture matrix: a non-empty quoted block list is accepted" \
-  "paths:
-  - \"packages/billing/**\"
-  - \"shared/**\""
-expect reject "fixture matrix: a version: third key is rejected" "version: 1.0"
-expect reject "fixture matrix: an author: third key is rejected" "author: someone"
-expect accept "fixture matrix: a flow sequence is accepted" \
-  "paths: [packages/billing/**, shared/**]"
-expect accept "fixture matrix: a single-item flow sequence is accepted" \
-  "paths: [packages/billing/**]"
-expect accept "fixture matrix: a comma-separated string is accepted" \
-  "paths: packages/billing/**, shared/**"
-expect accept "fixture matrix: a single-glob string is accepted" \
-  "paths: packages/billing/**"
-expect accept "fixture matrix: a quoted flow sequence is accepted" \
-  "paths: [\"packages/billing/**\", \"shared/**\"]"
-expect reject "fixture matrix: an empty flow sequence is rejected" "paths: []"
-expect reject "fixture matrix: a separator-only flow sequence is rejected" "paths: [ , , ]"
-expect reject "fixture matrix: a bare comma is rejected" "paths: ,"
-expect reject "fixture matrix: a bare key with no block items is rejected" "paths:"
 
 # ════════════════════════════════════════════════════════════════════════
 # shipped navs: the in-repo navigator and the bundled examples pass

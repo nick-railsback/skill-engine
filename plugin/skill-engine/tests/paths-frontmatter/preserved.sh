@@ -180,44 +180,8 @@ standing_bytes() {
     | tr -d ', bytes'
 }
 
-# nav_gate_report <contextualizer-root> — the navigator-frontmatter check's
-# own section of a verify run over that root. The verdict has to be isolated
-# to that section: other checks report on their own terms.
-nav_gate_report() {
-  local root cache out
-  root="$1"
-  cache="$(mktemp -d)"
-  out="$(CTX_ROOT="$root" SKILL_ENGINE_CACHE_ROOT="$cache" bash "$VERIFY_SH" 2>&1)"
-  rm -rf "$cache"
-  printf '%s\n' "$out" | awk '
-    index($0, "(navigator-skill)") > 0 && !found { found = 1; print; next }
-    found && /^=== / { exit }
-    found { print }
-  '
-}
-
-# gate_case <frontmatter-body> — "accept" or "reject", from a scratch
-# contextualizer whose navigator frontmatter is exactly the given lines.
-gate_case() {
-  local root report
-  root="$(mktemp -d)"
-  mkdir -p "$root/research"
-  {
-    printf -- '---\n'
-    printf '%s\n' "$1"
-    printf -- '---\n\n# Acme\n'
-  } > "$root/SKILL.md"
-  printf '{"schema_version": 1, "sources": []}\n' > "$root/research/source-paths.json"
-  report="$(nav_gate_report "$root")"
-  rm -rf "$root"
-  if [ -z "$report" ]; then
-    printf 'unreadable'
-  elif printf '%s\n' "$report" | grep -q '\[FAIL\]'; then
-    printf 'reject'
-  else
-    printf 'accept'
-  fi
-}
+# shellcheck source=../lib/nav_gate.sh
+. "$PLUGIN_ROOT/tests/lib/nav_gate.sh"
 
 # bundle_paths <install-script> — the required template files the local
 # install check walks, one per line, read out of the array it iterates
