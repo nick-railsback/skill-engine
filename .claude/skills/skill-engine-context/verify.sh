@@ -849,8 +849,28 @@ else
     # "how many non-empty items", which survives stripping one layer of
     # brackets and splitting on commas, and verify.sh ships stamped into
     # user repos where a PyYAML dependency would not.
-    if printf '%s\n' "$fm" | grep -qE '^paths:'; then
-      fm_paths_line="$(printf '%s\n' "$fm" | grep -E '^paths:' | head -1)"
+    #
+    # A trailing YAML comment on the key line is not a glob. Discount it
+    # before either branch reads the key, using YAML's plain-scalar rule:
+    # a comment starts at a `#` that opens the value or follows
+    # whitespace, so `docs/#-anchors/**` stays one glob. Only the key line
+    # is rewritten, and only for the paths logic: $fm itself is left alone,
+    # because the description and key checks above read it and `#` is
+    # real content in a description.
+    fm_paths_src="$(printf '%s\n' "$fm" | awk '
+      /^paths:/ {
+        v = substr($0, 7); out = ""
+        for (i = 1; i <= length(v); i++) {
+          c = substr(v, i, 1)
+          if (c == "#" && (i == 1 || substr(v, i - 1, 1) ~ /[[:space:]]/)) break
+          out = out c
+        }
+        print "paths:" out; next
+      }
+      { print }
+    ')"
+    if printf '%s\n' "$fm_paths_src" | grep -qE '^paths:'; then
+      fm_paths_line="$(printf '%s\n' "$fm_paths_src" | grep -E '^paths:' | head -1)"
       fm_paths_value="$(printf '%s' "${fm_paths_line#paths:}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
       if [ -n "$fm_paths_value" ]; then
         fm_paths_inner="$fm_paths_value"
@@ -871,7 +891,7 @@ else
           fail "$nav_rel frontmatter: paths: names no glob ('$fm_paths_value') — must contain at least one"
         fi
       else
-        fm_paths_items=$(printf '%s\n' "$fm" | awk '
+        fm_paths_items=$(printf '%s\n' "$fm_paths_src" | awk '
           /^paths:[[:space:]]*$/ { inpaths=1; next }
           inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths=0 }
           inpaths && /^[[:space:]]*-/ { c++ }
