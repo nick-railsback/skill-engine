@@ -11,8 +11,10 @@
 # WHAT IS HELD.
 #   precision      — correct statements of the frontmatter contract, and an
 #                    unrelated "two fields", are not flagged.
-#   emphasis       — `*` inside a phrase cannot hide it.
-#   hard-wrap      — a phrase split across two lines is still flagged.
+#   emphasis       — `*` or `_` inside a phrase cannot hide it.
+#   hard-wrap      — a phrase split across two lines is still flagged,
+#                    including inside a blockquote and at the phrase's own
+#                    hyphen.
 #   derived set    — a tracked file at a path no test names is flagged; a
 #                    file on disk that was never added is not. Tracked is
 #                    the rule, not present-on-disk.
@@ -113,6 +115,16 @@ put 'docs/emphasis.md' \
 printf '%s\n' \
   'Every navigator ships with two-field' \
   'frontmatter and a catalog.' > "$repo/docs/hard-wrap.md"
+put 'docs/emphasis-underscore.md' \
+  'The navigator has a __two-field__ frontmatter.'
+put 'docs/emphasis-single-underscore.md' \
+  'Use _only_ the two frontmatter fields.'
+printf '%s\n' \
+  '> The navigator keeps two-field' \
+  '> frontmatter everywhere.' > "$repo/docs/blockquote-wrap.md"
+printf '%s\n' \
+  'Every navigator uses two-' \
+  'field frontmatter.' > "$repo/docs/hyphen-wrap.md"
 put 'deep/nowhere/unlisted-guide.md' \
   'SKILL.md uses two-field frontmatter.'
 put 'docs/CHANGELOG-notes.md' \
@@ -224,8 +236,16 @@ echo "── emphasis and hard-wraps do not hide a match ──"
 
 expect_flagged "emphasis: '**only** the two standard frontmatter fields' is flagged" \
   'docs/emphasis.md' 'only the two standard frontmatter fields'
+expect_flagged "emphasis: '__two-field__ frontmatter' is flagged" \
+  'docs/emphasis-underscore.md' 'two-field frontmatter'
+expect_flagged "emphasis: '_only_ the two frontmatter fields' is flagged" \
+  'docs/emphasis-single-underscore.md' 'only the two frontmatter fields'
 expect_flagged "hard-wrap: a phrase split across two lines is flagged" \
   'docs/hard-wrap.md' 'two-field frontmatter'
+expect_flagged "hard-wrap: a phrase split across two blockquote lines is flagged" \
+  'docs/blockquote-wrap.md' 'two-field frontmatter'
+expect_flagged "hard-wrap: a phrase split at its hyphen is flagged" \
+  'docs/hyphen-wrap.md' 'two-field frontmatter'
 
 echo
 echo "── derived set: tracked files, not a list and not the disk ──"
@@ -253,10 +273,10 @@ expect_flagged "references: a skills/<x>/references/ file is still flagged" \
 
 hit_count=0
 [ -n "$report" ] && hit_count="$(printf '%s\n' "$report" | grep -c .)"
-if [ "$hit_count" -eq 10 ]; then
-  pass "exclusions: the fixture corpus yields exactly its 10 expected hits"
+if [ "$hit_count" -eq 14 ]; then
+  pass "exclusions: the fixture corpus yields exactly its 14 expected hits"
 else
-  fail "exclusions: the fixture corpus yields exactly its 10 expected hits" \
+  fail "exclusions: the fixture corpus yields exactly its 14 expected hits" \
     "hits: $hit_count" "report: ${report:-<empty>}"
 fi
 

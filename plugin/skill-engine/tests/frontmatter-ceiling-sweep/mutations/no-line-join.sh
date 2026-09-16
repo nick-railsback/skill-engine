@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Control for: a hard-wrap does not hide a match. A scratch copy of the sweep
-# reads each file without joining its lines, so a phrase split across a line
-# break is matched line by line and missed.
+# stops joining a line to the next at an ordinary break, so a phrase split
+# there is matched line by line and missed.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -25,10 +25,10 @@ fi
 # The one line replaced, matched whole. Read from here-documents so no quote
 # or backslash in either line needs escaping.
 IFS= read -r old <<'LINE'
-  tr '\r\n' '  ' < "$1" |
+    { printf "%s ", $0 }
 LINE
 IFS= read -r new <<'LINE'
-  cat -- "$1" |
+    { print }
 LINE
 OLD="$old" NEW="$new" awk '
   $0 == ENVIRON["OLD"] { print ENVIRON["NEW"]; next }

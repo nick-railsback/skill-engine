@@ -36,9 +36,12 @@
 # THE MATCH is a phrase family, not an understanding of prose. A paraphrase
 # outside the family passes; that limit is deliberate and is left to review.
 # Each file is normalized before matching:
-#   - hard-wraps are joined, so a phrase split across lines still matches;
-#   - `*` and backticks are deleted, so emphasis or a code span inside the
-#     phrase cannot split it;
+#   - hard-wraps are joined, so a phrase split across lines still matches.
+#     A blockquote's leading `>` run is dropped first, so the join does not
+#     land one inside the phrase, and a line ending in a letter and a hyphen
+#     joins with no space, so `two-` over `field` reads `two-field`;
+#   - `*`, `_` and backticks are deleted, so emphasis or a code span inside
+#     the phrase cannot split it. None of the phrases contains one;
 #   - runs of blanks collapse to one space;
 #   - text is lowercased.
 # The family is deliberately narrow: "name and description are required",
@@ -95,8 +98,12 @@ is_excluded() {
 
 # normalize <file> — the file as one lowercased, marker-free line.
 normalize() {
-  tr '\r\n' '  ' < "$1" |
-    tr -d '*`' |
+  awk '
+    { sub(/\r$/, ""); sub(/^([[:space:]]*>)+/, "") }
+    $0 ~ /[[:alpha:]]-$/ { printf "%s", $0; next }
+    { printf "%s ", $0 }
+  ' "$1" |
+    tr -d '*`_' |
     tr -s ' \t' '  ' |
     tr '[:upper:]' '[:lower:]'
 }

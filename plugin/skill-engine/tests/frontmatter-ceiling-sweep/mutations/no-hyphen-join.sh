@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Control for: markdown emphasis does not hide a match. A scratch copy of the
-# sweep stops deleting `*` and `_` before matching, so `**only** the two` and
-# `__two-field__` no longer read as one phrase. Backticks are still deleted,
-# so only the emphasis fixtures can turn this red.
+# Control for: a phrase broken at its own hyphen is still matched. A scratch
+# copy of the sweep joins a line ending in a hyphen with a space like any
+# other, so `two-` over `field` reads `two- field`.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -26,10 +25,10 @@ fi
 # The one line replaced, matched whole. Read from here-documents so no quote
 # or backslash in either line needs escaping.
 IFS= read -r old <<'LINE'
-    tr -d '*`_' |
+    $0 ~ /[[:alpha:]]-$/ { printf "%s", $0; next }
 LINE
 IFS= read -r new <<'LINE'
-    tr -d '`' |
+    $0 ~ /[[:alpha:]]-$/ { printf "%s ", $0; next }
 LINE
 OLD="$old" NEW="$new" awk '
   $0 == ENVIRON["OLD"] { print ENVIRON["NEW"]; next }
@@ -42,8 +41,8 @@ if cmp -s "$work/pristine.sh" "$copy"; then
 fi
 
 if SWEEP_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
-  echo "a sweep that keeps emphasis markers was accepted"
+  echo "a sweep that spaces a hyphen break was accepted"
   exit 0
 fi
-echo "a sweep that keeps emphasis markers was rejected"
+echo "a sweep that spaces a hyphen break was rejected"
 exit 1
