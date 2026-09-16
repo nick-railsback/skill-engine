@@ -13,10 +13,10 @@
 #   comment discount — a key that names at least one glob is accepted with a
 #                      trailing comment, in all three spellings. At risk
 #                      from a discount that eats the value along with the
-#                      comment, and — for the block list — from a discount
-#                      applied to the extracted same-line value only: the
-#                      value goes empty, and the block-list count only
-#                      recognizes a key line with nothing after the colon.
+#                      comment, and — for the block list — from deciding
+#                      whether to read the lines under the key before the
+#                      comment is discounted: a key line with a comment is
+#                      not empty after the colon, so its items go unread.
 #   multi-line flow  — a flow sequence whose items sit on the lines after
 #                      the key is accepted. At risk from the fix that
 #                      stopped a lone `[` counting as a glob: rejecting

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Control for: a key that names at least one glob is accepted with a trailing
-# comment, in the block, flow and comma-separated spellings. A scratch copy of
-# the checker empties the whole `paths:` value whenever its key line carries a
-# whitespace-preceded `#` — a comment discount that swallows the globs along
-# with the comment.
+# comment, in the flow and comma-separated spellings. A scratch copy of the
+# checker's comment discount throws away everything before the `#` along
+# with the comment, so the globs go with it.
+#
+# The mutation sits inside the discount itself. An injection placed after
+# the discount has run (on the key line or the value extracted from it)
+# finds no `#` left to act on and changes nothing, which is how an earlier
+# version of this control went dead without failing.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -27,11 +31,8 @@ if ! VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
   exit 0
 fi
 
-# Inserted after the line that extracts the key's same-line value.
-printf '%s\n' \
-  'case "$fm_paths_line" in *[[:space:]]#*) fm_paths_value="" ;; esac' \
-  > "$work/inject.txt"
-sed '/fm_paths_value="\$(printf/r '"$work/inject.txt" "$copy" > "$copy.mutated" \
+# The discount's comment branch empties what it has kept so far.
+sed 's/if (c == "#" \&\& p ~ \/\[\[:space:\]\]\/) break$/if (c == "#" \&\& p ~ \/[[:space:]]\/) { out = ""; break }/' "$copy" > "$copy.mutated" \
   && mv "$copy.mutated" "$copy"
 chmod +x "$copy"
 
