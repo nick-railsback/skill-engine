@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The navigator-frontmatter gate rejects a `paths:` key that names no glob,
-# whatever trailing YAML comment the key line carries.
+# whatever trailing YAML comment the key line carries and however the empty
+# value is spelled.
 #
 # A trailing comment is not a glob. The gate's rule is: discount the comment
 # (a `#` preceded by whitespace, or standing first in the value), then reject
@@ -179,6 +180,33 @@ expect_reject "comment discount: a bare comma with a comma-bearing comment is re
   "paths: ,  # a, b"
 expect_reject "comment discount: a bare comma with the optional-field note is rejected" \
   "paths: ,  $REAL_NOTE"
+
+# ════════════════════════════════════════════════════════════════════════
+# empty block items: a dash that carries nothing is not a glob
+# ════════════════════════════════════════════════════════════════════════
+
+# The comment discount applies to an item line as it does to the key line,
+# and a quoted empty item counts as nothing in the block spelling exactly as
+# `[""]` does in the flow spelling.
+expect_reject "empty block item: a dash carrying only a comment is rejected" \
+  "paths:
+  - # todo"
+expect_reject "empty block item: a bare dash is rejected" \
+  "paths:
+  -"
+expect_reject "empty block item: two bare dashes are rejected" \
+  "paths:
+  -
+  -"
+expect_reject "empty block item: a double-quoted empty item is rejected" \
+  "paths:
+  - \"\""
+expect_reject "empty block item: a single-quoted empty item is rejected" \
+  "paths:
+  - ''"
+expect_reject "empty block item: a commented key over a quoted empty item is rejected" \
+  "paths:  # note
+  - \"\""
 
 echo
 echo "Passed: $pass_count"

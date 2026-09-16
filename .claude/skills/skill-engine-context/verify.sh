@@ -839,65 +839,84 @@ else
     # form: a YAML block list, a YAML flow sequence, and a
     # comma-separated string. Only emptiness is a failure.
     #
-    # A line-oriented grep that sent every same-line value other than the
-    # literal `[]` to a "must be a YAML list, not a scalar value" arm was
-    # not merely strict but wrong: `[a, b]` IS a YAML list, and the
-    # item-counting pass below — the only code that actually counts
-    # entries — was unreachable for anything but block style.
-    #
     # Nothing here parses YAML. It does not need to: the question is
-    # "how many non-empty items", which survives stripping one layer of
-    # brackets and splitting on commas, and verify.sh ships stamped into
-    # user repos where a PyYAML dependency would not.
+    # "how many non-empty items", and verify.sh ships stamped into user
+    # repos where a PyYAML dependency would not. One pass gathers the
+    # value (the key line's remainder plus the block items under it)
+    # and one counter reads it, whichever spelling was used. Two
+    # counters with different ideas of an item are how `paths: [""]`
+    # came to be rejected while its block spelling `- ""` was accepted.
     #
-    # A trailing YAML comment on the key line is not a glob. Discount it
-    # before either branch reads the key, using YAML's plain-scalar rule:
-    # a comment starts at a `#` that opens the value or follows
-    # whitespace, so `docs/#-anchors/**` stays one glob. Only the key line
-    # is rewritten, and only for the paths logic: $fm itself is left alone,
-    # because the description and key checks above read it and `#` is
-    # real content in a description.
-    fm_paths_src="$(printf '%s\n' "$fm" | awk '
-      /^paths:/ {
-        v = substr($0, 7); out = ""
-        for (i = 1; i <= length(v); i++) {
-          c = substr(v, i, 1)
-          if (c == "#" && (i == 1 || substr(v, i - 1, 1) ~ /[[:space:]]/)) break
+    # The counter discounts a trailing comment on every line, drops a
+    # block item's dash and one layer of flow brackets, splits on commas
+    # and newlines, deletes quotes, and counts what is not blank. Quote
+    # characters are deleted rather than matched, so the count does not
+    # depend on which of YAML's two quotings was used.
+    #
+    # A trailing YAML comment is not a glob. The discount uses YAML's
+    # plain-scalar rule: a comment starts at a `#` that opens the value
+    # or follows whitespace, so `docs/#-anchors/**` stays one glob. It is
+    # local to this pass. $fm itself is left alone, because the
+    # description and key checks above read it and `#` is real content
+    # in a description.
+    #
+    # The single quote arrives via -v: spelling it inline inside this
+    # already single-quoted program is what turns a one-character delete
+    # into a quoting puzzle.
+    fm_paths_scan="$(printf '%s\n' "$fm" | awk -v sq="'" '
+      function uncomment(s,   i, c, out) {
+        out = ""
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          if (c == "#" && (i == 1 || substr(s, i - 1, 1) ~ /[[:space:]]/)) break
           out = out c
         }
-        print "paths:" out; next
+        return out
       }
-      { print }
+      function trim(s) {
+        sub(/^[[:space:]]+/, "", s)
+        sub(/[[:space:]]+$/, "", s)
+        return s
+      }
+      function count(s,   n, nl, lines, i, t, np, parts, j) {
+        n = 0
+        s = trim(s)
+        if (s ~ /^\[/ && s ~ /\]$/) s = substr(s, 2, length(s) - 2)
+        nl = split(s, lines, "\n")
+        for (i = 1; i <= nl; i++) {
+          t = lines[i]
+          if (t ~ /^[[:space:]]*-$/) t = ""
+          else sub(/^[[:space:]]*-[[:space:]]/, "", t)
+          np = split(t, parts, ",")
+          for (j = 1; j <= np; j++) {
+            gsub(/"/, "", parts[j])
+            gsub(sq, "", parts[j])
+            if (parts[j] ~ /[^[:space:]]/) n++
+          }
+        }
+        return n
+      }
+      { sub(/\r$/, "") }
+      /^paths:/ {
+        v = $0
+        sub(/^paths:/, "", v)
+        key = trim(uncomment(v))
+        body = key
+        found = 1
+        inpaths = 1
+        next
+      }
+      inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths = 0 }
+      inpaths && /^[[:space:]]*-/ { body = body "\n" uncomment($0) }
+      END { if (found) printf "%d\t%s\n", count(body), key }
     ')"
-    if printf '%s\n' "$fm_paths_src" | grep -qE '^paths:'; then
-      fm_paths_line="$(printf '%s\n' "$fm_paths_src" | grep -E '^paths:' | head -1)"
-      fm_paths_value="$(printf '%s' "${fm_paths_line#paths:}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-      if [ -n "$fm_paths_value" ]; then
-        fm_paths_inner="$fm_paths_value"
-        case "$fm_paths_value" in
-          \[*\]) fm_paths_inner="${fm_paths_value#\[}"; fm_paths_inner="${fm_paths_inner%\]}" ;;
-        esac
-        # Quote characters are deleted rather than matched, so the count
-        # does not depend on which of YAML's two quotings was used. The
-        # single quote arrives via a variable: spelling it inline inside
-        # this already single-quoted context is what turns a one-line
-        # counter into a quoting puzzle.
-        fm_paths_squote="'"
-        fm_paths_items="$(printf '%s' "$fm_paths_inner" \
-          | tr ',' '\n' \
-          | tr -d "\"$fm_paths_squote" \
-          | grep -c '[^[:space:]]')" || fm_paths_items=0
-        if [ "${fm_paths_items:-0}" -eq 0 ]; then
+    if [ -n "$fm_paths_scan" ]; then
+      fm_paths_items="${fm_paths_scan%%$'\t'*}"
+      fm_paths_value="${fm_paths_scan#*$'\t'}"
+      if [ "$fm_paths_items" -eq 0 ]; then
+        if [ -n "$fm_paths_value" ]; then
           fail "$nav_rel frontmatter: paths: names no glob ('$fm_paths_value') — must contain at least one"
-        fi
-      else
-        fm_paths_items=$(printf '%s\n' "$fm_paths_src" | awk '
-          /^paths:[[:space:]]*$/ { inpaths=1; next }
-          inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths=0 }
-          inpaths && /^[[:space:]]*-/ { c++ }
-          END { print c+0 }
-        ')
-        if [ "$fm_paths_items" -eq 0 ]; then
+        else
           fail "$nav_rel frontmatter: paths: has no list entries — must contain at least one glob"
         fi
       fi

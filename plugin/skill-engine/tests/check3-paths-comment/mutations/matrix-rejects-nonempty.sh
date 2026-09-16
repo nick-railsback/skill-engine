@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Control for: the comment-free fixture matrix keeps its accept verdicts. A
-# scratch copy of the checker discards every same-line `paths:` value, so a
-# flow sequence, a comma-separated string or a single glob falls through to
-# the block-list count, finds no items, and is rejected.
+# scratch copy of the checker keeps the key line's value out of the body it
+# counts, so a flow sequence, a comma-separated string or a single glob
+# leaves only the (absent) block items to count, finds none, and is
+# rejected.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -26,9 +27,8 @@ if ! VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
   exit 0
 fi
 
-# Inserted after the line that extracts the key's same-line value.
-printf '%s\n' 'fm_paths_value=""' > "$work/inject.txt"
-sed '/fm_paths_value="\$(printf/r '"$work/inject.txt" "$copy" > "$copy.mutated" \
+# The counted body starts empty instead of with the key line's value.
+sed 's/^\([[:space:]]*\)body = key$/\1body = ""/' "$copy" > "$copy.mutated" \
   && mv "$copy.mutated" "$copy"
 chmod +x "$copy"
 

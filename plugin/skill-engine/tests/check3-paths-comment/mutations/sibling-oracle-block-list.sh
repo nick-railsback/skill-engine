@@ -3,8 +3,9 @@
 # `paths:` key still holds against the checker — a two-field frontmatter
 # and a `paths:` block list are accepted, a `version:` third key is
 # rejected. That suite reaches the checker through the same VERIFY_SH
-# variable, so it can be pointed at a scratch copy. The copy's block-list
-# count stops counting items, so a non-empty block list is rejected.
+# variable, so it can be pointed at a scratch copy. The copy stops
+# gathering block items into the counted body, so a non-empty block list is
+# rejected.
 #
 # -e is intentionally omitted so both runs are reached and their exit codes
 # read.
@@ -29,7 +30,7 @@ if ! VERIFY_SH="$copy" bash "$SIBLING" >/dev/null 2>&1; then
   exit 0
 fi
 
-sed 's/{ c++ }/{ c += 0 }/' "$copy" > "$copy.mutated" \
+sed 's/{ body = body "\\n" uncomment(\$0) }/{ body = body }/' "$copy" > "$copy.mutated" \
   && mv "$copy.mutated" "$copy"
 chmod +x "$copy"
 
