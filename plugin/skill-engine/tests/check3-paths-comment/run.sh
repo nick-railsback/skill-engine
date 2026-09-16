@@ -306,6 +306,23 @@ expect_accept "next-line value: a literal block scalar carrying a glob is accept
   "paths: |
   a/**"
 
+# ════════════════════════════════════════════════════════════════════════
+# quoted hash: a `#` inside a quoted scalar never starts a comment
+# ════════════════════════════════════════════════════════════════════════
+
+# YAML's comment rule applies to plain scalars only. Each value below names
+# a glob solely through a quoted ` #`, so a discount blind to quoting
+# leaves nothing (or an unclosed `[`) to count.
+expect_accept "quoted hash: a double-quoted glob with a space before its hash is accepted" \
+  "paths: \" #drafts/**\""
+expect_accept "quoted hash: a single-quoted glob with a space before its hash is accepted" \
+  "paths: ' # x/**'"
+expect_accept "quoted hash: a flow sequence of such globs is accepted" \
+  "paths: [\" #a/**\", \" #b/**\"]"
+expect_accept "quoted hash: a block item holding such a glob is accepted" \
+  "paths:
+  - \" #drafts/**\""
+
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

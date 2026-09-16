@@ -39,6 +39,9 @@
 #                      from the obvious strip-from-the-first-`#`: on a
 #                      quoted scalar that leaves only a quote, which counts
 #                      as nothing.
+#                      Tracking quotes so a quoted `#` is kept carries the
+#                      opposite risk: a quote that never closes hides the
+#                      real comment after it.
 #   key set          — name, description and paths are admitted; any other
 #                      top-level key is rejected.
 #   no interpreter   — the checker ships stamped into user repos, where a
@@ -225,6 +228,8 @@ expect accept "hash inside glob: a double-quoted hash glob with a trailing comme
 expect accept "hash inside glob: a block item with a hash inside a path segment is accepted" \
   "paths:
   - docs/#-anchors/**"
+expect reject "hash inside glob: a comment after a closed empty quote is still discounted" \
+  "paths: \"\"  # \"x/**\""
 
 # ════════════════════════════════════════════════════════════════════════
 # key set: name, description and paths admitted; nothing else

@@ -868,8 +868,11 @@ else
     #
     # A trailing YAML comment is not a glob. The discount uses YAML's
     # plain-scalar rule: a comment starts at a `#` that opens the value
-    # or follows whitespace, so `docs/#-anchors/**` stays one glob. It is
-    # local to this pass. $fm itself is left alone, because the
+    # or follows whitespace, so `docs/#-anchors/**` stays one glob. A `#`
+    # inside a quoted scalar never starts one, so the discount tracks a
+    # quote that opens a scalar (at the start of the value, or after
+    # whitespace, a comma or a `[`) until it closes. It is local to this
+    # pass. $fm itself is left alone, because the
     # description and key checks above read it and `#` is real content
     # in a description.
     #
@@ -877,11 +880,16 @@ else
     # already single-quoted program is what turns a one-character delete
     # into a quoting puzzle.
     fm_paths_scan="$(printf '%s\n' "$fm" | awk -v sq="'" '
-      function uncomment(s,   i, c, out) {
+      function uncomment(s,   i, c, p, q, out) {
         out = ""
+        q = ""
         for (i = 1; i <= length(s); i++) {
           c = substr(s, i, 1)
-          if (c == "#" && (i == 1 || substr(s, i - 1, 1) ~ /[[:space:]]/)) break
+          p = (i == 1) ? " " : substr(s, i - 1, 1)
+          if (q == "") {
+            if (c == "#" && p ~ /[[:space:]]/) break
+            if ((c == "\"" || c == sq) && (p ~ /[[:space:]]/ || p == "," || p == "[")) q = c
+          } else if (c == q) q = ""
           out = out c
         }
         return out
