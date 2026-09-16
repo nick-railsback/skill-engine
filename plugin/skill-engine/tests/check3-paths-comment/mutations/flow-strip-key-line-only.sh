@@ -3,42 +3,16 @@
 # rejected. A scratch copy of the checker strips a flow sequence's brackets
 # only when the key line opened it, so `[]` under a bare key survives as a
 # token and counts as a glob.
-#
-# -e is intentionally omitted so both runs are reached and their exit codes
-# read.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SUITE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SUITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGIN_ROOT="$(cd "$SUITE_DIR/../.." && pwd)"
-TEMPLATES_DIR="$PLUGIN_ROOT/engine-bootstrap-templates"
-
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
-
-copy="$work/verify.sh"
-cp "$TEMPLATES_DIR/verify.sh" "$copy"
-cp "$copy" "$work/pristine.sh"
-chmod +x "$copy"
-
-if ! VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
-  echo "pristine copy is already red"
-  exit 0
-fi
+# shellcheck source=../../lib/mutate.sh
+. "$PLUGIN_ROOT/tests/lib/mutate.sh"
 
 # The bracket strip asks whether the key line, not the value, opens `[`.
-sed 's|if (s ~ /^\\\[/ \&\& s ~|if (key ~ /^\\[/ \&\& s ~|' "$copy" > "$copy.mutated" \
-  && mv "$copy.mutated" "$copy"
-chmod +x "$copy"
 
-if cmp -s "$work/pristine.sh" "$copy"; then
-  echo "injection did not apply"
-  exit 0
-fi
-
-if VERIFY_SH="$copy" bash "$SUITE_DIR/preserved.sh" >/dev/null 2>&1; then
-  echo "a gate that reads flow brackets on the key line only was accepted"
-  exit 0
-fi
-echo "a gate that reads flow brackets on the key line only was rejected"
-exit 1
+mutation_control VERIFY_SH "$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh" \
+  "$SUITE_DIR/preserved.sh" \
+  "a gate that reads flow brackets on the key line only" \
+  sed 's|if (s ~ /^\\\[/ \&\& s ~|if (key ~ /^\\[/ \&\& s ~|'
