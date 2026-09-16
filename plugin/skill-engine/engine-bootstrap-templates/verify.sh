@@ -852,7 +852,12 @@ else
     # block item's dash and one layer of flow brackets, splits on commas
     # and newlines, deletes quotes, and counts what is not blank. Quote
     # characters are deleted rather than matched, so the count does not
-    # depend on which of YAML's two quotings was used.
+    # depend on which of YAML's two quotings was used. The tokens YAML
+    # reads as no value (`~`, `null` in its three spellings, an empty
+    # mapping `{}`) are dropped first, while still unquoted: `paths: ~`
+    # is the same value as a bare `paths:`, but `"null"` is a string. A
+    # block-scalar indicator (`|`, `>-`) introduces a value and is not
+    # one itself.
     #
     # A flow sequence still open at the next key or at the end of the
     # frontmatter fails on its own: YAML refuses it, and counting its
@@ -896,6 +901,7 @@ else
           else sub(/^[[:space:]]*-[[:space:]]/, "", t)
           np = split(t, parts, ",")
           for (j = 1; j <= np; j++) {
+            if (trim(parts[j]) ~ /^(~|null|Null|NULL|[{][}])$/) continue
             gsub(/"/, "", parts[j])
             gsub(sq, "", parts[j])
             if (parts[j] ~ /[^[:space:]]/) n++
@@ -909,6 +915,7 @@ else
         sub(/^paths:/, "", v)
         key = trim(uncomment(v))
         body = key
+        if (key ~ /^[|>][-+0-9]*$/) body = ""
         found = 1
         inflow = (key ~ /^\[/ && key !~ /\]$/)
         inpaths = !inflow

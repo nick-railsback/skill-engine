@@ -239,6 +239,33 @@ else
   fail "multi-line flow: a sequence still open at the next key is rejected" "verdict: $verdict"
 fi
 
+# ════════════════════════════════════════════════════════════════════════
+# no-value spellings: YAML null, an empty mapping, an empty block scalar
+# ════════════════════════════════════════════════════════════════════════
+
+# `paths:` and `paths: ~` are the same YAML value, so they get the same
+# verdict.
+expect_reject "no-value spelling: a tilde is rejected" \
+  "paths: ~"
+expect_reject "no-value spelling: a lowercase null is rejected" \
+  "paths: null"
+expect_reject "no-value spelling: a capitalized null with a comment is rejected" \
+  "paths: Null  # none yet"
+expect_reject "no-value spelling: an uppercase null is rejected" \
+  "paths: NULL"
+expect_reject "no-value spelling: an empty mapping is rejected" \
+  "paths: {}"
+expect_reject "no-value spelling: nulls inside a flow sequence are rejected" \
+  "paths: [~, null]"
+expect_reject "no-value spelling: a null block item is rejected" \
+  "paths:
+  - null"
+expect_reject "no-value spelling: a bare literal block indicator is rejected" \
+  "paths: |"
+expect_reject "no-value spelling: a folded block indicator over only a comment is rejected" \
+  "paths: >-
+  # nothing"
+
 echo
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

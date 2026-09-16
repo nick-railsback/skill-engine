@@ -22,6 +22,11 @@
 #                      stopped a lone `[` counting as a glob: rejecting
 #                      every sequence left open on the key line is the
 #                      shortcut, and it refuses a spelling YAML accepts.
+#   null lookalikes  — only a token that is exactly a YAML null (`~`,
+#                      `null`, `Null`, `NULL`) or an empty mapping is no
+#                      value. At risk from a prefix match, which drops
+#                      `nullable/**` and `~vendor/**`, and from matching
+#                      after unquoting, which drops the string `"null"`.
 #   hash inside glob — a `#` starts a comment only when whitespace precedes
 #                      it or it stands first in the value. A `#` glued to a
 #                      path segment or a quote is part of the glob. At risk
@@ -176,6 +181,17 @@ expect accept "multi-line flow: a sequence split over several lines is accepted"
 expect accept "multi-line flow: a sequence with a comment on its opening line is accepted" \
   "paths: [  # note
   packages/billing/**]"
+
+# ════════════════════════════════════════════════════════════════════════
+# null lookalikes: a glob that only starts like a null is a glob
+# ════════════════════════════════════════════════════════════════════════
+
+expect accept "null lookalike: a glob that starts with null is accepted" \
+  "paths: nullable/**"
+expect accept "null lookalike: a glob that starts with a tilde is accepted" \
+  "paths: ~vendor/**"
+expect accept "null lookalike: a quoted null is a string and is accepted" \
+  "paths: [\"null\"]"
 
 # ════════════════════════════════════════════════════════════════════════
 # hash inside glob: a `#` not preceded by whitespace belongs to the glob
