@@ -135,6 +135,16 @@ put 'templates/nav.md.template' \
   'Frontmatter: `name:` and `description:` only.'
 put 'docs/only-name-desc.md' \
   'Frontmatter holds only name and description.'
+put 'docs/limited-to.md' \
+  'Navigator frontmatter is limited to `name` and `description`.'
+put 'docs/stick-to.md' \
+  'Stick to `name` and `description` in the navigator frontmatter.'
+put 'docs/name-desc-only.md' \
+  'Frontmatter carries `name` and `description` only.'
+put 'docs/skill-fm-only.md' \
+  'SKILL.md frontmatter: name and description only.'
+put 'docs/two-key.md' \
+  'The navigator uses two-key frontmatter.'
 put 'docs/exactly-two.md' \
   'Navigator frontmatter has exactly two fields.'
 put 'docs/only-two-required.md' \
@@ -222,6 +232,16 @@ expect_flagged "phrase family: 'name: and description: only' in code spans is fl
   'templates/nav.md.template' 'name: and description: only'
 expect_flagged "phrase family: 'only name and description' is flagged" \
   'docs/only-name-desc.md' 'only name and description'
+expect_flagged "phrase family: 'limited to name and description' is flagged" \
+  'docs/limited-to.md' 'limited to name and description'
+expect_flagged "phrase family: 'stick to name and description' is flagged" \
+  'docs/stick-to.md' 'stick to name and description'
+expect_flagged "phrase family: 'name and description only' without colons is flagged" \
+  'docs/name-desc-only.md' 'name and description only'
+expect_flagged "phrase family: 'frontmatter: name and description only' is flagged" \
+  'docs/skill-fm-only.md' 'name and description only'
+expect_flagged "phrase family: 'two-key frontmatter' is flagged" \
+  'docs/two-key.md' 'two-key frontmatter'
 expect_flagged "phrase family: 'exactly two fields' is flagged" \
   'docs/exactly-two.md' 'exactly two fields'
 expect_flagged "phrase family: 'only the two required fields' is flagged" \
@@ -273,10 +293,10 @@ expect_flagged "references: a skills/<x>/references/ file is still flagged" \
 
 hit_count=0
 [ -n "$report" ] && hit_count="$(printf '%s\n' "$report" | grep -c .)"
-if [ "$hit_count" -eq 14 ]; then
-  pass "exclusions: the fixture corpus yields exactly its 14 expected hits"
+if [ "$hit_count" -eq 19 ]; then
+  pass "exclusions: the fixture corpus yields exactly its 19 expected hits"
 else
-  fail "exclusions: the fixture corpus yields exactly its 14 expected hits" \
+  fail "exclusions: the fixture corpus yields exactly its 19 expected hits" \
     "hits: $hit_count" "report: ${report:-<empty>}"
 fi
 

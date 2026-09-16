@@ -52,12 +52,20 @@ set -uo pipefail
 LC_ALL=C
 export LC_ALL
 
-# One extended regex per line, matched against normalized text.
+# One extended regex per line, matched against normalized text. The
+# `limited to` and `stick to` members come from the exhaustivity pattern
+# tests/paths-frontmatter-decision holds 01-principles.md to. That
+# pattern's bare `exactly two` and `only two` are narrowed here to `... two
+# fields`: across every tracked file they would flag unrelated counts.
+# "Two-key" is this repo's other name for the two-field frontmatter.
 PHRASES=(
   'two-field frontmatter'
   'two-field navigator'
-  'name: and description: only'
+  'two-key (frontmatter|navigator)'
+  'name:? and description:? only'
   'only name and description'
+  'limited to name:? and description:?'
+  'stick to name:? and description:?'
   'exactly two fields'
   'only (the )?two (standard |required )?(frontmatter )?fields'
 )
