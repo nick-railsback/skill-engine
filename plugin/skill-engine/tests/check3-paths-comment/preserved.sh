@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The navigator-frontmatter gate's behaviours that must survive teaching it
-# to discount a trailing comment on the `paths:` key. Every one of them
+# The navigator-frontmatter gate's behaviours that must survive its
+# `paths:` rules: the trailing-comment discount, the multi-line and
+# next-line readings, the no-value tokens and quoting. Every one of them
 # already holds, so none of them can go red-then-green; each is instead
 # broken on a scratch copy of the checker by a control in `mutations/`,
 # which requires this file red.

@@ -8,8 +8,9 @@
 # A verdict is read from the checker's own `(navigator-skill)` section over
 # a scratch contextualizer root, never from its exit code: every other check
 # in the file also moves that, and a fixture this small reaches later
-# checks that report on their own terms. How the section is isolated lives
-# here and only here.
+# checks that report on their own terms. The check3-paths-comment and
+# paths-frontmatter suites share this isolation; monorepo-config-check
+# reaches the same section through its own generic check_section.
 
 # nav_gate_report <contextualizer-root> — the navigator-frontmatter check's
 # own section of a verify run over that root.
