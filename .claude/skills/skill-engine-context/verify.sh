@@ -833,51 +833,128 @@ else
       esac
     done < <(printf '%s\n' "$fm" | grep -oE '^[A-Za-z0-9_.-]+:' | sed 's/:$//')
 
+    # A repeated top-level key fails too. Loaders disagree on it (last
+    # wins in some, a parse error in others), so no single occurrence is
+    # the value every loader sees, and the paths: count below would be
+    # judging one of several.
+    while IFS= read -r fm_key; do
+      [ -n "$fm_key" ] || continue
+      fail "$nav_rel frontmatter repeats a key: $fm_key"
+    done < <(printf '%s\n' "$fm" | grep -oE '^[A-Za-z0-9_.-]+:' | sed 's/:$//' | sort | uniq -d)
+
     # paths:, when present, must name at least one glob. Three spellings
     # are admitted, which are the ones Claude Code documents for the
     # field ("a comma-separated string or a YAML list") plus the block
     # form: a YAML block list, a YAML flow sequence, and a
     # comma-separated string. Only emptiness is a failure.
     #
-    # A line-oriented grep that sent every same-line value other than the
-    # literal `[]` to a "must be a YAML list, not a scalar value" arm was
-    # not merely strict but wrong: `[a, b]` IS a YAML list, and the
-    # item-counting pass below — the only code that actually counts
-    # entries — was unreachable for anything but block style.
-    #
     # Nothing here parses YAML. It does not need to: the question is
-    # "how many non-empty items", which survives stripping one layer of
-    # brackets and splitting on commas, and verify.sh ships stamped into
-    # user repos where a PyYAML dependency would not.
-    if printf '%s\n' "$fm" | grep -qE '^paths:'; then
-      fm_paths_line="$(printf '%s\n' "$fm" | grep -E '^paths:' | head -1)"
-      fm_paths_value="$(printf '%s' "${fm_paths_line#paths:}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-      if [ -n "$fm_paths_value" ]; then
-        fm_paths_inner="$fm_paths_value"
-        case "$fm_paths_value" in
-          \[*\]) fm_paths_inner="${fm_paths_value#\[}"; fm_paths_inner="${fm_paths_inner%\]}" ;;
-        esac
-        # Quote characters are deleted rather than matched, so the count
-        # does not depend on which of YAML's two quotings was used. The
-        # single quote arrives via a variable: spelling it inline inside
-        # this already single-quoted context is what turns a one-line
-        # counter into a quoting puzzle.
-        fm_paths_squote="'"
-        fm_paths_items="$(printf '%s' "$fm_paths_inner" \
-          | tr ',' '\n' \
-          | tr -d "\"$fm_paths_squote" \
-          | grep -c '[^[:space:]]')" || fm_paths_items=0
-        if [ "${fm_paths_items:-0}" -eq 0 ]; then
+    # "how many non-empty items", and verify.sh ships stamped into user
+    # repos where a PyYAML dependency would not. One pass gathers the
+    # value (the key line's remainder plus every line up to the next key,
+    # which is where YAML reads it too) and one counter reads it,
+    # whichever spelling was used and whichever line it starts on. Two
+    # counters with different ideas of an item are how `paths: [""]`
+    # came to be rejected while its block spelling `- ""` was accepted.
+    #
+    # The counter discounts a trailing comment on every line, drops a
+    # block item's dash and one layer of flow brackets, splits on commas
+    # and newlines, deletes quotes, and counts what is not blank. Quote
+    # characters are deleted rather than matched, so the count does not
+    # depend on which of YAML's two quotings was used. The tokens YAML
+    # reads as no value (`~`, `null` in its three spellings, an empty
+    # mapping `{}`) are dropped first, while still unquoted: `paths: ~`
+    # is the same value as a bare `paths:`, but `"null"` is a string. A
+    # block-scalar indicator (`|`, `>-`) introduces a value and is not
+    # one itself.
+    #
+    # A flow sequence still open at the next key or at the end of the
+    # frontmatter, whether it opened on the key line or under it, fails
+    # on its own: YAML refuses it, and counting its
+    # lone `[` as a glob is how `paths: [   # globs go here` over `]`
+    # once passed. A ` #` inside a flow sequence opens a comment that
+    # swallows the `]`, so `[a/**, #b/**]` is one of these too.
+    #
+    # A trailing YAML comment is not a glob. The discount uses YAML's
+    # plain-scalar rule: a comment starts at a `#` that opens the value
+    # or follows whitespace, so `docs/#-anchors/**` stays one glob. A `#`
+    # inside a quoted scalar never starts one, so the discount tracks a
+    # quote that opens a scalar (at the start of the value, or after
+    # whitespace, a comma or a `[`) until it closes. It is local to this
+    # pass. $fm itself is left alone, because the
+    # description and key checks above read it and `#` is real content
+    # in a description.
+    #
+    # The single quote arrives via -v: spelling it inline inside this
+    # already single-quoted program is what turns a one-character delete
+    # into a quoting puzzle.
+    fm_paths_scan="$(printf '%s\n' "$fm" | awk -v sq="'" '
+      function uncomment(s,   i, c, p, q, out) {
+        out = ""
+        q = ""
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          p = (i == 1) ? " " : substr(s, i - 1, 1)
+          if (q == "") {
+            if (c == "#" && p ~ /[[:space:]]/) break
+            if ((c == "\"" || c == sq) && (p ~ /[[:space:]]/ || p == "," || p == "[")) q = c
+          } else if (c == q) q = ""
+          out = out c
+        }
+        return out
+      }
+      function trim(s) {
+        sub(/^[[:space:]]+/, "", s)
+        sub(/[[:space:]]+$/, "", s)
+        return s
+      }
+      function count(s,   n, nl, lines, i, t, np, parts, j) {
+        n = 0
+        s = trim(s)
+        if (s ~ /^\[/ && s ~ /\]$/) s = substr(s, 2, length(s) - 2)
+        nl = split(s, lines, "\n")
+        for (i = 1; i <= nl; i++) {
+          t = lines[i]
+          if (t ~ /^[[:space:]]*-$/) t = ""
+          else sub(/^[[:space:]]*-[[:space:]]/, "", t)
+          np = split(t, parts, ",")
+          for (j = 1; j <= np; j++) {
+            if (trim(parts[j]) ~ /^(~|null|Null|NULL|[{][}])$/) continue
+            gsub(/"/, "", parts[j])
+            gsub(sq, "", parts[j])
+            if (parts[j] ~ /[^[:space:]]/) n++
+          }
+        }
+        return n
+      }
+      { sub(/\r$/, "") }
+      /^paths:/ {
+        v = $0
+        sub(/^paths:/, "", v)
+        key = trim(uncomment(v))
+        body = key
+        if (key ~ /^[|>][-+0-9]*$/) body = ""
+        found = 1
+        inpaths = 1
+        next
+      }
+      inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths = 0 }
+      inpaths { body = body "\n" uncomment($0) }
+      END {
+        if (!found) exit
+        v = trim(body)
+        unclosed = (v ~ /^\[/ && v !~ /\]$/)
+        printf "%d\t%d\t%s\n", count(body), unclosed, key
+      }
+    ')"
+    if [ -n "$fm_paths_scan" ]; then
+      IFS=$'\t' read -r fm_paths_items fm_paths_unclosed fm_paths_value <<< "$fm_paths_scan"
+      if [ "$fm_paths_unclosed" -eq 1 ]; then
+        fail "$nav_rel frontmatter: paths: opens a flow sequence it never closes ('$fm_paths_value')"
+      elif [ "$fm_paths_items" -eq 0 ]; then
+        if [ -n "$fm_paths_value" ]; then
           fail "$nav_rel frontmatter: paths: names no glob ('$fm_paths_value') — must contain at least one"
-        fi
-      else
-        fm_paths_items=$(printf '%s\n' "$fm" | awk '
-          /^paths:[[:space:]]*$/ { inpaths=1; next }
-          inpaths && /^[A-Za-z0-9_.-]+:/ { inpaths=0 }
-          inpaths && /^[[:space:]]*-/ { c++ }
-          END { print c+0 }
-        ')
-        if [ "$fm_paths_items" -eq 0 ]; then
+        else
           fail "$nav_rel frontmatter: paths: has no list entries — must contain at least one glob"
         fi
       fi

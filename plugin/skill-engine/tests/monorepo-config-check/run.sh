@@ -24,7 +24,9 @@ TESTS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_ROOT="$(cd "$TESTS_ROOT/.." && pwd)"
 REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 
-TEMPLATE="$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh"
+# VERIFY_SH points the run at another copy of the checker, so a mutation
+# control can hold a scratch copy to this suite's Check 3 fixture matrix.
+TEMPLATE="${VERIFY_SH:-$PLUGIN_ROOT/engine-bootstrap-templates/verify.sh}"
 SCHEMA="$PLUGIN_ROOT/engine-bootstrap-templates/source-paths.schema.json"
 MONOREPO_DOC="$PLUGIN_ROOT/docs/07-monorepo-adapter.md"
 CONTRACT_DOC="$PLUGIN_ROOT/docs/02-artifact-contract.md"
