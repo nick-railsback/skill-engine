@@ -14,8 +14,8 @@ The review is in three steps. Fill Step 1 first, save, then re-run `/skill-engin
 
 Write your predictions before scrolling. The point is to surface your model of what this contextualizer should be, then let the disagreement set in Step 2 show you where the engine's draft diverges from your intent. If you read the diff first, Step 2 has nothing to teach.
 
-- *"This skill is for me, the app owner to use on iterative feature work."*
-- *"This skill should NOT lie"*
+- *"This skill is for me, app owner."*
+- *"This skill should NOT lie."*
 - *"The reference I'd cut: none, looks good."*
 
 <!-- Do not scroll past this line until the three blanks above are filled. -->
@@ -23,17 +23,16 @@ Write your predictions before scrolling. The point is to surface your model of w
 ## Step 2 — Disagreement set
 
 Paragraph→permalink density: 99.4% (report-only; not one of the disagreements below).
-Re-emit candidates: 9 of 9 references cite changed paths (63 changed paths uncited).
-Re-pinned: 204 of 218 citations moved mechanically; 14 read by hand.
+Re-emit candidates: 6 of 9 references cite changed paths (58 changed paths uncited). Computed from `git diff 5a76100..57afec3` this run, not from `.discover-inventory.json`, which this refresh did not rewrite.
+Re-pinned: 223 of 230 citations moved mechanically; 7 read by hand.
 
-- [X] accept  [ ] reject   You predicted this skill is for you, the app owner, on iterative feature work, but the substance of this refresh is fleet mode — `--all` sweeps, a six-column fleet table, an `owner` column — aimed at a platform team running dozens of contextualizers, and it now occupies material in four of the nine references.
-- [X] accept  [ ] reject   `workflows.md` gained a federated-review paragraph whose stated premise is "fifty navigators and no one person who can honestly sign off on all of them", documenting a `provisional`-vs-`reviewed` tier distinction that collapses to one person on a single-owner install.
-- [X] accept  [ ] reject   `evaluation-and-audit.md` now describes `run-eval.sh --installed-set` and its confusion table, which measure whether a contextualizer stays dormant while its siblings compete for the same query — a 1×1 cell with one contextualizer installed.
-- [X] accept  [ ] reject   `artifact-contract.md` gained an `owner` field row seeded from CODEOWNERS, but your `source-paths.json` carries no `owner` key and this refresh did not add one, so the field is documented and unexercised.
-- [X] accept  [ ] reject   Against your "should NOT lie" prediction: `invariants.md` now says twelve `verify.sh` named checks (what the validator actually runs) while the doctrine chapter it cites, `05-invariants.md` L32, still says eleven — the reference is correct and disagrees with its own source, and the real fix is upstream rather than in this proposal.
-- [X] accept  [ ] reject   Also against that prediction: the navigator's standing instructions measure 7324 bytes against the 5K first-5K budget this corpus documents as load-bearing, and this proposal added 254 of those bytes in the fleet cross-reference line — the artifact teaching the invariant violates it, and no check catches it.
-- [X] accept  [ ] reject   `overview.md` and `versioning.md` now assert `0.11.0` as the current version in prose, but the version-parity gate covers `plugin.json`, `marketplace.json`, README, SECURITY and CHANGELOG — not reference prose — so both claims go stale at the next release with nothing naming them.
-- [X] accept  [ ] reject   You said you would cut nothing and nothing was cut, but nothing was added either: fleet mode was folded across four existing references rather than emitted as its own, leaving `workflows.md` carrying router, review, apply, discard, status, fleet table and federated review in one file.
+- [X] accept  [ ] reject   You predicted this skill is for you, the app owner, but the one v0.11.1 change an owner can actually trip on — a `paths:  # comment` key that Check 3 used to accept — is folded into a table cell in `invariants.md`, while the hand-written prose this run added went to narrating the CHANGELOG in `versioning.md`.
+- [X] accept  [ ] reject   Against "should NOT lie": the navigator body measures 10,776 bytes against the 5,120-byte first-5K budget `invariants.md` teaches as load-bearing, and this proposal leaves `SKILL.md` untouched, so the artifact still violates the invariant it documents (the last review accepted this; it has not moved).
+- [X] accept  [ ] reject   Against "should NOT lie": `artifact-contract.md`, the reference that owns the frontmatter contract, never mentions `paths:` as the optional third field, although `overview.md` and `invariants.md` both do and the upstream contract doc gained three sentences on it at v0.11.1.
+- [X] accept  [ ] reject   Against "should NOT lie": the re-emit line above had to be computed from this run's diff because the gitignored `research/.discover-inventory.json` still describes the v0.11.0 crawl; a later `review` pass reading that file will print different figures for the same proposal.
+- [X] accept  [ ] reject   `invariants.md`'s `navigator-skill` row grew from one line to a ninety-word cell inside a table whose other cells are one-line purposes; the rejection matrix reads as prose that belongs below the table, not in it.
+- [X] accept  [ ] reject   `versioning.md` line 41 is now a single paragraph of roughly 2,700 characters walking four releases, and each refresh prepends one more release with nothing trimming the tail.
+- [X] accept  [ ] reject   You said you would cut nothing, and nothing was cut, but `evals/` was not touched either: its only results file is from 2026-08-02, three releases and two refreshes ago, so `evaluation-and-audit.md` describes a harness this contextualizer has not run against its own current corpus.
 
 ## Step 3 — Sign-off
 
